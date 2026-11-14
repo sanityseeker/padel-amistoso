@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { EmptyState } from '../../ui';
+import {
+  ConfirmAction,
+  EmptyState,
+  FormActions,
+  ResponsiveSheet,
+  copyText as copy,
+} from '../../ui';
 import { createPortal } from 'react-dom';
 import {
   ActionIcon,
@@ -9,7 +15,6 @@ import {
   Group,
   Image,
   Menu,
-  Modal,
   Paper,
   Stack,
   Text,
@@ -76,15 +81,6 @@ async function fetchQr(tid: string, playerId: string): Promise<string> {
   });
 }
 
-async function copy(text: string, done: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    notifications.show({ message: done, color: 'green', autoClose: 2500 });
-  } catch {
-    notifications.show({ message: tx('Copy is not available in this browser.'), color: 'red' });
-  }
-}
-
 // Web Share where the browser has it (phones), otherwise copy the link.
 async function share(tid: string, player: PlayerSecret) {
   const url = joinLink(tid, player.token);
@@ -121,8 +117,8 @@ function QrDialog({
     staleTime: Infinity,
   });
   return (
-    <Modal opened onClose={onClose} title={player.name} size="sm">
-      <Stack align="center" gap="sm">
+    <ResponsiveSheet opened onClose={onClose} title={player.name} size="sm">
+      <Stack align="center" gap="sm" mb="md">
         {qr.data ? (
           <Image
             src={qr.data}
@@ -137,21 +133,17 @@ function QrDialog({
           <Loading />
         )}
         <Code fz="lg">{player.passphrase}</Code>
-        <Group>
-          <Button
-            variant="light"
-            size="touch"
-            leftSection={<IconShare size={16} />}
-            onClick={() => void share(tid, player)}
-          >
-            {tx('Share link')}
-          </Button>
-          <Button variant="default" size="touch" onClick={onClose}>
-            {tx('Close')}
-          </Button>
-        </Group>
       </Stack>
-    </Modal>
+      <FormActions onCancel={onClose} cancelLabel={tx('Close')}>
+        <Button
+          variant="light"
+          leftSection={<IconShare size={16} />}
+          onClick={() => void share(tid, player)}
+        >
+          {tx('Share link')}
+        </Button>
+      </FormActions>
+    </ResponsiveSheet>
   );
 }
 
@@ -358,38 +350,40 @@ export function PlayerCodes({
           'Players sign in with a passphrase or by scanning their QR code, then score their own matches.',
         )}
       </Text>
-      <Group gap="xs">
-        <Button
-          variant="light"
-          size="touch"
-          leftSection={<IconCopy size={16} />}
-          onClick={() =>
-            void copy(
-              entries.map(([, p]) => `${p.name}: ${p.passphrase}`).join('\n'),
-              tx('Codes copied'),
-            )
-          }
-        >
-          {tx('Copy all codes')}
-        </Button>
-        <Button
-          variant="light"
-          size="touch"
-          leftSection={<IconPrinter size={16} />}
-          loading={preparing}
-          onClick={() => void print()}
-        >
-          {tx('Print all codes')}
-        </Button>
-        <Button
-          variant="subtle"
-          color="gray"
-          size="touch"
-          leftSection={<IconRefresh size={16} />}
-          onClick={() => setConfirmAll(true)}
-        >
-          {tx('Regenerate all')}
-        </Button>
+      <Group justify="space-between" gap="xs">
+        <Group gap="xs">
+          <Button
+            variant="light"
+            size="touch"
+            leftSection={<IconCopy size={16} />}
+            onClick={() =>
+              void copy(
+                entries.map(([, p]) => `${p.name}: ${p.passphrase}`).join('\n'),
+                tx('Codes copied'),
+              )
+            }
+          >
+            {tx('Copy all codes')}
+          </Button>
+          <Button
+            variant="light"
+            size="touch"
+            leftSection={<IconPrinter size={16} />}
+            loading={preparing}
+            onClick={() => void print()}
+          >
+            {tx('Print all codes')}
+          </Button>
+          <Button
+            variant="subtle"
+            color="gray"
+            size="touch"
+            leftSection={<IconRefresh size={16} />}
+            onClick={() => setConfirmAll(true)}
+          >
+            {tx('Regenerate all')}
+          </Button>
+        </Group>
         {canAdd && (
           <Button
             size="touch"
@@ -563,34 +557,21 @@ export function PlayerCodes({
           onClose={() => setQrFor(null)}
         />
       )}
-      <Modal
+      <ConfirmAction
         opened={confirmAll}
-        onClose={() => setConfirmAll(false)}
         title={tx('Regenerate all codes?')}
-      >
-        <Stack>
-          <Text size="sm">
-            {tx('Every printed code and QR stops working. Players must use the new ones.')}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setConfirmAll(false)}>
-              {tx('Cancel')}
-            </Button>
-            <Button
-              color="red"
-              loading={regenerate.isPending}
-              onClick={() =>
-                regenerate.mutate(
-                  entries.map(([id]) => id),
-                  { onSuccess: () => setConfirmAll(false) },
-                )
-              }
-            >
-              {tx('Regenerate all')}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        description={tx('Every printed code and QR stops working. Players must use the new ones.')}
+        confirmLabel={tx('Regenerate all')}
+        color="red"
+        loading={regenerate.isPending}
+        onConfirm={() =>
+          regenerate.mutate(
+            entries.map(([id]) => id),
+            { onSuccess: () => setConfirmAll(false) },
+          )
+        }
+        onClose={() => setConfirmAll(false)}
+      />
       {cards && (
         <PrintSheet title={`${name} - ${tx('Player codes')}`} cards={cards} onDone={done} />
       )}

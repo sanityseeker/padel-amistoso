@@ -1,0 +1,43 @@
+/* DOM order is primary, Cancel, start; row-reverse draws start | Cancel primary. */
+.root {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-sm);
+}
+.end {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+}
+.start {
+  /* Stays on the left even without primaries (row-reverse would put a lone item on the right). */
+  margin-inline-end: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+/* Cancel / Save stay in view while a long sheet or dialog scrolls. */
+.sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: var(--mantine-spacing-sm);
+  background: var(--app-surface);
+}
+@media (max-width: 767px) {
+  .root {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* Equal widths; a label that does not fit moves its button to the next line instead of clipping. */
+  .end > * {
+    flex: 1 1 0;
+    min-width: min(max-content, 100%);
+  }
+}

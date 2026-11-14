@@ -1,18 +1,9 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import {
-  Button,
-  Flex,
-  NavLink,
-  Popover,
-  SegmentedControl,
-  SimpleGrid,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Button, NavLink, Popover, SegmentedControl, SimpleGrid, Stack, Text } from '@mantine/core';
 import { IconChevronDown, IconSettings } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import type { InputFormat, Score, SetDecider } from '../../types';
-import { ScoreStepper } from '../../ui';
+import { FormActions, ScoreStepper } from '../../ui';
 import {
   formatKeyOf,
   formatSets,
@@ -304,14 +295,14 @@ export function ScoreEntry({
               {tx(serverError)}
             </Notice>
           )}
-          <Flex className={classes.footer} direction="row-reverse" gap="xs" wrap="nowrap">
+          <FormActions sticky={surface !== 'inline'}>
             <Button type="submit" size="touch" loading={busy}>
               {tx('Send this score')}
             </Button>
             <Button variant="default" size="touch" onClick={() => setReview(null)}>
               {tx('Back')}
             </Button>
-          </Flex>
+          </FormActions>
         </Stack>
       ) : (
         <Stack key="form" gap="md">
@@ -474,14 +465,36 @@ export function ScoreEntry({
             </Notice>
           )}
           {extra?.({ replacement, setMode })}
-          {/* DOM order is Save, Cancel, Clear so Tab goes last field -> Save; row-reverse shows them
+          {/* FormActions keeps DOM order Save, Cancel, Clear so Tab goes last field -> Save, and shows
             Clear | Cancel | Save with Save under the right thumb. */}
-          <Flex
-            className={classes.footer}
-            direction="row-reverse"
-            gap="xs"
-            wrap={onNext ? 'wrap' : 'nowrap'}
-            align="center"
+          <FormActions
+            sticky={surface !== 'inline'}
+            start={
+              scored &&
+              onClear &&
+              (confirmClear ? (
+                <Button
+                  color="red"
+                  variant="light"
+                  size="touch"
+                  onClick={() => {
+                    onClear();
+                    onClose();
+                  }}
+                >
+                  {tx('Confirm: clear result')}
+                </Button>
+              ) : (
+                <Button
+                  color="red"
+                  variant="subtle"
+                  size="touch"
+                  onClick={() => setConfirmClear(true)}
+                >
+                  {tx('Clear result')}
+                </Button>
+              ))
+            }
           >
             {onNext && (
               <Button size="touch" loading={busy} onClick={() => void submit(undefined, true)}>
@@ -499,33 +512,7 @@ export function ScoreEntry({
             <Button variant="default" size="touch" onClick={onClose}>
               {tx('Cancel')}
             </Button>
-            {scored &&
-              onClear &&
-              (confirmClear ? (
-                <Button
-                  className={classes.clear}
-                  color="red"
-                  variant="light"
-                  size="touch"
-                  onClick={() => {
-                    onClear();
-                    onClose();
-                  }}
-                >
-                  {tx('Confirm: clear result')}
-                </Button>
-              ) : (
-                <Button
-                  className={classes.clear}
-                  color="red"
-                  variant="subtle"
-                  size="touch"
-                  onClick={() => setConfirmClear(true)}
-                >
-                  {tx('Clear result')}
-                </Button>
-              ))}
-          </Flex>
+          </FormActions>
         </Stack>
       )}
     </form>

@@ -17,7 +17,15 @@ import { api, write } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import type { Season } from '../../types';
-import { ConfirmAction, EmptyState, MutationError, ResponsiveSheet, StatusBadge } from '../../ui';
+import {
+  ConfirmAction,
+  EmptyState,
+  FormActions,
+  MutationError,
+  ResponsiveSheet,
+  Section,
+  StatusBadge,
+} from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 interface Standing {
@@ -129,14 +137,14 @@ export function ClubSeasons({ clubId }: { clubId: string }) {
   if (seasons.isPending) return <Loading />;
   if (seasons.error) return <ErrorState error={seasons.error} />;
   return (
-    <Stack gap="md">
+    <Section title={tx('Seasons')}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate();
         }}
       >
-        <Group align="flex-end">
+        <Group align="flex-end" maw={480} wrap="nowrap">
           <TextInput
             flex={1}
             label={tx('New season')}
@@ -233,9 +241,11 @@ export function ClubSeasons({ clubId }: { clubId: string }) {
               value={newName}
               onChange={(e) => setNewName(e.currentTarget.value)}
             />
-            <Button type="submit" loading={patch.isPending}>
-              {tx('Save')}
-            </Button>
+            <FormActions onCancel={() => setRenaming(null)}>
+              <Button type="submit" loading={patch.isPending}>
+                {tx('Save')}
+              </Button>
+            </FormActions>
           </Stack>
         </form>
       </ResponsiveSheet>
@@ -252,6 +262,6 @@ export function ClubSeasons({ clubId }: { clubId: string }) {
         onConfirm={() => deleting && remove.mutate(deleting)}
         onClose={() => setDeleting(null)}
       />
-    </Stack>
+    </Section>
   );
 }

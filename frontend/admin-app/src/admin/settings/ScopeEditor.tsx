@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { Button, Group, Select, Stack } from '@mantine/core';
-import { useQuery } from '@tanstack/react-query';
-import { api, write } from '../../api';
-import { useOverview } from '../../components';
+import { Button, Stack } from '@mantine/core';
+import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
-import type { Season } from '../../types';
-import { MutationError } from '../../ui';
+import { ScopeFields } from '../../features/create/ScopeFields';
+import { FormActions, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 export interface Scope {
@@ -32,15 +30,9 @@ export function ScopeEditor({
   invalidate: string[][];
 }) {
   useLocale();
-  const { communities, clubs } = useOverview();
   const [community, setCommunity] = useState(scope.community_id);
   const [club, setClub] = useState<string | null>(scope.club_id);
   const [season, setSeason] = useState<string | null>(scope.season_id ?? null);
-  const seasons = useQuery({
-    queryKey: ['admin', 'seasons', club],
-    queryFn: () => api<Season[]>(`/clubs/${club}/seasons`),
-    enabled: !!club && withSeason,
-  });
   const save = useAdminMutation({
     request: async () => {
       if (community !== scope.community_id)
@@ -62,49 +54,22 @@ export function ScopeEditor({
     (withSeason && (season ?? null) !== (scope.season_id ?? null));
   return (
     <Stack gap="sm">
-      <Select
-        label={tx('Community')}
-        allowDeselect={false}
-        disabled={!canMoveCommunity}
-        data={(communities.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
-        value={community}
-        onChange={(v) => {
-          setCommunity(v ?? community);
-          setClub(null);
-          setSeason(null);
-        }}
+      <ScopeFields
+        community={community}
+        setCommunity={setCommunity}
+        club={club}
+        setClub={setClub}
+        season={season}
+        setSeason={withSeason ? setSeason : undefined}
+        locked={false}
+        communityDisabled={!canMoveCommunity}
       />
-      <Select
-        label={tx('Club')}
-        placeholder={tx('No club')}
-        clearable
-        data={(clubs.data ?? [])
-          .filter((c) => c.community_id === community)
-          .map((c) => ({ value: c.id, label: c.name }))}
-        value={club}
-        onChange={(v) => {
-          setClub(v);
-          setSeason(null);
-        }}
-      />
-      {withSeason && club && (
-        <Select
-          label={tx('Season')}
-          placeholder={tx('No season')}
-          clearable
-          data={(seasons.data ?? [])
-            .filter((s) => s.active)
-            .map((s) => ({ value: s.id, label: s.name }))}
-          value={season}
-          onChange={setSeason}
-        />
-      )}
       <MutationError error={save.error} />
-      <Group justify="flex-end">
+      <FormActions>
         <Button disabled={!changed} loading={save.isPending} onClick={() => save.mutate()}>
           {tx('Save')}
         </Button>
-      </Group>
+      </FormActions>
     </Stack>
   );
 }

@@ -21,7 +21,7 @@ import { ErrorState, Loading } from '../../components';
 import { currentLanguage, t as tx, useLocale } from '../../i18n';
 import { isDemoInstance } from '../../shell/env';
 import { sportProps } from '../../theme';
-import { QrSheet } from '../../ui';
+import { ConfirmAction, FormActions, QrSheet } from '../../ui';
 import { Markdown } from '../public/Markdown';
 import {
   FeeNotice,
@@ -358,6 +358,7 @@ function EntryView({
     } catch (e) {
       setError(tx((e as Error).message) || tx('Something went wrong. Please try again.'));
       setBusy(false);
+      setConfirming(false);
     }
   };
   const link = `${window.location.origin}/register/${encodeURIComponent(rid)}${entry.token ? `?token=${encodeURIComponent(entry.token)}` : ''}`;
@@ -441,8 +442,8 @@ function EntryView({
       )}
       {canManage && (
         <Stack gap="sm">
-          <Group>
-            {questions.length > 0 && (
+          <Group justify="space-between">
+            {questions.length > 0 ? (
               <Button
                 variant="default"
                 aria-expanded={editing}
@@ -450,8 +451,10 @@ function EntryView({
               >
                 {tx('Edit answers')}
               </Button>
+            ) : (
+              <span />
             )}
-            <Button variant="default" color="red" c="red" onClick={() => setConfirming(true)}>
+            <Button variant="subtle" color="red" onClick={() => setConfirming(true)}>
               {tx('Withdraw')}
             </Button>
           </Group>
@@ -466,27 +469,25 @@ function EntryView({
                     onChange={(v) => change(q.key, v)}
                   />
                 ))}
-                <Button variant="default" loading={busy} onClick={() => void save()}>
-                  {tx('Save answers')}
-                </Button>
+                <FormActions onCancel={() => setEditing(false)}>
+                  <Button loading={busy} onClick={() => void save()}>
+                    {tx('Save answers')}
+                  </Button>
+                </FormActions>
               </Stack>
             </Paper>
           )}
-          {confirming && (
-            <Notice tone="danger" role="alertdialog" title={tx('Withdraw')}>
-              <Stack gap="sm">
-                <Text size="sm">{tx('Withdraw from this lobby? Your spot will be released.')}</Text>
-                <Group>
-                  <Button variant="default" onClick={() => setConfirming(false)}>
-                    {tx('Keep my spot')}
-                  </Button>
-                  <Button color="red" loading={busy} onClick={() => void withdraw()}>
-                    {tx('Yes, withdraw')}
-                  </Button>
-                </Group>
-              </Stack>
-            </Notice>
-          )}
+          <ConfirmAction
+            opened={confirming}
+            title={tx('Withdraw')}
+            description={tx('Withdraw from this lobby? Your spot will be released.')}
+            confirmLabel={tx('Yes, withdraw')}
+            cancelLabel={tx('Keep my spot')}
+            color="red"
+            loading={busy}
+            onConfirm={() => void withdraw()}
+            onClose={() => setConfirming(false)}
+          />
           {error && <Notice tone="danger">{error}</Notice>}
         </Stack>
       )}

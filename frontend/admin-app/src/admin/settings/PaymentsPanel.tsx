@@ -32,6 +32,7 @@ import type { PaymentStatus } from '../../types';
 import {
   ConfirmAction,
   EmptyState,
+  FormActions,
   MutationError,
   Notice,
   ResponsiveSheet,
@@ -159,11 +160,13 @@ export function PaymentSettingsForm({
   scope,
   data,
   onSaved,
+  onCancel,
 }: {
   base: string;
   scope: 'lobby' | 'tournament';
   data: PaySettings;
   onSaved?: () => void;
+  onCancel?: () => void;
 }) {
   useLocale();
   const [fee, setFee] = useState<number | string>(data.fee_cents / 100);
@@ -286,19 +289,21 @@ export function PaymentSettingsForm({
         </Button>
         <Collapse expanded={advanced}>
           <Stack>
-            <Select
-              label={tx('Currency')}
-              allowDeselect={false}
-              data={currencies}
-              value={currency}
-              onChange={(v) => v && setCurrency(v)}
-            />
-            <TextInput
-              label={tx('Due date (shown to players only)')}
-              type="date"
-              value={due ? due.slice(0, 10) : ''}
-              onChange={(e) => setDue(e.currentTarget.value)}
-            />
+            <SimpleGrid cols={{ base: 1, xs: 2 }}>
+              <Select
+                label={tx('Currency')}
+                allowDeselect={false}
+                data={currencies}
+                value={currency}
+                onChange={(v) => v && setCurrency(v)}
+              />
+              <TextInput
+                label={tx('Due date (shown to players only)')}
+                type="date"
+                value={due ? due.slice(0, 10) : ''}
+                onChange={(e) => setDue(e.currentTarget.value)}
+              />
+            </SimpleGrid>
             {methods.length > 0 && (
               <Stack gap="xs">
                 <Text size="sm" fw={600}>
@@ -332,9 +337,11 @@ export function PaymentSettingsForm({
             )}
           </Stack>
         </Collapse>
-        <Button type="submit" loading={save.isPending}>
-          {tx('Save settings')}
-        </Button>
+        <FormActions onCancel={onCancel}>
+          <Button type="submit" loading={save.isPending}>
+            {tx('Save settings')}
+          </Button>
+        </FormActions>
       </Stack>
     </form>
   );
@@ -354,7 +361,13 @@ function SettingsSheet({
   useLocale();
   return (
     <ResponsiveSheet opened onClose={onClose} title={tx('Payment settings')} size="lg">
-      <PaymentSettingsForm base={base} scope={scope} data={data} onSaved={onClose} />
+      <PaymentSettingsForm
+        base={base}
+        scope={scope}
+        data={data}
+        onSaved={onClose}
+        onCancel={onClose}
+      />
     </ResponsiveSheet>
   );
 }
@@ -398,9 +411,11 @@ function MarkPaidSheet({
             ))}
           </Group>
         </Chip.Group>
-        <Button loading={loading} onClick={() => onConfirm(method)}>
-          {tx('Mark paid')}
-        </Button>
+        <FormActions onCancel={onClose}>
+          <Button loading={loading} onClick={() => onConfirm(method)}>
+            {tx('Mark paid')}
+          </Button>
+        </FormActions>
       </Stack>
     </ResponsiveSheet>
   );
@@ -451,9 +466,11 @@ function EditRowSheet({
             value={note}
             onChange={(e) => setNote(e.currentTarget.value)}
           />
-          <Button type="submit" loading={loading}>
-            {tx('Save')}
-          </Button>
+          <FormActions onCancel={onClose}>
+            <Button type="submit" loading={loading}>
+              {tx('Save')}
+            </Button>
+          </FormActions>
         </Stack>
       </form>
     </ResponsiveSheet>

@@ -14,14 +14,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import {
-  IconDots,
-  IconMailPlus,
-  IconPlus,
-  IconSearch,
-  IconSettings,
-  IconTrash,
-} from '@tabler/icons-react';
+import { IconDots, IconPlus, IconSearch, IconSettings, IconTrash } from '@tabler/icons-react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
@@ -29,7 +22,7 @@ import { useAuth } from '../../auth';
 import { ErrorState, Loading, useOverview } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import type { User } from '../../types';
-import { ConfirmAction, MutationError, PageHeader, ResponsiveSheet } from '../../ui';
+import { ConfirmAction, FormActions, MutationError, PageHeader, ResponsiveSheet } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 const ROLES = () => [
@@ -137,27 +130,16 @@ export function UsersPage() {
         title={tx('Users')}
         description={tx('Give your organizing team a place in the club.')}
         actions={
-          <Group>
-            <Button
-              variant="default"
-              leftSection={<IconMailPlus size={17} />}
-              onClick={() => {
-                invite.reset();
-                setSheet('invite');
-              }}
-            >
-              {tx('Invite by email')}
-            </Button>
-            <Button
-              leftSection={<IconPlus size={17} />}
-              onClick={() => {
-                create.reset();
-                setSheet('create');
-              }}
-            >
-              {tx('Add user')}
-            </Button>
-          </Group>
+          <Button
+            leftSection={<IconPlus size={17} />}
+            onClick={() => {
+              create.reset();
+              invite.reset();
+              setSheet('create');
+            }}
+          >
+            {tx('Add user')}
+          </Button>
         }
       />
       <TextInput
@@ -174,16 +156,9 @@ export function UsersPage() {
         <ErrorState error={users.error} retry={() => void users.refetch()} />
       ) : phone ? (
         // Phones: one row per user with the menu on the row, no sideways scrolling to reach it.
-        <Paper p={0} variant="row" role="list" style={{ overflow: 'hidden' }}>
+        <Paper variant="list" role="list">
           {shown.map((u) => (
-            <Group
-              key={u.username}
-              role="listitem"
-              justify="space-between"
-              wrap="nowrap"
-              p="sm"
-              style={{ borderTop: '1px solid var(--app-border)' }}
-            >
+            <Group key={u.username} role="listitem" justify="space-between" wrap="nowrap" p="sm">
               <Stack gap={2} miw={0}>
                 <Group gap="xs">
                   <Text fw={600} size="sm">
@@ -306,9 +281,11 @@ export function UsersPage() {
               onChange={(v) => setRole(v ?? 'user')}
               data={ROLES()}
             />
-            <Button type="submit" loading={create.isPending || invite.isPending}>
-              {sheet === 'invite' ? tx('Send invitation') : tx('Create user')}
-            </Button>
+            <FormActions onCancel={() => setSheet(null)}>
+              <Button type="submit" loading={create.isPending || invite.isPending}>
+                {sheet === 'invite' ? tx('Send invitation') : tx('Create user')}
+              </Button>
+            </FormActions>
           </Stack>
         </form>
       </ResponsiveSheet>
@@ -331,9 +308,11 @@ export function UsersPage() {
             checked={canClubs}
             onChange={(e) => setCanClubs(e.currentTarget.checked)}
           />
-          <Button loading={settings.isPending} onClick={() => settings.mutate()}>
-            {tx('Save')}
-          </Button>
+          <FormActions onCancel={() => setEditing(null)}>
+            <Button loading={settings.isPending} onClick={() => settings.mutate()}>
+              {tx('Save')}
+            </Button>
+          </FormActions>
         </Stack>
       </ResponsiveSheet>
       <ConfirmAction

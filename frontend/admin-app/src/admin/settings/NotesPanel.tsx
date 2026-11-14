@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Button, Group, Stack, Textarea } from '@mantine/core';
+import { Button, Stack, Textarea } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx } from '../../i18n';
-import { MutationError } from '../../ui';
+import { FormActions, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 interface Notes {
@@ -38,12 +38,10 @@ function NotesEditor({
         onChange={(e) => setDraft(e.currentTarget.value)}
       />
       <MutationError error={save.error} />
-      <Group justify="flex-end" gap="xs">
-        {dirty && (
-          <Button variant="subtle" onClick={() => setDraft(null)} disabled={save.isPending}>
-            {tx('Cancel')}
-          </Button>
-        )}
+      <FormActions
+        onCancel={dirty ? () => setDraft(null) : undefined}
+        cancelDisabled={save.isPending}
+      >
         <Button
           onClick={() => save.mutate(value, { onSuccess: () => setDraft(null) })}
           disabled={!dirty}
@@ -51,7 +49,7 @@ function NotesEditor({
         >
           {tx('Save')}
         </Button>
-      </Group>
+      </FormActions>
     </Stack>
   );
 }

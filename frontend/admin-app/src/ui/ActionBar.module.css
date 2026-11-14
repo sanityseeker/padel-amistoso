@@ -1,6 +1,8 @@
 .bar {
   position: fixed;
-  inset-inline: 0;
+  /* Tablets show the dock or rail beside the page; the bar spans the page only. */
+  left: var(--app-shell-navbar-offset, 0px);
+  right: var(--app-shell-aside-offset, 0px);
   bottom: calc(var(--app-tabs-height, 0px) + env(safe-area-inset-bottom, 0px));
   z-index: 30;
   padding: var(--mantine-spacing-xs) var(--mantine-spacing-md);
@@ -12,4 +14,8 @@
 }
 .spacer {
   height: 72px;
+}
+/* The support footer ends every page, after the spacer: while a bar is shown it keeps clear of it too. */
+:global(body:has([data-action-bar])) {
+  --app-action-bar-clearance: 72px;
 }

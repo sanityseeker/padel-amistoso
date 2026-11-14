@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Button, Group, Select, Stack, Text } from '@mantine/core';
+import { Button, Select, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { useTournamentList } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
-import { ConfirmAction, MutationError } from '../../ui';
+import { ConfirmAction, FormActions, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 interface Participant {
@@ -97,14 +97,11 @@ export function LinkParticipation({
         />
       )}
       <MutationError error={participants.error ?? link.error} />
-      <Group justify="flex-end">
-        <Button variant="default" onClick={() => setOpen(false)}>
-          {tx('Cancel')}
-        </Button>
+      <FormActions onCancel={() => setOpen(false)}>
         <Button disabled={!tid || !pid} loading={link.isPending} onClick={submit}>
           {tx('Link')}
         </Button>
-      </Group>
+      </FormActions>
       <ConfirmAction
         opened={asking}
         title={tx('Move the link?')}

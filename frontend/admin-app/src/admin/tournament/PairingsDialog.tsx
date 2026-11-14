@@ -17,8 +17,7 @@ import {
 } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { ResponsiveSheet } from '../../ui';
-import classes from './Dialogs.module.css';
+import { FormActions, ResponsiveSheet } from '../../ui';
 import { t as tx, useLocale } from '../../i18n';
 import { api, write } from '../../api';
 import type { PairingProposal, RepeatDetail } from '../../types';
@@ -493,19 +492,15 @@ export function PairingsDialog({
             <Text size="sm" c="dimmed">
               {tx('This updates the tournament and its public view.')}
             </Text>
-            <Group justify="flex-end" className={classes.footer}>
-              <Button variant="default" size="touch" onClick={onClose}>
-                {tx('Cancel')}
-              </Button>
+            <FormActions sticky onCancel={onClose}>
               <Button
-                size="touch"
                 loading={commit.isPending}
                 disabled={proposals.isFetching && !list.length}
                 onClick={() => commit.mutate()}
               >
                 {tx('Continue')}
               </Button>
-            </Group>
+            </FormActions>
           </Stack>
         </Tabs.Panel>
         <Tabs.Panel value="manual">
@@ -592,19 +587,15 @@ export function PairingsDialog({
             {duplicate && (
               <Notice tone="warning">{tx('A player is assigned to more than one match.')}</Notice>
             )}
-            <Group justify="flex-end" className={classes.footer}>
-              <Button variant="default" size="touch" onClick={onClose}>
-                {tx('Cancel')}
-              </Button>
+            <FormActions sticky onCancel={onClose}>
               <Button
-                size="touch"
                 disabled={!complete || duplicate}
                 loading={custom.isPending}
                 onClick={() => custom.mutate()}
               >
                 {tx('Start this round')}
               </Button>
-            </Group>
+            </FormActions>
           </Stack>
         </Tabs.Panel>
       </Tabs>

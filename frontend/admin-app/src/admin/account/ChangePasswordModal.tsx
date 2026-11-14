@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { Button, Group, Modal, PasswordInput, Stack } from '@mantine/core';
+import { Button, Modal, PasswordInput, Stack } from '@mantine/core';
 import { ApiError, write } from '../../api';
 import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
 import { PasswordPair } from './PasswordPair';
 import { accountError, ErrorAlert, mismatchProblem, passwordProblem } from './shared';
+import { FormActions } from '../../ui';
 import { Notice } from '../../ui/Notice';
 
 function Form({ onClose }: { onClose: () => void }) {
@@ -27,11 +28,11 @@ function Form({ onClose }: { onClose: () => void }) {
         <Notice tone="success" role="status">
           {tx('Your password has been changed.')}
         </Notice>
-        <Group justify="flex-end">
+        <FormActions>
           <Button onClick={onClose} autoFocus>
             {tx('Close')}
           </Button>
-        </Group>
+        </FormActions>
       </Stack>
     );
 
@@ -92,14 +93,11 @@ function Form({ onClose }: { onClose: () => void }) {
           passwordRef={passwordRef}
           confirmRef={confirmRef}
         />
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            {tx('Cancel')}
-          </Button>
+        <FormActions onCancel={onClose}>
           <Button type="submit" loading={busy} disabled={busy}>
             {tx('Change password')}
           </Button>
-        </Group>
+        </FormActions>
       </Stack>
     </form>
   );

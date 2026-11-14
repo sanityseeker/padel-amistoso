@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api';
 import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
-import { ResponsiveSheet } from '../../ui';
+import { FormActions, ResponsiveSheet } from '../../ui';
 import { StatusBadge } from '../../ui/StatusBadge';
 
 export interface PickedPlayer {
@@ -187,25 +187,24 @@ export function RosterPicker({
             )}
           </Stack>
         </ScrollArea.Autosize>
-        <Group justify="space-between">
-          <Text size="sm" c="dimmed">
-            {tx('{n} selected', { n: chosen.length })}
-          </Text>
-          <Group>
-            <Button variant="default" onClick={onClose}>
-              {tx('Cancel')}
-            </Button>
-            <Button
-              disabled={!chosen.length}
-              onClick={() => {
-                onAdd(chosen.map(({ name, email, profile_id }) => ({ name, email, profile_id })));
-                onClose();
-              }}
-            >
-              {tx('Add selected')}
-            </Button>
-          </Group>
-        </Group>
+        <FormActions
+          onCancel={onClose}
+          start={
+            <Text size="sm" c="dimmed">
+              {tx('{n} selected', { n: chosen.length })}
+            </Text>
+          }
+        >
+          <Button
+            disabled={!chosen.length}
+            onClick={() => {
+              onAdd(chosen.map(({ name, email, profile_id }) => ({ name, email, profile_id })));
+              onClose();
+            }}
+          >
+            {tx('Add selected')}
+          </Button>
+        </FormActions>
       </Stack>
     </ResponsiveSheet>
   );

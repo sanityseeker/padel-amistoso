@@ -2002,5 +2002,10 @@
   "Confirm score_badge": "Confirmar resultado",
   "Join code_badge": "Código de acceso",
   "Notes": "Notas",
-  "Notes saved": "Notas guardadas"
+  "Notes saved": "Notas guardadas",
+  "Show passphrase": "Mostrar frase de acceso",
+  "Hide passphrase": "Ocultar frase de acceso",
+  "Save landing page": "Guardar página del club",
+  "Danger zone": "Zona de peligro",
+  "Filters": "Filtros"
 }

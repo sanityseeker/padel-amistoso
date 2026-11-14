@@ -6,6 +6,8 @@ import {
   Group,
   Input,
   NativeSelect,
+  Paper,
+  SimpleGrid,
   Stack,
   Switch,
   Tabs,
@@ -21,7 +23,7 @@ import { CommunicateSection } from '../../admin/settings/CommunicateSection';
 import { ScopeEditor } from '../../admin/settings/ScopeEditor';
 import { t as tx, useLocale } from '../../i18n';
 import type { LobbyDetail, Question } from '../../types';
-import { MutationError, Section } from '../../ui';
+import { FormActions, MutationError, Section } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 const TYPES = ['text', 'choice', 'multichoice', 'number'];
@@ -92,25 +94,30 @@ function Details({ lobby }: { lobby: LobbyDetail }) {
         />
       </Section>
       <Section title={tx('Sign-up rules')}>
-        <TextInput
-          label={tx('Join code')}
-          description={tx('Players must enter it to sign up. Leave empty for an open sign-up.')}
-          maxLength={64}
-          value={form.join_code}
-          onChange={(e) => set('join_code', e.currentTarget.value)}
-        />
-        <NativeSelect
-          label={tx('Email address')}
-          value={form.email_requirement}
-          onChange={(e) =>
-            set('email_requirement', e.currentTarget.value as 'required' | 'optional' | 'disabled')
-          }
-          data={[
-            { value: 'optional', label: tx('Optional') },
-            { value: 'required', label: tx('Required') },
-            { value: 'disabled', label: tx('Not asked') },
-          ]}
-        />
+        <SimpleGrid cols={{ base: 1, xs: 2 }}>
+          <TextInput
+            label={tx('Join code')}
+            description={tx('Players must enter it to sign up. Leave empty for an open sign-up.')}
+            maxLength={64}
+            value={form.join_code}
+            onChange={(e) => set('join_code', e.currentTarget.value)}
+          />
+          <NativeSelect
+            label={tx('Email address')}
+            value={form.email_requirement}
+            onChange={(e) =>
+              set(
+                'email_requirement',
+                e.currentTarget.value as 'required' | 'optional' | 'disabled',
+              )
+            }
+            data={[
+              { value: 'optional', label: tx('Optional') },
+              { value: 'required', label: tx('Required') },
+              { value: 'disabled', label: tx('Not asked') },
+            ]}
+          />
+        </SimpleGrid>
         <Switch
           label={tx('Email login details on sign-up')}
           checked={form.auto_send_email}
@@ -123,11 +130,11 @@ function Details({ lobby }: { lobby: LobbyDetail }) {
         />
       </Section>
       <MutationError error={save.error} />
-      <Group justify="flex-end">
+      <FormActions>
         <Button loading={save.isPending} onClick={() => save.mutate()}>
           {tx('Save settings')}
         </Button>
-      </Group>
+      </FormActions>
     </Stack>
   );
 }
@@ -162,96 +169,102 @@ function Questions({ lobby }: { lobby: LobbyDetail }) {
     >
       <Stack gap="md">
         {items.map((q, i) => (
-          <Stack key={q.key} gap="xs">
-            <Group wrap="nowrap" align="flex-end">
-              <TextInput
-                flex={1}
-                label={tx('Question')}
-                maxLength={128}
-                value={q.label}
-                onChange={(e) => edit(i, { label: e.currentTarget.value })}
-              />
-              <NativeSelect
-                aria-label={tx('Answer type')}
-                value={q.type}
-                onChange={(e) => edit(i, { type: e.currentTarget.value })}
-                data={TYPES.map((v) => ({ value: v, label: tx(v) }))}
-              />
-              <ActionIcon
-                color="red"
-                aria-label={tx('Remove question')}
-                onClick={() => setItems(items.filter((_, j) => j !== i))}
-              >
-                <IconX size={16} />
-              </ActionIcon>
-            </Group>
-            {(q.type === 'choice' || q.type === 'multichoice') && (
-              <Stack gap={6}>
-                <Input.Label>{tx('Choices')}</Input.Label>
-                {q.choices.map((c, ci) => (
-                  <Group key={ci} gap="xs" wrap="nowrap">
-                    <TextInput
-                      flex={1}
-                      aria-label={tx('Choice {n}', { n: ci + 1 })}
-                      placeholder={tx('Choice {n}', { n: ci + 1 })}
-                      maxLength={128}
-                      value={c}
-                      onChange={(e) =>
-                        edit(i, {
-                          choices: q.choices.map((x, k) => (k === ci ? e.currentTarget.value : x)),
-                        })
-                      }
-                    />
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      aria-label={tx('Remove choice {n}', { n: ci + 1 })}
-                      onClick={() => edit(i, { choices: q.choices.filter((_, k) => k !== ci) })}
-                    >
-                      <IconX size={16} />
-                    </ActionIcon>
-                  </Group>
-                ))}
-                <Button
-                  variant="light"
-                  size="compact-sm"
-                  w="fit-content"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={() => edit(i, { choices: [...q.choices, ''] })}
+          <Paper key={q.key} variant="row" p="sm" data-testid="question-block">
+            <Stack gap="xs">
+              <Group wrap="nowrap" align="flex-end">
+                <TextInput
+                  flex={1}
+                  label={tx('Question')}
+                  maxLength={128}
+                  value={q.label}
+                  onChange={(e) => edit(i, { label: e.currentTarget.value })}
+                />
+                <NativeSelect
+                  aria-label={tx('Answer type')}
+                  value={q.type}
+                  onChange={(e) => edit(i, { type: e.currentTarget.value })}
+                  data={TYPES.map((v) => ({ value: v, label: tx(v) }))}
+                />
+                <ActionIcon
+                  color="red"
+                  aria-label={tx('Remove question')}
+                  onClick={() => setItems(items.filter((_, j) => j !== i))}
                 >
-                  {tx('Add choice')}
-                </Button>
-              </Stack>
-            )}
-            <Switch
-              size="xs"
-              label={tx('Required')}
-              checked={q.required}
-              onChange={(e) => edit(i, { required: e.currentTarget.checked })}
-            />
-          </Stack>
+                  <IconX size={16} />
+                </ActionIcon>
+              </Group>
+              {(q.type === 'choice' || q.type === 'multichoice') && (
+                <Stack gap={6}>
+                  <Input.Label>{tx('Choices')}</Input.Label>
+                  {q.choices.map((c, ci) => (
+                    <Group key={ci} gap="xs" wrap="nowrap">
+                      <TextInput
+                        flex={1}
+                        aria-label={tx('Choice {n}', { n: ci + 1 })}
+                        placeholder={tx('Choice {n}', { n: ci + 1 })}
+                        maxLength={128}
+                        value={c}
+                        onChange={(e) =>
+                          edit(i, {
+                            choices: q.choices.map((x, k) =>
+                              k === ci ? e.currentTarget.value : x,
+                            ),
+                          })
+                        }
+                      />
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        aria-label={tx('Remove choice {n}', { n: ci + 1 })}
+                        onClick={() => edit(i, { choices: q.choices.filter((_, k) => k !== ci) })}
+                      >
+                        <IconX size={16} />
+                      </ActionIcon>
+                    </Group>
+                  ))}
+                  <Button
+                    variant="light"
+                    size="compact-sm"
+                    w="fit-content"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => edit(i, { choices: [...q.choices, ''] })}
+                  >
+                    {tx('Add choice')}
+                  </Button>
+                </Stack>
+              )}
+              <Switch
+                size="xs"
+                label={tx('Required')}
+                checked={q.required}
+                onChange={(e) => edit(i, { required: e.currentTarget.checked })}
+              />
+            </Stack>
+          </Paper>
         ))}
-        <Button
-          variant="light"
-          w="fit-content"
-          leftSection={<IconPlus size={15} />}
-          onClick={() =>
-            setItems([
-              ...items,
-              {
-                key: `q${Date.now().toString(36)}`,
-                label: '',
-                type: 'text',
-                required: false,
-                choices: [],
-              },
-            ])
+        <MutationError error={save.error} />
+        <FormActions
+          start={
+            <Button
+              variant="light"
+              leftSection={<IconPlus size={15} />}
+              onClick={() =>
+                setItems([
+                  ...items,
+                  {
+                    key: `q${Date.now().toString(36)}`,
+                    label: '',
+                    type: 'text',
+                    required: false,
+                    choices: [],
+                  },
+                ])
+              }
+            >
+              {tx('Add question')}
+            </Button>
           }
         >
-          {tx('Add question')}
-        </Button>
-        <MutationError error={save.error} />
-        <Group justify="flex-end">
           <Button
             loading={save.isPending}
             disabled={items.some((q) => !q.label.trim())}
@@ -259,7 +272,7 @@ function Questions({ lobby }: { lobby: LobbyDetail }) {
           >
             {tx('Save questions')}
           </Button>
-        </Group>
+        </FormActions>
       </Stack>
     </Section>
   );

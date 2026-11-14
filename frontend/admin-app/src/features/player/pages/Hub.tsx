@@ -1,5 +1,4 @@
 import { Anchor, Button, Group, SimpleGrid, Stack, Title, useMatches } from '@mantine/core';
-import { IconArrowRight } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
 import type { Entry } from '../../../player/types';
@@ -99,9 +98,17 @@ export default function Hub() {
       <PastTournaments entries={pastEntries} />
 
       <Stack gap="md" component="section" aria-labelledby="hub-rating">
-        <Title order={2} id="hub-rating" size="h3">
-          {tx('Rating and statistics')}
-        </Title>
+        <Group justify="space-between">
+          <Title order={2} id="hub-rating" size="h3">
+            {tx('Rating and statistics')}
+          </Title>
+          {rated && (
+            // Form and the leaderboard live on the Ratings page; the Hub keeps the summary and a link.
+            <Anchor component={Link} to="/player/ratings" size="sm">
+              {tx('Form, leaderboard and rating trend')}
+            </Anchor>
+          )}
+        </Group>
         {rated ? (
           cardSports.map((s) => (
             <PlayerCard key={s} space={space} sport={s} rank={rankIn(s)} scopeName={scopeName} />
@@ -112,18 +119,6 @@ export default function Hub() {
           </EmptyState>
         )}
         <CareerStats entries={sportEntries} />
-        {rated && (
-          // Form and the leaderboard live on the Ratings page; the Hub keeps the summary and a link.
-          <Button
-            component={Link}
-            to="/player/ratings"
-            variant="light"
-            rightSection={<IconArrowRight size={16} />}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            {tx('Form, leaderboard and rating trend')}
-          </Button>
-        )}
       </Stack>
 
       <TodoCards profile={space.profile} />

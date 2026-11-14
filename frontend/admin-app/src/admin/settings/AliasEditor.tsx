@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Button, Group, Stack, TextInput } from '@mantine/core';
+import { Button, Stack, TextInput } from '@mantine/core';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
-import { CopyField, MutationError } from '../../ui';
+import { CopyField, FormActions, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { useDemoAccount } from '../../useDemoAccount';
 
@@ -59,17 +59,21 @@ export function AliasEditor({
         label={tx('Public address')}
       />
       <MutationError error={save.error ?? remove.error} />
-      <Group justify="flex-end">
-        {alias && (
-          <Button
-            variant="default"
-            disabled={demo}
-            loading={remove.isPending}
-            onClick={() => remove.mutate()}
-          >
-            {tx('Remove address')}
-          </Button>
-        )}
+      <FormActions
+        start={
+          alias && (
+            <Button
+              variant="subtle"
+              color="red"
+              disabled={demo}
+              loading={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {tx('Remove address')}
+            </Button>
+          )
+        }
+      >
         <Button
           disabled={demo || !value.trim() || value.trim() === alias}
           loading={save.isPending}
@@ -77,7 +81,7 @@ export function AliasEditor({
         >
           {tx('Save address')}
         </Button>
-      </Group>
+      </FormActions>
     </Stack>
   );
 }

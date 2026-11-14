@@ -12,7 +12,7 @@ export function ActionBar({
   'data-testid'?: string;
 }) {
   return (
-    <div className={classes.bar} data-testid={testId}>
+    <div className={classes.bar} data-testid={testId} data-action-bar>
       {children}
     </div>
   );

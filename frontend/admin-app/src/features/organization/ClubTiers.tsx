@@ -18,7 +18,14 @@ import { api, write } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import type { Tier } from '../../types';
-import { ConfirmAction, EmptyState, MutationError, ResponsiveSheet } from '../../ui';
+import {
+  ConfirmAction,
+  EmptyState,
+  FormActions,
+  MutationError,
+  ResponsiveSheet,
+  Section,
+} from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 export function tiersKey(clubId: string) {
@@ -64,10 +71,14 @@ export function ClubTiers({ clubId }: { clubId: string }) {
   if (tiers.isPending) return <Loading />;
   if (tiers.error) return <ErrorState error={tiers.error} />;
   return (
-    <Stack gap="md">
-      <Group justify="flex-end">
-        <Button onClick={() => open('new')}>{tx('Add tier')}</Button>
-      </Group>
+    <Section
+      title={tx('Skill tiers')}
+      actions={
+        <Button onClick={() => open('new')} style={{ flexShrink: 0 }}>
+          {tx('Add tier')}
+        </Button>
+      }
+    >
       {!tiers.data.length ? (
         <EmptyState title={tx('No skill tiers yet')}>
           {tx('Tiers group players by level, for example Beginner, Intermediate and Advanced.')}
@@ -129,33 +140,37 @@ export function ClubTiers({ clubId }: { clubId: string }) {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
             />
-            <NativeSelect
-              label={tx('Sport')}
-              disabled={editing !== 'new'}
-              value={form.sport}
-              onChange={(e) => setForm({ ...form, sport: e.currentTarget.value })}
-              data={[
-                { value: 'padel', label: tx('Padel') },
-                { value: 'tennis', label: tx('Tennis') },
-              ]}
-            />
-            <NumberInput
-              label={tx('Base ELO')}
-              min={0}
-              max={3000}
-              value={form.base_elo}
-              onChange={(v) => setForm({ ...form, base_elo: Number(v) || 0 })}
-            />
-            <NumberInput
-              label={tx('Order')}
-              min={0}
-              allowDecimal={false}
-              value={form.position}
-              onChange={(v) => setForm({ ...form, position: Number(v) || 0 })}
-            />
-            <Button type="submit" loading={save.isPending}>
-              {tx('Save')}
-            </Button>
+            <SimpleGrid cols={{ base: 1, xs: 3 }}>
+              <NativeSelect
+                label={tx('Sport')}
+                disabled={editing !== 'new'}
+                value={form.sport}
+                onChange={(e) => setForm({ ...form, sport: e.currentTarget.value })}
+                data={[
+                  { value: 'padel', label: tx('Padel') },
+                  { value: 'tennis', label: tx('Tennis') },
+                ]}
+              />
+              <NumberInput
+                label={tx('Base ELO')}
+                min={0}
+                max={3000}
+                value={form.base_elo}
+                onChange={(v) => setForm({ ...form, base_elo: Number(v) || 0 })}
+              />
+              <NumberInput
+                label={tx('Order')}
+                min={0}
+                allowDecimal={false}
+                value={form.position}
+                onChange={(v) => setForm({ ...form, position: Number(v) || 0 })}
+              />
+            </SimpleGrid>
+            <FormActions onCancel={() => setEditing(null)}>
+              <Button type="submit" loading={save.isPending}>
+                {tx('Save')}
+              </Button>
+            </FormActions>
           </Stack>
         </form>
       </ResponsiveSheet>
@@ -170,6 +185,6 @@ export function ClubTiers({ clubId }: { clubId: string }) {
         onConfirm={() => deleting && remove.mutate(deleting)}
         onClose={() => setDeleting(null)}
       />
-    </Stack>
+    </Section>
   );
 }

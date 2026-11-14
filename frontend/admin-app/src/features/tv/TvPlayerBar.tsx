@@ -8,7 +8,6 @@ import {
   Divider,
   Group,
   Menu,
-  Modal,
   Stack,
   Text,
   TextInput,
@@ -21,6 +20,7 @@ import { PLAYER_DATA } from '../../player/api';
 import { profileInitials } from '../../player/session';
 import shell from '../../shell/Shell.module.css';
 import type { useTvPlayer } from './useTvPlayer';
+import { ResponsiveSheet } from '../../ui';
 import { Notice } from '../../ui/Notice';
 
 type Player = ReturnType<typeof useTvPlayer>;
@@ -76,7 +76,7 @@ function LoginModal({
     );
   };
   return (
-    <Modal opened={opened} onClose={onClose} title={tx('Player Login')}>
+    <ResponsiveSheet opened={opened} onClose={onClose} title={tx('Player Login')}>
       <Stack
         component="form"
         gap="sm"
@@ -118,7 +118,7 @@ function LoginModal({
           </>
         )}
       </Stack>
-    </Modal>
+    </ResponsiveSheet>
   );
 }
 

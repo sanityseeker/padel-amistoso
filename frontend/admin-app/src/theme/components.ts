@@ -28,7 +28,7 @@ const variantClass = (prefix: string, variant: string | undefined) =>
     : undefined;
 
 // Component defaults, variants and sizes. Variants are looked up by name in components.module.css:
-// <Paper variant="row" | "court-panel" | "dashed">, <Text variant="eyebrow" | "score" | "score-xl" | "mono">.
+// <Paper variant="row" | "list" | "court-panel" | "dashed">, <Text variant="eyebrow" | "score" | "score-xl" | "mono">.
 export const components: MantineThemeComponents = {
   Button: Button.extend({ defaultProps: { fw: 600 } }),
   ActionIcon: ActionIcon.extend({ defaultProps: { variant: 'subtle', color: 'gray' } }),

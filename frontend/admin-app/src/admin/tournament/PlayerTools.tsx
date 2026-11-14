@@ -1,11 +1,21 @@
 import { useState } from 'react';
-import { Button, Code, Group, NativeSelect, Select, Stack, Text, TextInput } from '@mantine/core';
+import {
+  Button,
+  Code,
+  Group,
+  NativeSelect,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { PlayerSecret } from '../../types';
-import { ConfirmAction, MutationError, ResponsiveSheet } from '../../ui';
+import { ConfirmAction, FormActions, MutationError, ResponsiveSheet } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { Notice } from '../../ui/Notice';
 import { StatusBadge } from '../../ui/StatusBadge';
@@ -66,7 +76,9 @@ export function AddPlayerDialog({
             {tx('{name} joined. Share this passphrase with them:', { name: add.data.player_name })}
           </Notice>
           <Code fz="xl">{add.data.passphrase}</Code>
-          <Button onClick={onClose}>{tx('Done')}</Button>
+          <FormActions>
+            <Button onClick={onClose}>{tx('Done')}</Button>
+          </FormActions>
         </Stack>
       ) : (
         <form
@@ -77,25 +89,27 @@ export function AddPlayerDialog({
         >
           <Stack>
             <MutationError error={add.error} />
-            <TextInput
-              label={tx('Player name')}
-              required
-              maxLength={128}
-              data-autofocus
-              value={name}
-              onChange={(e) => {
-                setName(e.currentTarget.value);
-                setPast(null);
-              }}
-            />
-            {groups.length > 0 && (
-              <NativeSelect
-                label={tx('Group')}
-                value={group ?? ''}
-                onChange={(e) => setGroup(e.currentTarget.value)}
-                data={groups.map((g) => ({ value: g, label: tx('Group {name}', { name: g }) }))}
+            <SimpleGrid cols={{ base: 1, xs: groups.length > 0 ? 2 : 1 }}>
+              <TextInput
+                label={tx('Player name')}
+                required
+                maxLength={128}
+                data-autofocus
+                value={name}
+                onChange={(e) => {
+                  setName(e.currentTarget.value);
+                  setPast(null);
+                }}
               />
-            )}
+              {groups.length > 0 && (
+                <NativeSelect
+                  label={tx('Group')}
+                  value={group ?? ''}
+                  onChange={(e) => setGroup(e.currentTarget.value)}
+                  data={groups.map((g) => ({ value: g, label: tx('Group {name}', { name: g }) }))}
+                />
+              )}
+            </SimpleGrid>
             {!!pastList.data?.length && (
               <Select
                 label={tx('Same person as a past participant?')}
@@ -110,9 +124,11 @@ export function AddPlayerDialog({
                 }))}
               />
             )}
-            <Button type="submit" loading={add.isPending} disabled={!name.trim()}>
-              {tx('Add player')}
-            </Button>
+            <FormActions onCancel={onClose}>
+              <Button type="submit" loading={add.isPending} disabled={!name.trim()}>
+                {tx('Add player')}
+              </Button>
+            </FormActions>
           </Stack>
         </form>
       )}
@@ -217,9 +233,11 @@ export function ContactSheet({
               { value: 'ru', label: 'Русский' },
             ]}
           />
-          <Button type="submit" loading={save.isPending}>
-            {tx('Save')}
-          </Button>
+          <FormActions onCancel={onClose}>
+            <Button type="submit" loading={save.isPending}>
+              {tx('Save')}
+            </Button>
+          </FormActions>
         </Stack>
       </form>
     </ResponsiveSheet>
@@ -319,14 +337,18 @@ export function LinkProfileSheet({
           )}
         </Stack>
         {player.profile_id && (
-          <Button
-            variant="default"
-            color="red"
-            loading={unlink.isPending}
-            onClick={() => unlink.mutate()}
-          >
-            {tx('Unlink profile')}
-          </Button>
+          <FormActions
+            start={
+              <Button
+                variant="subtle"
+                color="red"
+                loading={unlink.isPending}
+                onClick={() => unlink.mutate()}
+              >
+                {tx('Unlink profile')}
+              </Button>
+            }
+          />
         )}
       </Stack>
     </ResponsiveSheet>

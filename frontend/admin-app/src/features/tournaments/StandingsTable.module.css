@@ -94,7 +94,7 @@
 }
 .mark[data-rank='3'] {
   background: var(--color-rank-3);
-  color: #fff;
+  color: var(--color-on-rank-3);
 }
 /* Highlighted places after the podium, when the organizer marks more than three. */
 .mark[data-rank='top'] {

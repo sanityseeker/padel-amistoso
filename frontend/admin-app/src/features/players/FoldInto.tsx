@@ -4,7 +4,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
-import { ConfirmAction, MutationError } from '../../ui';
+import { ConfirmAction, FormActions, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { StatusBadge } from '../../ui/StatusBadge';
 
@@ -143,11 +143,11 @@ export function FoldInto({
         </Group>
       )}
       <MutationError error={merge.error} />
-      <Group justify="flex-end">
+      <FormActions>
         <Button variant="light" disabled={!count} onClick={() => setAsking(true)}>
           {tx('Merge profiles')}
         </Button>
-      </Group>
+      </FormActions>
       <ConfirmAction
         opened={asking}
         title={tx('Merge profiles')}

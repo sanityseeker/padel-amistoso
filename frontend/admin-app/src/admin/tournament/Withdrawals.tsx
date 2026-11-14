@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Button, Group, Loader, Modal, NumberInput, Paper, Stack, Text } from '@mantine/core';
+import { Button, Group, Loader, NumberInput, Paper, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
 import { api, write } from '../../api';
 import type { WithdrawalMatchItem, WithdrawalPreview } from '../../types';
+import { ConfirmAction, FormActions, ResponsiveSheet } from '../../ui';
 import { Notice } from '../../ui/Notice';
 import { StatusBadge } from '../../ui/StatusBadge';
 
@@ -117,7 +118,7 @@ export function WithdrawDialog({
   });
   const listed = p ? (p.kind === 'annul' ? p.annul_matches : p.walkover_matches) : [];
   return (
-    <Modal
+    <ResponsiveSheet
       opened
       onClose={onClose}
       title={p ? tx('Withdraw {name}', { name: p.entry_name }) : tx('Withdraw')}
@@ -245,12 +246,8 @@ export function WithdrawDialog({
                   ? tx('You can undo this until the situation changes.')
                   : tx('This cannot be undone.')}
               </Text>
-              <Group justify="flex-end">
-                <Button variant="default" size="touch" onClick={onClose}>
-                  {tx('Cancel')}
-                </Button>
+              <FormActions onCancel={onClose}>
                 <Button
-                  size="touch"
                   color="red"
                   loading={send.isPending}
                   disabled={p.blockers.length > 0 || pointsBad || setsBad}
@@ -258,12 +255,12 @@ export function WithdrawDialog({
                 >
                   {tx(CONFIRM[p.kind]!)}
                 </Button>
-              </Group>
+              </FormActions>
             </>
           )
         )}
       </Stack>
-    </Modal>
+    </ResponsiveSheet>
   );
 }
 
@@ -293,20 +290,16 @@ export function UndoWithdrawal({
       <Button size="compact-md" variant="light" onClick={() => setOpen(true)}>
         {tx('Undo withdrawal')}
       </Button>
-      <Modal opened={open} onClose={() => setOpen(false)} title={tx('Undo withdrawal')}>
-        <Stack>
-          {undo.error && <Notice tone="danger">{tx(undo.error.message)}</Notice>}
-          <Text size="sm">{tx('Bring {name} back into the tournament?', { name })}</Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setOpen(false)}>
-              {tx('Cancel')}
-            </Button>
-            <Button loading={undo.isPending} onClick={() => undo.mutate()}>
-              {tx('Undo withdrawal')}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      <ConfirmAction
+        opened={open}
+        title={tx('Undo withdrawal')}
+        description={tx('Bring {name} back into the tournament?', { name })}
+        confirmLabel={tx('Undo withdrawal')}
+        loading={undo.isPending}
+        error={undo.error}
+        onConfirm={() => undo.mutate()}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 }

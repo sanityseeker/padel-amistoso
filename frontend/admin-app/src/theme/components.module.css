@@ -26,6 +26,14 @@
 .paperRow:not(:last-child) {
   border-bottom: 1px solid var(--app-divider);
 }
+/* A bordered list of rows (phone tables): no padding of its own, a hairline between rows. */
+.paperList {
+  padding: 0;
+  overflow: hidden;
+}
+.paperList > * + * {
+  border-top: 1px solid var(--app-divider);
+}
 /* At most one court surface per screen. */
 .paperCourtPanel {
   background: var(--color-court-panel);

@@ -2010,5 +2010,10 @@
   "Confirm score_badge": "Подтв. счёт",
   "Join code_badge": "Введите код",
   "Notes": "Заметки",
-  "Notes saved": "Заметки сохранены"
+  "Notes saved": "Заметки сохранены",
+  "Show passphrase": "Показать кодовую фразу",
+  "Hide passphrase": "Скрыть кодовую фразу",
+  "Save landing page": "Сохранить страницу клуба",
+  "Danger zone": "Опасная зона",
+  "Filters": "Фильтры"
 }

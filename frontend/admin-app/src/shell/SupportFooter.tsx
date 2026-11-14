@@ -13,7 +13,7 @@ export function SupportFooter() {
       wrap="nowrap"
       px="sm"
       pt={48}
-      pb={40}
+      pb="calc(40px + var(--app-action-bar-clearance, 0px))"
       mt="auto"
     >
       <Button

@@ -3,7 +3,7 @@ import { Button, Checkbox, NativeSelect, Select, Stack, TextInput } from '@manti
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { Question, Registrant } from '../../types';
-import { MutationError, ResponsiveSheet } from '../../ui';
+import { FormActions, MutationError, ResponsiveSheet } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 // Add a registrant, or edit one (name, email, language, answers). PATCH only sends what changed.
@@ -141,9 +141,11 @@ export function RegistrantSheet({
               />
             ),
           )}
-          <Button type="submit" loading={save.isPending}>
-            {registrant ? tx('Save') : tx('Add player')}
-          </Button>
+          <FormActions onCancel={onClose}>
+            <Button type="submit" loading={save.isPending}>
+              {registrant ? tx('Save') : tx('Add player')}
+            </Button>
+          </FormActions>
         </Stack>
       </form>
     </ResponsiveSheet>

@@ -1,12 +1,22 @@
 import { useRef, useState } from 'react';
-import { Avatar, Button, FileButton, Group, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import {
+  Avatar,
+  Button,
+  FileButton,
+  Group,
+  SimpleGrid,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+} from '@mantine/core';
 import { IconBuilding } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { Collaborators } from '../../admin/settings/Collaborators';
 import { upload, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { Club } from '../../types';
-import { ConfirmAction, CopyField, MutationError, Section } from '../../ui';
+import { ConfirmAction, CopyField, FormActions, MutationError, Section } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 const KEY = [['admin', 'clubs']];
@@ -26,13 +36,15 @@ export function ClubSettings({ club, isAdmin }: { club: Club; isAdmin: boolean }
     invalidate: KEY,
     success: 'Club renamed',
   });
-  const saveSlug = useAdminMutation({
-    request: () => write(`/clubs/${club.id}/slug`, { slug: slug.trim() || null }, 'PATCH'),
-    invalidate: KEY,
-    success: 'Address saved',
-  });
+  const slugChanged = slug.trim() !== (club.slug ?? '');
+  const descriptionChanged = description !== (club.description ?? '');
+  // One Save for the landing page: the address and the tagline are separate endpoints.
   const landing = useAdminMutation({
-    request: () => write(`/clubs/${club.id}/landing`, { description }, 'PATCH'),
+    request: async () => {
+      if (slugChanged)
+        await write(`/clubs/${club.id}/slug`, { slug: slug.trim() || null }, 'PATCH');
+      if (descriptionChanged) await write(`/clubs/${club.id}/landing`, { description }, 'PATCH');
+    },
     invalidate: KEY,
     success: 'Landing page saved',
   });
@@ -71,146 +83,161 @@ export function ClubSettings({ club, isAdmin }: { club: Club; isAdmin: boolean }
   const host = window.location.host.replace(/^[^.]+\./, (m) => (m.startsWith('www') ? '' : m));
   return (
     <Stack gap="md">
-      <Section title={tx('Identity')}>
-        <Group align="flex-end">
-          <Avatar
-            src={club.has_logo ? `/api/clubs/${club.id}/logo?v=${Date.now() % 100000}` : undefined}
-            size={64}
-            radius="md"
-          >
-            <IconBuilding size={28} />
-          </Avatar>
-          <FileButton
-            resetRef={reset}
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(f) => f && logo.mutate(f)}
-          >
-            {(props) => (
-              <Button variant="light" loading={logo.isPending} {...props}>
-                {club.has_logo ? tx('Replace logo') : tx('Upload logo')}
+      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
+        <Section title={tx('Identity')}>
+          <Group align="flex-end">
+            <Avatar
+              src={
+                club.has_logo ? `/api/clubs/${club.id}/logo?v=${Date.now() % 100000}` : undefined
+              }
+              size={64}
+              radius="md"
+            >
+              <IconBuilding size={28} />
+            </Avatar>
+            <FileButton
+              resetRef={reset}
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(f) => f && logo.mutate(f)}
+            >
+              {(props) => (
+                <Button variant="light" loading={logo.isPending} {...props}>
+                  {club.has_logo ? tx('Replace logo') : tx('Upload logo')}
+                </Button>
+              )}
+            </FileButton>
+            {club.has_logo && (
+              <Button
+                variant="default"
+                loading={removeLogo.isPending}
+                onClick={() => removeLogo.mutate()}
+              >
+                {tx('Remove logo')}
               </Button>
             )}
-          </FileButton>
-          {club.has_logo && (
+          </Group>
+          <Text size="xs" c="dimmed">
+            {tx('PNG, JPEG or WebP, up to 5 MB.')}
+          </Text>
+          <Group align="flex-end" wrap="nowrap">
+            <TextInput
+              flex={1}
+              label={tx('Club name')}
+              maxLength={100}
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+            />
             <Button
               variant="default"
-              loading={removeLogo.isPending}
-              onClick={() => removeLogo.mutate()}
+              disabled={!name.trim() || name.trim() === club.name}
+              loading={rename.isPending}
+              onClick={() => rename.mutate()}
             >
-              {tx('Remove logo')}
-            </Button>
-          )}
-        </Group>
-        <Text size="xs" c="dimmed">
-          {tx('PNG, JPEG or WebP, up to 5 MB.')}
-        </Text>
-        <TextInput
-          label={tx('Club name')}
-          maxLength={100}
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <Group justify="flex-end">
-          <Button
-            disabled={!name.trim() || name.trim() === club.name}
-            loading={rename.isPending}
-            onClick={() => rename.mutate()}
-          >
-            {tx('Rename')}
-          </Button>
-        </Group>
-        <MutationError error={rename.error ?? logo.error ?? removeLogo.error} />
-      </Section>
-      <Section
-        title={tx('Landing page')}
-        description={tx('A public page for your club with its events, leaderboard and seasons.')}
-      >
-        <TextInput
-          label={tx('Subdomain')}
-          description={tx(
-            '2 to 30 characters: lowercase letters, digits and hyphens. Empty removes it.',
-          )}
-          maxLength={30}
-          value={slug}
-          onChange={(e) => setSlug(e.currentTarget.value)}
-        />
-        {club.slug && <CopyField value={`https://${club.slug}.${host}`} label={tx('Subdomain')} />}
-        <Group justify="flex-end">
-          <Button
-            variant="default"
-            disabled={slug.trim() === (club.slug ?? '')}
-            loading={saveSlug.isPending}
-            onClick={() => saveSlug.mutate()}
-          >
-            {tx('Save address')}
-          </Button>
-        </Group>
-        <Textarea
-          label={tx('Tagline')}
-          maxLength={500}
-          autosize
-          minRows={2}
-          value={description}
-          onChange={(e) => setDescription(e.currentTarget.value)}
-        />
-        <Group justify="flex-end">
-          <Button
-            variant="default"
-            disabled={description === (club.description ?? '')}
-            loading={landing.isPending}
-            onClick={() => landing.mutate()}
-          >
-            {tx('Save tagline')}
-          </Button>
-        </Group>
-        <MutationError error={saveSlug.error ?? landing.error} />
-      </Section>
-      <Section title={tx('Email')} description={tx('Defaults for emails sent from this club.')}>
-        <TextInput
-          label={tx('Sender name')}
-          maxLength={100}
-          value={sender}
-          onChange={(e) => setSender(e.currentTarget.value)}
-        />
-        <TextInput
-          label={tx('Reply-to address')}
-          type="email"
-          value={reply}
-          onChange={(e) => setReply(e.currentTarget.value)}
-        />
-        <MutationError error={email.error} />
-        <Group justify="flex-end">
-          <Button variant="default" loading={email.isPending} onClick={() => email.mutate()}>
-            {tx('Save sender')}
-          </Button>
-        </Group>
-      </Section>
-      <Section title={tx('Co-editors')} description={tx('Organizers who can manage this club.')}>
-        <Collaborators base={`/clubs/${club.id}`} />
-      </Section>
-      <Section
-        title={tx('Ratings')}
-        description={tx("Replay every tournament of this club, then the club's own rating chain.")}
-      >
-        <MutationError error={recalc.error} />
-        <Group>
-          <Button variant="light" loading={recalc.isPending} onClick={() => recalc.mutate()}>
-            {tx('Recalculate club ratings')}
-          </Button>
-        </Group>
-      </Section>
-      {isAdmin && (
-        <Section
-          title={tx('Delete club')}
-          description={tx('Tournaments and ratings stay. Branding, tiers and seasons are removed.')}
-        >
-          <Group>
-            <Button color="red" variant="light" onClick={() => setConfirm(true)}>
-              {tx('Delete club')}
+              {tx('Rename')}
             </Button>
           </Group>
+          <MutationError error={rename.error ?? logo.error ?? removeLogo.error} />
         </Section>
-      )}
+        <Section
+          title={tx('Landing page')}
+          description={tx('A public page for your club with its events, leaderboard and seasons.')}
+        >
+          <TextInput
+            label={tx('Subdomain')}
+            description={tx(
+              '2 to 30 characters: lowercase letters, digits and hyphens. Empty removes it.',
+            )}
+            maxLength={30}
+            value={slug}
+            onChange={(e) => setSlug(e.currentTarget.value)}
+          />
+          {club.slug && (
+            <CopyField value={`https://${club.slug}.${host}`} label={tx('Subdomain')} />
+          )}
+          <Textarea
+            label={tx('Tagline')}
+            maxLength={500}
+            autosize
+            minRows={2}
+            value={description}
+            onChange={(e) => setDescription(e.currentTarget.value)}
+          />
+          <MutationError error={landing.error} />
+          <FormActions>
+            <Button
+              variant="default"
+              disabled={!slugChanged && !descriptionChanged}
+              loading={landing.isPending}
+              onClick={() => landing.mutate()}
+            >
+              {tx('Save landing page')}
+            </Button>
+          </FormActions>
+        </Section>
+        <Section title={tx('Email')} description={tx('Defaults for emails sent from this club.')}>
+          <SimpleGrid cols={{ base: 1, xs: 2 }}>
+            <TextInput
+              label={tx('Sender name')}
+              maxLength={100}
+              value={sender}
+              onChange={(e) => setSender(e.currentTarget.value)}
+            />
+            <TextInput
+              label={tx('Reply-to address')}
+              type="email"
+              value={reply}
+              onChange={(e) => setReply(e.currentTarget.value)}
+            />
+          </SimpleGrid>
+          <MutationError error={email.error} />
+          <FormActions>
+            <Button variant="default" loading={email.isPending} onClick={() => email.mutate()}>
+              {tx('Save sender')}
+            </Button>
+          </FormActions>
+        </Section>
+        <Section title={tx('Co-editors')} description={tx('Organizers who can manage this club.')}>
+          <Collaborators base={`/clubs/${club.id}`} />
+        </Section>
+        <Section
+          title={tx('Ratings')}
+          description={tx(
+            "Replay every tournament of this club, then the club's own rating chain.",
+          )}
+          actions={
+            <Button
+              variant="light"
+              loading={recalc.isPending}
+              onClick={() => recalc.mutate()}
+              style={{ flexShrink: 0 }}
+            >
+              {tx('Recalculate club ratings')}
+            </Button>
+          }
+        >
+          <MutationError error={recalc.error} />
+        </Section>
+        {isAdmin && (
+          <Section
+            title={tx('Delete club')}
+            description={tx(
+              'Tournaments and ratings stay. Branding, tiers and seasons are removed.',
+            )}
+            actions={
+              <Button
+                color="red"
+                variant="light"
+                onClick={() => setConfirm(true)}
+                style={{ flexShrink: 0 }}
+              >
+                {tx('Delete club')}
+              </Button>
+            }
+          >
+            {null}
+          </Section>
+        )}
+      </SimpleGrid>
       <ConfirmAction
         opened={confirm}
         title={tx('Delete club')}

@@ -321,18 +321,23 @@ test('a closed lobby can be archived and restored', async ({ page, request }) =>
   const id = (await created.json()).id as string;
   await loginAdmin(page);
   await page.goto(`/admin/lobby/${id}`);
-  await page.getByRole('button', { name: 'Close registration' }).click();
-  await page.getByRole('button', { name: 'Archive', exact: true }).click();
+  const more = page.getByRole('button', { name: 'More actions', exact: true });
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Close registration' }).click();
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
   await expect
     .poll(
       async () =>
         (await (await request.get(`/api/registrations/${id}`, { headers })).json()).archived,
     )
     .toBe(true);
-  await expect(page.getByRole('button', { name: 'Unarchive' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Reopen registration' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Unarchive' }).click();
-  await expect(page.getByRole('button', { name: 'Reopen registration' })).toBeVisible();
+  await more.click();
+  await expect(page.getByRole('menuitem', { name: 'Unarchive' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Reopen registration' })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Unarchive' }).click();
+  await more.click();
+  await expect(page.getByRole('menuitem', { name: 'Reopen registration' })).toBeVisible();
 });
 
 test('answers show every individual answer and can be narrowed to one choice', async ({

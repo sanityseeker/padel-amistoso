@@ -338,7 +338,7 @@ test('clubs: club page, tiers, settings and community rename', async ({ page, re
   await page.getByRole('button', { name: 'Rename', exact: true }).click();
   await expect(page.getByRole('heading', { name: `Renamed Club ${stamp}` })).toBeVisible();
   await page.getByLabel('Tagline').fill('Friendly padel');
-  await page.getByRole('button', { name: 'Save tagline' }).click();
+  await page.getByRole('button', { name: 'Save landing page' }).click();
   await expect(page.getByText('Landing page saved')).toBeVisible();
   await page.goto('/admin/clubs');
   await page.getByRole('button', { name: `Options for Org Community ${stamp}` }).click();
@@ -371,8 +371,9 @@ test('users: delete an account; the invite needs mail so it explains the error',
   await page.getByRole('menuitem', { name: 'Delete' }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByRole('cell', { name: username, exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Invite by email' }).click();
+  await page.getByRole('button', { name: 'Add user' }).click();
   const sheet = page.getByRole('dialog');
+  await sheet.getByRole('tab', { name: 'Send invitation' }).click();
   await sheet.getByLabel('Email').fill('new-organizer@example.com');
   await sheet.getByRole('button', { name: 'Send invitation' }).last().click();
   await expect(sheet.getByRole('alert')).toBeVisible();
@@ -401,7 +402,7 @@ test('player profiles: search and edit a profile', async ({ page, request }) => 
   const sheet = page.getByRole('dialog', { name: 'Ana Profile' });
   await sheet.getByLabel('Name', { exact: true }).fill('Ana Renamed');
   await sheet.getByRole('button', { name: 'Save', exact: true }).first().click();
-  await expect(page.getByText('Name updated')).toBeVisible();
+  await expect(page.getByText('Profile updated')).toBeVisible();
 });
 
 test('settings drawer: preferred courts per group', async ({ page, request }) => {

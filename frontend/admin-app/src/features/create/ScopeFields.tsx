@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Select } from '@mantine/core';
+import { Select, SimpleGrid } from '@mantine/core';
 import { api } from '../../api';
 import { useOverview } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
@@ -15,6 +15,8 @@ export function ScopeFields({
   setClub,
   season,
   setSeason,
+  locked = true,
+  communityDisabled = false,
 }: {
   community: string;
   setCommunity: (value: string) => void;
@@ -22,10 +24,16 @@ export function ScopeFields({
   setClub: (value: string | null) => void;
   season?: string | null;
   setSeason?: (value: string | null) => void;
+  /** New events: demo accounts and club subdomains lock the scope. Moving an existing one does not. */
+  locked?: boolean;
+  /** The community route is owner/admin-only; co-editors may still change club and season. */
+  communityDisabled?: boolean;
 }) {
   useLocale();
-  const demo = useDemoAccount();
-  const host = useSubdomainClub();
+  const demoAccount = useDemoAccount();
+  const subdomain = useSubdomainClub();
+  const demo = locked && demoAccount;
+  const host = locked ? subdomain : null;
   const { communities, clubs } = useOverview();
   // On a club subdomain the form is locked to that club and its community (client-side only).
   const lockedClub = host?.club.club_id;
@@ -41,11 +49,13 @@ export function ScopeFields({
     queryFn: () => api<Season[]>(`/clubs/${club}/seasons`),
     enabled: !!club,
   });
+  const showSeason = !!setSeason && !!club;
   return (
-    <>
+    <SimpleGrid cols={{ base: 1, sm: showSeason ? 3 : 2 }}>
       <Select
         label={tx('Community')}
-        disabled={demo || !!host}
+        disabled={demo || !!host || communityDisabled}
+        allowDeselect={false}
         description={demo ? tx('Not available in demo mode') : lockHint}
         required
         data={(communities.data || []).map((c) => ({
@@ -77,7 +87,7 @@ export function ScopeFields({
           setSeason?.(null);
         }}
       />
-      {setSeason && club && (
+      {showSeason && (
         <Select
           label={tx('Season')}
           placeholder={tx('No season')}
@@ -92,6 +102,6 @@ export function ScopeFields({
           onChange={setSeason}
         />
       )}
-    </>
+    </SimpleGrid>
   );
 }

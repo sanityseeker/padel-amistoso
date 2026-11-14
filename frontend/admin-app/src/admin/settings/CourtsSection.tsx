@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Button, Group, NumberInput, Stack, Text } from '@mantine/core';
+import { Button, NumberInput, Stack, Text } from '@mantine/core';
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { TournamentStatus } from '../../types';
-import { MutationError, Section } from '../../ui';
+import { FormActions, MutationError, Section } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import {
   MexicanoOptionFields,
@@ -98,11 +98,11 @@ export function CourtsSection({
         onChange={setPrefs}
       />
       <MutationError error={save.error} />
-      <Group justify="flex-end">
+      <FormActions>
         <Button loading={save.isPending} onClick={() => save.mutate()}>
           {tx('Save courts')}
         </Button>
-      </Group>
+      </FormActions>
     </Section>
   );
 }
@@ -168,11 +168,11 @@ export function MexicanoSettings({ tid, status }: { tid: string; status: Tournam
           {tx('Defaults suit most events. Change one value at a time.')}
         </Text>
         <MutationError error={save.error} />
-        <Group justify="flex-end">
+        <FormActions>
           <Button loading={save.isPending} onClick={() => save.mutate()}>
             {tx('Save Mexicano settings')}
           </Button>
-        </Group>
+        </FormActions>
       </Stack>
     </Section>
   );

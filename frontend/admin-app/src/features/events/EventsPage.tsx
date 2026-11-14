@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
-  Button,
   Group,
-  Paper,
   SegmentedControl,
   Stack,
   Tabs,
@@ -18,10 +16,16 @@ import { useSearchParams } from 'react-router-dom';
 import { formatType } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
-import { EmptyState, EventRow, PageHeader, SportMark, StatusBadge } from '../../ui';
+import {
+  EmptyState,
+  EventCodeFinder,
+  EventRow,
+  PageHeader,
+  SportMark,
+  StatusBadge,
+} from '../../ui';
 import { getClubSubdomain } from '../../club-context';
 import { findEvent, publicApi, publicEventUrl, type PublicEvent } from '../../events/api';
-import { Notice } from '../../ui/Notice';
 import { PageContainer } from '../../ui/PageContainer';
 
 const STATUS_LABEL: Record<PublicEvent['status'], string> = {
@@ -231,32 +235,13 @@ export function EventsPage() {
             </>
           )}
         </Tabs>
-        <Paper
-          p="md"
-          component="form"
-          onSubmit={(e: React.FormEvent) => {
-            e.preventDefault();
-            finder.mutate();
-          }}
-        >
-          <Stack gap="xs">
-            <Title order={2}>{tx('Have an event code?')}</Title>
-            <Group align="flex-end" wrap="nowrap">
-              <TextInput
-                flex={1}
-                label={tx('Event ID or alias')}
-                placeholder={tx('Event ID or alias')}
-                value={code}
-                onChange={(e) => setCode(e.currentTarget.value)}
-                required
-              />
-              <Button type="submit" loading={finder.isPending}>
-                {tx('Find event')}
-              </Button>
-            </Group>
-            {finder.error && <Notice tone="danger">{tx(finder.error.message)}</Notice>}
-          </Stack>
-        </Paper>
+        <EventCodeFinder
+          value={code}
+          onChange={setCode}
+          onSubmit={() => finder.mutate()}
+          busy={finder.isPending}
+          error={finder.error ? tx(finder.error.message) : undefined}
+        />
       </Stack>
     </PageContainer>
   );

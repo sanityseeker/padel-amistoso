@@ -7,6 +7,7 @@ import {
   NumberInput,
   Paper,
   Select,
+  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -22,9 +23,11 @@ import {
   ConfirmAction,
   EmptyState,
   EventRow,
+  FormActions,
   MutationError,
   PageHeader,
   ResponsiveSheet,
+  Section,
 } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { FoldInto } from './FoldInto';
@@ -90,33 +93,27 @@ function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClo
     enabled: !!mergeWith && !p?.is_ghost,
     retry: false,
   });
-  const rename = useAdminMutation({
-    request: () =>
-      write(`/admin/player-profiles/${id}/name`, { name: (name ?? p!.name).trim() }, 'PUT'),
+  // One Save for the details form: only the changed fields are sent, each to its own endpoint.
+  const details = useAdminMutation({
+    request: async () => {
+      if (name !== null)
+        await write(`/admin/player-profiles/${id}/name`, { name: name.trim() }, 'PUT');
+      if (email !== null)
+        await write(`/admin/player-profiles/${id}/email`, { email: email.trim() }, 'PUT');
+      if (k !== null)
+        await write(
+          `/admin/player-profiles/${id}/k-factor`,
+          { k_factor_override: k === '' ? null : k },
+          'PUT',
+        );
+    },
     invalidate,
-    success: 'Name updated',
-    onSuccess: () => setName(null),
-  });
-  const mail = useAdminMutation({
-    request: () =>
-      write(`/admin/player-profiles/${id}/email`, { email: (email ?? p!.email).trim() }, 'PUT'),
-    invalidate,
-    success: 'Email updated',
-    onSuccess: () => setEmail(null),
-  });
-  const kFactor = useAdminMutation({
-    request: () =>
-      write(
-        `/admin/player-profiles/${id}/k-factor`,
-        {
-          k_factor_override:
-            (k ?? p!.k_factor_override) === '' ? null : (k ?? p!.k_factor_override),
-        },
-        'PUT',
-      ),
-    invalidate,
-    success: 'K-factor updated',
-    onSuccess: () => setK(null),
+    success: 'Profile updated',
+    onSuccess: () => {
+      setName(null);
+      setEmail(null);
+      setK(null);
+    },
   });
   const reset = useAdminMutation({
     request: () => write<{ passphrase: string }>(`/admin/player-profiles/${id}/reset-passphrase`),
@@ -183,71 +180,52 @@ function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClo
             </Notice>
           )}
           <MutationError
-            error={
-              rename.error ??
-              mail.error ??
-              kFactor.error ??
-              reset.error ??
-              remove.error ??
-              unlink.error ??
-              convert.error
-            }
+            error={details.error ?? reset.error ?? remove.error ?? unlink.error ?? convert.error}
           />
-          <Group align="flex-end" wrap="nowrap">
-            <TextInput
-              flex={1}
-              label={tx('Name')}
-              value={name ?? p.name}
-              onChange={(e) => setName(e.currentTarget.value)}
-            />
-            <Button
-              variant="light"
-              disabled={name === null}
-              loading={rename.isPending}
-              onClick={() => rename.mutate()}
+          <Section title={tx('Details')}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                details.mutate();
+              }}
             >
-              {tx('Save')}
-            </Button>
-          </Group>
-          <Group align="flex-end" wrap="nowrap">
-            <TextInput
-              flex={1}
-              label={tx('Email')}
-              type="email"
-              value={email ?? p.email}
-              onChange={(e) => setEmail(e.currentTarget.value)}
-            />
-            <Button
-              variant="light"
-              disabled={email === null}
-              loading={mail.isPending}
-              onClick={() => mail.mutate()}
-            >
-              {tx('Save')}
-            </Button>
-          </Group>
-          <Group align="flex-end" wrap="nowrap">
-            <NumberInput
-              flex={1}
-              label={tx('K-factor override')}
-              description={tx('Empty uses the default.')}
-              min={1}
-              max={200}
-              allowDecimal={false}
-              value={k ?? p.k_factor_override ?? ''}
-              onChange={setK}
-            />
-            <Button
-              variant="light"
-              disabled={k === null}
-              loading={kFactor.isPending}
-              onClick={() => kFactor.mutate()}
-            >
-              {tx('Save')}
-            </Button>
-          </Group>
-          <Stack gap="xs">
-            <Text fw={600}>{tx('Events')}</Text>
+              <Stack gap="sm">
+                <SimpleGrid cols={{ base: 1, xs: 2 }}>
+                  <TextInput
+                    label={tx('Name')}
+                    value={name ?? p.name}
+                    onChange={(e) => setName(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    label={tx('Email')}
+                    type="email"
+                    value={email ?? p.email}
+                    onChange={(e) => setEmail(e.currentTarget.value)}
+                  />
+                </SimpleGrid>
+                <NumberInput
+                  maw={240}
+                  label={tx('K-factor override')}
+                  description={tx('Empty uses the default.')}
+                  min={1}
+                  max={200}
+                  allowDecimal={false}
+                  value={k ?? p.k_factor_override ?? ''}
+                  onChange={setK}
+                />
+                <FormActions>
+                  <Button
+                    type="submit"
+                    disabled={name === null && email === null && k === null}
+                    loading={details.isPending}
+                  >
+                    {tx('Save')}
+                  </Button>
+                </FormActions>
+              </Stack>
+            </form>
+          </Section>
+          <Section title={tx('Events')}>
             {!p.participations.length && (
               <Text size="sm" c="dimmed">
                 {tx('Not linked to any event.')}
@@ -267,10 +245,9 @@ function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClo
               </Group>
             ))}
             <LinkParticipation profileId={id} invalidate={[detailKey, LIST]} />
-          </Stack>
+          </Section>
           {p.is_ghost ? (
-            <Stack gap="xs">
-              <Text fw={600}>{tx('Past participant tools')}</Text>
+            <Section title={tx('Past participant tools')}>
               <Button
                 variant="light"
                 w="fit-content"
@@ -281,9 +258,9 @@ function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClo
                 {tx('Convert to a Player Hub profile')}
               </Button>
               <FoldInto id={id} name={p.name} keepName invalidate={[detailKey, LIST]} />
-            </Stack>
+            </Section>
           ) : (
-            <Stack gap="md">
+            <Section title={tx('Duplicates and merging')}>
               <FoldInto id={id} name={p.name} keepName={false} invalidate={[detailKey, LIST]} />
               <Stack gap="xs">
                 <Text fw={600}>{tx('Merge a duplicate into this profile')}</Text>
@@ -318,7 +295,7 @@ function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClo
                   </Notice>
                 )}
                 <MutationError error={preview.error ?? hub.error} />
-                <Group justify="flex-end">
+                <FormActions>
                   <Button
                     variant="light"
                     color="red"
@@ -328,20 +305,24 @@ function ProfileSheet({ id, scope, onClose }: { id: string; scope: string; onClo
                   >
                     {tx('Merge players')}
                   </Button>
-                </Group>
+                </FormActions>
               </Stack>
-            </Stack>
+            </Section>
           )}
-          <Group justify="space-between">
-            {!p.is_ghost && (
-              <Button variant="default" onClick={() => setConfirm('passphrase')}>
-                {tx('Reset passphrase')}
+          <Section title={tx('Danger zone')}>
+            <Group justify="space-between">
+              {!p.is_ghost ? (
+                <Button variant="default" onClick={() => setConfirm('passphrase')}>
+                  {tx('Reset passphrase')}
+                </Button>
+              ) : (
+                <span />
+              )}
+              <Button color="red" variant="light" onClick={() => setConfirm('delete')}>
+                {tx('Delete profile')}
               </Button>
-            )}
-            <Button color="red" variant="light" onClick={() => setConfirm('delete')}>
-              {tx('Delete profile')}
-            </Button>
-          </Group>
+            </Group>
+          </Section>
           <ConfirmAction
             opened={!!unlinking}
             title={tx('Unlink participation')}

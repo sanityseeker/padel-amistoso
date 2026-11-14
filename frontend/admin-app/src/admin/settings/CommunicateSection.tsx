@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Button, Group, Radio, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { Button, Group, Radio, SimpleGrid, Stack, Text, TextInput, Textarea } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconBell, IconMail } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
-import { ConfirmAction, MutationError, Section } from '../../ui';
+import { ConfirmAction, FormActions, MutationError, Section } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { Notice } from '../../ui/Notice';
 
@@ -208,20 +208,22 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
         title={tx('Sender')}
         description={tx('Name and reply address shown on emails to players.')}
       >
-        <TextInput
-          label={tx('Sender name')}
-          maxLength={100}
-          value={sender ?? settings.data?.sender_name ?? ''}
-          onChange={(e) => setSender(e.currentTarget.value)}
-        />
-        <TextInput
-          label={tx('Reply-to address')}
-          type="email"
-          value={reply ?? settings.data?.reply_to ?? ''}
-          onChange={(e) => setReply(e.currentTarget.value)}
-        />
+        <SimpleGrid cols={{ base: 1, xs: 2 }}>
+          <TextInput
+            label={tx('Sender name')}
+            maxLength={100}
+            value={sender ?? settings.data?.sender_name ?? ''}
+            onChange={(e) => setSender(e.currentTarget.value)}
+          />
+          <TextInput
+            label={tx('Reply-to address')}
+            type="email"
+            value={reply ?? settings.data?.reply_to ?? ''}
+            onChange={(e) => setReply(e.currentTarget.value)}
+          />
+        </SimpleGrid>
         <MutationError error={saveSettings.error} />
-        <Group justify="flex-end">
+        <FormActions>
           <Button
             variant="default"
             loading={saveSettings.isPending}
@@ -230,7 +232,7 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
           >
             {tx('Save sender')}
           </Button>
-        </Group>
+        </FormActions>
       </Section>
       <Section
         title={tx('Send to everyone')}
@@ -285,7 +287,7 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
             value={message}
             onChange={(e) => setMessage(e.currentTarget.value)}
           />
-          <Group justify="flex-end">
+          <FormActions>
             <Button
               disabled={!canSend || !message.trim()}
               onClick={() => {
@@ -301,7 +303,7 @@ export function CommunicateSection({ kind, id }: { kind: 'tournament' | 'lobby';
             >
               {tx('Send message')}
             </Button>
-          </Group>
+          </FormActions>
         </Section>
       )}
       {kind === 'lobby' && (

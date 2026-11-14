@@ -4,6 +4,7 @@ import {
   Button,
   Group,
   Paper,
+  Popover,
   SegmentedControl,
   SimpleGrid,
   Stack,
@@ -12,7 +13,12 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
-import { IconPointFilled, IconPlus, IconSearch } from '@tabler/icons-react';
+import {
+  IconAdjustmentsHorizontal,
+  IconPointFilled,
+  IconPlus,
+  IconSearch,
+} from '@tabler/icons-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { write } from '../../api';
 import { useAuth } from '../../auth';
@@ -186,6 +192,43 @@ export function TournamentsHub() {
     />
   );
 
+  const ownershipFilter = isAdmin && (
+    <SegmentedControl
+      aria-label={tx('Ownership')}
+      value={ownership}
+      onChange={setOwnership}
+      data={[
+        { value: 'mine', label: tx('Mine') },
+        { value: 'all', label: tx('All') },
+      ]}
+    />
+  );
+  const statusFilter = (
+    <SegmentedControl
+      aria-label={tx('Status')}
+      value={status}
+      onChange={setStatus}
+      data={[
+        { value: 'active', label: tx('Active') },
+        { value: 'past', label: tx('Past') },
+        { value: 'all', label: tx('All') },
+      ]}
+    />
+  );
+  const typeFilter = (
+    <SegmentedControl
+      aria-label={tx('Type')}
+      value={type}
+      onChange={setType}
+      data={[
+        { value: 'all', label: tx('All') },
+        { value: 'tournaments', label: tx('Tournaments') },
+        { value: 'lobby', label: tx('Lobbies') },
+      ]}
+    />
+  );
+  // Filters behind the phone "Filters" button that differ from their default.
+  const extraFilters = (isAdmin && ownership !== 'mine' ? 1 : 0) + (type !== 'all' ? 1 : 0);
   return (
     <Stack gap="xl">
       <PageHeader
@@ -216,48 +259,53 @@ export function TournamentsHub() {
           )}
           <Stack gap="sm" component="section" aria-label={tx('All events')}>
             {featured.length > 0 && <Text variant="eyebrow">{tx('More events')}</Text>}
-            <TextInput
-              aria-label={tx('Search tournaments')}
-              placeholder={tx('Search tournaments')}
-              leftSection={<IconSearch size={16} />}
-              value={text}
-              onChange={(e) => {
-                setText(e.currentTarget.value);
-                setSearch(e.currentTarget.value.trim());
-              }}
-            />
-            <Group gap="sm">
-              {isAdmin && (
-                <SegmentedControl
-                  aria-label={tx('Ownership')}
-                  value={ownership}
-                  onChange={setOwnership}
-                  data={[
-                    { value: 'mine', label: tx('Mine') },
-                    { value: 'all', label: tx('All') },
-                  ]}
-                />
+            {/* Desktop: search and every filter on one row. Phones: search, Status, and the rest
+              behind "Filters" so the row never wraps into a block of controls. */}
+            <Group gap="sm" align="center">
+              <TextInput
+                flex={1}
+                miw={200}
+                maw={phone ? undefined : 360}
+                aria-label={tx('Search tournaments')}
+                placeholder={tx('Search tournaments')}
+                leftSection={<IconSearch size={16} />}
+                value={text}
+                onChange={(e) => {
+                  setText(e.currentTarget.value);
+                  setSearch(e.currentTarget.value.trim());
+                }}
+              />
+              {statusFilter}
+              {phone ? (
+                <Popover position="bottom-end" withinPortal shadow="md">
+                  <Popover.Target>
+                    <Button
+                      variant="default"
+                      leftSection={<IconAdjustmentsHorizontal size={16} />}
+                      rightSection={
+                        extraFilters > 0 ? (
+                          <Badge circle size="sm">
+                            {extraFilters}
+                          </Badge>
+                        ) : undefined
+                      }
+                    >
+                      {tx('Filters')}
+                    </Button>
+                  </Popover.Target>
+                  <Popover.Dropdown>
+                    <Stack gap="sm">
+                      {ownershipFilter}
+                      {typeFilter}
+                    </Stack>
+                  </Popover.Dropdown>
+                </Popover>
+              ) : (
+                <>
+                  {ownershipFilter}
+                  {typeFilter}
+                </>
               )}
-              <SegmentedControl
-                aria-label={tx('Status')}
-                value={status}
-                onChange={setStatus}
-                data={[
-                  { value: 'active', label: tx('Active') },
-                  { value: 'past', label: tx('Past') },
-                  { value: 'all', label: tx('All') },
-                ]}
-              />
-              <SegmentedControl
-                aria-label={tx('Type')}
-                value={type}
-                onChange={setType}
-                data={[
-                  { value: 'all', label: tx('All') },
-                  { value: 'tournaments', label: tx('Tournaments') },
-                  { value: 'lobby', label: tx('Lobbies') },
-                ]}
-              />
             </Group>
             {isAdmin && ownership === 'mine' && othersLive > 0 && !featured.length && (
               <Text size="sm" c="dimmed">

@@ -96,8 +96,8 @@ test('a club subdomain serves the landing page: identity, tagline, pinned first,
     .locator('label')
     .filter({ hasText: 'All' })
     .click();
-  await page.getByLabel(/^Tournament \/ registration ID or alias/).fill(c.first);
-  await page.getByRole('button', { name: 'Find', exact: true }).click();
+  await page.getByLabel(/^Event ID or alias/).fill(c.first);
+  await page.getByRole('button', { name: 'Find event', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/tv/${c.first}`));
 });
 

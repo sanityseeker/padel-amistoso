@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Button, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Select, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../../i18n';
 import { playerApi } from '../../../player/api';
 import type { Resolution } from '../../../player/types';
+import { FormActions, ResponsiveSheet } from '../../../ui';
 import { Notice } from '../../../ui/Notice';
 
 // Link an event: resolve the passphrase (no token), pick the entry, then POST /player-profile/link.
@@ -50,7 +51,7 @@ export function LinkEvent({ close }: { close: () => void }) {
     },
   });
   return (
-    <Modal opened onClose={close} title={tx('Link an event')}>
+    <ResponsiveSheet opened onClose={close} title={tx('Link an event')}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -88,25 +89,29 @@ export function LinkEvent({ close }: { close: () => void }) {
               }))}
             />
           )}
-          <Group justify="flex-end">
-            {resolution && (
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  setResolution(null);
-                  resolve.reset();
-                  link.reset();
-                }}
-              >
-                {tx('Use another passphrase')}
-              </Button>
-            )}
+          <FormActions
+            onCancel={close}
+            start={
+              resolution && (
+                <Button
+                  variant="subtle"
+                  onClick={() => {
+                    setResolution(null);
+                    resolve.reset();
+                    link.reset();
+                  }}
+                >
+                  {tx('Use another passphrase')}
+                </Button>
+              )
+            }
+          >
             <Button type="submit" loading={resolve.isPending || link.isPending}>
               {resolution ? tx('Link event') : tx('Find event')}
             </Button>
-          </Group>
+          </FormActions>
         </Stack>
       </form>
-    </Modal>
+    </ResponsiveSheet>
   );
 }

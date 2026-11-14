@@ -15,10 +15,14 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
+  IconArchive,
+  IconArchiveOff,
   IconArrowRight,
   IconChevronDown,
   IconDots,
   IconExternalLink,
+  IconLock,
+  IconLockOpen,
   IconMail,
   IconPencil,
   IconPlus,
@@ -40,6 +44,8 @@ import type {
   RegistrationAnswerChange,
 } from '../../types';
 import {
+  ActionBar,
+  ActionBarSpacer,
   ConfirmAction,
   CopyField,
   EmptyState,
@@ -240,6 +246,19 @@ function Lobby({ id }: { id: string }) {
     />
   );
 
+  // The page's primary action: in the header on wide screens, in the action bar on phones.
+  const convert = !lobby.archived && (
+    <Button
+      rightSection={<IconArrowRight size={16} />}
+      size={phone ? 'touch' : undefined}
+      fullWidth={phone}
+      disabled={lobby.registrants.length < 2 || unassigned < 2}
+      onClick={() => navigate(`/admin/new?from=${id}&type=group_playoff`)}
+    >
+      {tx('Convert to tournament')}
+    </Button>
+  );
+
   return (
     <Stack gap="lg" {...sportProps(lobby.sport)}>
       <PageHeader
@@ -270,75 +289,68 @@ function Lobby({ id }: { id: string }) {
           </>
         }
         actions={
-          <ActionIcon size="touch" aria-label={tx('Settings')} onClick={() => setSettings(true)}>
-            <IconSettings size={20} />
-          </ActionIcon>
+          <Group gap="xs" wrap="nowrap">
+            {!phone && convert}
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
+                <ActionIcon size="touch" aria-label={tx('More actions')}>
+                  <IconDots size={20} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {lobby.archived ? (
+                  <Menu.Item
+                    leftSection={<IconArchiveOff size={15} />}
+                    onClick={() => archive.mutate()}
+                  >
+                    {tx('Unarchive')}
+                  </Menu.Item>
+                ) : (
+                  <Menu.Item
+                    leftSection={lobby.open ? <IconLock size={15} /> : <IconLockOpen size={15} />}
+                    onClick={() => toggle.mutate()}
+                  >
+                    {lobby.open ? tx('Close registration') : tx('Reopen registration')}
+                  </Menu.Item>
+                )}
+                {!lobby.archived && !lobby.open && (
+                  <Menu.Item
+                    leftSection={<IconArchive size={15} />}
+                    onClick={() => archive.mutate()}
+                  >
+                    {tx('Archive')}
+                  </Menu.Item>
+                )}
+              </Menu.Dropdown>
+            </Menu>
+            <ActionIcon size="touch" aria-label={tx('Settings')} onClick={() => setSettings(true)}>
+              <IconSettings size={20} />
+            </ActionIcon>
+          </Group>
         }
       />
+      <MutationError error={toggle.error ?? archive.error} />
       <Paper p="md">
         <Stack gap="sm">
           <Text variant="eyebrow">{tx('Share the sign-up')}</Text>
           <CopyField value={link} label={tx('Public sign-up')} />
-          <Group justify="space-between" gap="sm">
-            <Group gap="xs">
-              {lobby.archived ? (
-                <Button
-                  variant="default"
-                  loading={archive.isPending}
-                  onClick={() => archive.mutate()}
-                >
-                  {tx('Unarchive')}
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  loading={toggle.isPending}
-                  onClick={() => toggle.mutate()}
-                >
-                  {lobby.open ? tx('Close registration') : tx('Reopen registration')}
-                </Button>
-              )}
-              {!lobby.archived && !lobby.open && (
-                <Button
-                  variant="default"
-                  loading={archive.isPending}
-                  onClick={() => archive.mutate()}
-                >
-                  {tx('Archive')}
-                </Button>
-              )}
-              <Button
-                variant="default"
-                leftSection={<IconQrcode size={16} />}
-                onClick={() => setQr(true)}
-              >
-                {tx('QR code')}
-              </Button>
-              <Button
-                component="a"
-                href={`/register/${lobby.alias || id}`}
-                variant="default"
-                rightSection={<IconExternalLink size={14} aria-hidden />}
-              >
-                {tx('Public sign-up')}
-              </Button>
-              {canEdit && (
-                <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
-                  {tx('Add player')}
-                </Button>
-              )}
-            </Group>
-            {!lobby.archived && (
-              <Button
-                rightSection={<IconArrowRight size={16} />}
-                disabled={lobby.registrants.length < 2 || unassigned < 2}
-                onClick={() => navigate(`/admin/new?from=${id}&type=group_playoff`)}
-              >
-                {tx('Convert to tournament')}
-              </Button>
-            )}
+          <Group gap="xs">
+            <Button
+              variant="default"
+              leftSection={<IconQrcode size={16} />}
+              onClick={() => setQr(true)}
+            >
+              {tx('QR code')}
+            </Button>
+            <Button
+              component="a"
+              href={`/register/${lobby.alias || id}`}
+              variant="default"
+              rightSection={<IconExternalLink size={14} aria-hidden />}
+            >
+              {tx('Public sign-up')}
+            </Button>
           </Group>
-          <MutationError error={toggle.error ?? archive.error} />
           {linked.length > 0 && (
             <Group gap="xs">
               <Text size="sm" c="dimmed">
@@ -408,6 +420,13 @@ function Lobby({ id }: { id: string }) {
           <Tabs.Tab value="notes">{tx('Notes')}</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="players">
+          {canEdit && (
+            <Group justify="flex-end" mb="sm">
+              <Button leftSection={<IconPlus size={16} />} onClick={() => setEditing('new')}>
+                {tx('Add player')}
+              </Button>
+            </Group>
+          )}
           {!lobby.registrants.length ? (
             <EmptyState title={tx('Your next game starts here')}>
               {tx('Add a player or share the public registration link.')}
@@ -415,7 +434,7 @@ function Lobby({ id }: { id: string }) {
           ) : phone ? (
             // One row per player: the menu sits on the row and any answers are listed under it, so
             // Edit is two taps (menu, Edit) and nothing has to be expanded first.
-            <Paper p={0} variant="row" role="list" style={{ overflow: 'hidden' }}>
+            <Paper variant="list" role="list">
               {entries.map(({ p, tids }) => (
                 <Group
                   key={p.player_id}
@@ -425,7 +444,6 @@ function Lobby({ id }: { id: string }) {
                   justify="space-between"
                   gap="xs"
                   p="sm"
-                  style={{ borderTop: '1px solid var(--app-border)' }}
                 >
                   <Stack gap={2} miw={0}>
                     {playerCell(p, tids)}
@@ -536,6 +554,12 @@ function Lobby({ id }: { id: string }) {
         onConfirm={() => removing && remove.mutate(removing)}
         onClose={() => setRemoving(null)}
       />
+      {phone && convert && (
+        <>
+          <ActionBarSpacer />
+          <ActionBar>{convert}</ActionBar>
+        </>
+      )}
     </Stack>
   );
 }

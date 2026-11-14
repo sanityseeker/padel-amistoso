@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Group, Modal, Stack, Switch } from '@mantine/core';
+import { Button, Stack, Switch } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../i18n';
 import {
@@ -12,6 +12,7 @@ import {
   type ExportOptions,
 } from './exportReport';
 import { allMatches, type TournamentPageData } from './scoring';
+import { FormActions, ResponsiveSheet } from '../../ui';
 import { Notice } from '../../ui/Notice';
 
 // HTML download or printable PDF of the tournament as the workspace shows it. The choices are
@@ -79,7 +80,7 @@ export function ExportDialog({
   };
   const finished = page?.status.phase === 'finished';
   return (
-    <Modal opened onClose={onClose} title={tx('Export results')}>
+    <ResponsiveSheet opened onClose={onClose} title={tx('Export results')}>
       <Stack>
         {error && <Notice tone="danger">{error}</Notice>}
         <Switch
@@ -111,23 +112,15 @@ export function ExportDialog({
           checked={options.elo}
           onChange={(e) => set('elo')(e.currentTarget.checked)}
         />
-        <Group justify="flex-end">
-          <Button variant="default" size="touch" onClick={onClose}>
-            {tx('Cancel')}
-          </Button>
-          <Button
-            variant="light"
-            size="touch"
-            loading={busy === 'pdf'}
-            onClick={() => void run('pdf')}
-          >
-            {tx('Export PDF')}
-          </Button>
-          <Button size="touch" loading={busy === 'html'} onClick={() => void run('html')}>
+        <FormActions onCancel={onClose}>
+          <Button loading={busy === 'html'} onClick={() => void run('html')}>
             {tx('Export HTML')}
           </Button>
-        </Group>
+          <Button variant="light" loading={busy === 'pdf'} onClick={() => void run('pdf')}>
+            {tx('Export PDF')}
+          </Button>
+        </FormActions>
       </Stack>
-    </Modal>
+    </ResponsiveSheet>
   );
 }

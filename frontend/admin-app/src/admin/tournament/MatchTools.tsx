@@ -6,7 +6,6 @@ import {
   Group,
   Loader,
   Menu,
-  Modal,
   Stack,
   Text,
   Textarea,
@@ -19,6 +18,7 @@ import classes from './MatchTools.module.css';
 import { t as tx, useLocale } from '../../i18n';
 import { api, write } from '../../api';
 import type { Match, Score, ScoreHistoryEntry } from '../../types';
+import { FormActions, ResponsiveSheet } from '../../ui';
 import { Notice } from '../../ui/Notice';
 
 const ACTIONS: Record<string, string> = {
@@ -140,7 +140,7 @@ export function CommentDialog({
     },
   });
   return (
-    <Modal opened onClose={onClose} title={tx('Match comment')}>
+    <ResponsiveSheet opened onClose={onClose} title={tx('Match comment')}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -162,28 +162,27 @@ export function CommentDialog({
             value={text}
             onChange={(e) => setText(e.currentTarget.value)}
           />
-          <Group justify="space-between">
-            <Button
-              variant="subtle"
-              color="gray"
-              disabled={!match.comment}
-              loading={save.isPending}
-              onClick={() => save.mutate('')}
-            >
-              {tx('Remove comment')}
+          <FormActions
+            onCancel={onClose}
+            start={
+              <Button
+                variant="subtle"
+                color="gray"
+                disabled={!match.comment}
+                loading={save.isPending}
+                onClick={() => save.mutate('')}
+              >
+                {tx('Remove comment')}
+              </Button>
+            }
+          >
+            <Button type="submit" loading={save.isPending}>
+              {tx('Save comment')}
             </Button>
-            <Group>
-              <Button variant="default" onClick={onClose}>
-                {tx('Cancel')}
-              </Button>
-              <Button type="submit" loading={save.isPending}>
-                {tx('Save comment')}
-              </Button>
-            </Group>
-          </Group>
+          </FormActions>
         </Stack>
       </form>
-    </Modal>
+    </ResponsiveSheet>
   );
 }
 

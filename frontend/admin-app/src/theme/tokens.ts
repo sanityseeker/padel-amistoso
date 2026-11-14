@@ -85,6 +85,8 @@ export const roleTokens = {
     '--color-rank-1': '#b89000',
     '--color-rank-2': '#7d8b99',
     '--color-rank-3': '#a4622c',
+    // Text on the bronze place mark: white on the darker light-mode bronze, ink on the lighter dark one.
+    '--color-on-rank-3': '#ffffff',
     '--color-status-await': legacyColors.light.warning,
     '--color-status-dispute': legacyColors.light.error,
   },
@@ -100,6 +102,7 @@ export const roleTokens = {
     '--color-rank-1': '#d4a800',
     '--color-rank-2': '#9aa7b5',
     '--color-rank-3': '#c27a3e',
+    '--color-on-rank-3': '#07101c',
     '--color-status-await': legacyColors.dark.warning,
     '--color-status-dispute': legacyColors.dark.error,
   },

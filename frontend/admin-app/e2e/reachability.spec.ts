@@ -58,9 +58,12 @@ for (const size of WIDTHS) {
     // The old Lobbies page redirects to the hub, filtered to lobbies.
     await page.goto('/admin/lobbies');
     await expect(page).toHaveURL(/\/admin$/);
+    // Phones keep Ownership and Type behind the "Filters" button.
+    if (phone) await page.getByRole('button', { name: 'Filters' }).click();
     await expect(page.getByRole('radio', { name: 'Lobbies', exact: true })).toBeChecked();
     await expect(page.getByText(`${name} Lobby`).first()).toBeVisible();
     await page.getByRole('radiogroup', { name: 'Type' }).getByText('All', { exact: true }).click();
+    if (phone) await page.keyboard.press('Escape');
 
     // /admin/t/:id and /admin/lobby/:id: from the hub, then as open tabs or the sheet.
     await page.getByRole('link', { name, exact: true }).first().click();

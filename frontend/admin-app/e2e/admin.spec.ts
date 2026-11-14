@@ -101,8 +101,12 @@ test('create a lobby, add a player, update fee and payment status', async ({ pag
   await page.getByRole('dialog').getByRole('button', { name: 'Mark paid', exact: true }).click();
   await expect(page.getByText(/15.*/).first()).toBeVisible();
   await expect(page.getByTestId('stat-collected')).toContainText('15');
-  await page.getByRole('button', { name: 'Close registration' }).click();
-  await expect(page.getByRole('button', { name: 'Reopen registration' })).toBeVisible();
+  // Close / Reopen and Archive live in the header's "More actions" menu.
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Close registration' }).click();
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Reopen registration' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('link', { name: 'Public sign-up' })).toHaveAttribute(
     'href',
     /\/register\/rg_/,

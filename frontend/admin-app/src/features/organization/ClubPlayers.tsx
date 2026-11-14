@@ -25,7 +25,15 @@ import { api, write } from '../../api';
 import { ErrorState, Loading, useLobbyList } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import type { ClubPlayer, Tier } from '../../types';
-import { ConfirmAction, EmptyState, MutationError, ResponsiveSheet } from '../../ui';
+import {
+  ActionBar,
+  ActionBarSpacer,
+  ConfirmAction,
+  EmptyState,
+  FormActions,
+  MutationError,
+  ResponsiveSheet,
+} from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { tiersKey } from './ClubTiers';
 import { PossibleMembers } from './PossibleMembers';
@@ -208,9 +216,8 @@ function EditSheet({
             {tx('Set rating')}
           </Button>
         </Group>
-        <Group align="flex-end" wrap="nowrap">
+        <Stack gap="xs">
           <NativeSelect
-            flex={1}
             label={tx('Skill tier')}
             value={pickedTier}
             onChange={(e) => setPickedTier(e.currentTarget.value)}
@@ -222,15 +229,22 @@ function EditSheet({
               })),
             ]}
           />
-          <Button variant="light" loading={setTier.isPending} onClick={() => setTier.mutate()}>
-            {tx('Set tier')}
-          </Button>
-        </Group>
-        <Checkbox
-          label={tx("Also set the rating to the tier's base ELO")}
-          checked={applyBase}
-          onChange={(e) => setApplyBase(e.currentTarget.checked)}
-        />
+          <Group justify="space-between" wrap="nowrap">
+            <Checkbox
+              label={tx("Also set the rating to the tier's base ELO")}
+              checked={applyBase}
+              onChange={(e) => setApplyBase(e.currentTarget.checked)}
+            />
+            <Button
+              variant="light"
+              loading={setTier.isPending}
+              onClick={() => setTier.mutate()}
+              style={{ flexShrink: 0 }}
+            >
+              {tx('Set tier')}
+            </Button>
+          </Group>
+        </Stack>
         <Group justify="space-between">
           <Text size="sm">
             {hidden ? tx('Hidden from the leaderboard') : tx('Shown on the leaderboard')}
@@ -326,7 +340,9 @@ function BulkSheet({
               {f.reason}
             </Text>
           ))}
-          <Button onClick={onClose}>{tx('Done')}</Button>
+          <FormActions>
+            <Button onClick={onClose}>{tx('Done')}</Button>
+          </FormActions>
         </Stack>
       ) : (
         <form
@@ -372,14 +388,16 @@ function BulkSheet({
                 onChange={setLobby}
               />
             )}
-            <Button
-              type="submit"
-              loading={send.isPending}
-              leftSection={<IconMail size={16} />}
-              disabled={mode === 'invite' ? !lobby : !subject.trim() || !message.trim()}
-            >
-              {tx('Send')}
-            </Button>
+            <FormActions onCancel={onClose}>
+              <Button
+                type="submit"
+                loading={send.isPending}
+                leftSection={<IconMail size={16} />}
+                disabled={mode === 'invite' ? !lobby : !subject.trim() || !message.trim()}
+              >
+                {tx('Send')}
+              </Button>
+            </FormActions>
           </Stack>
         </form>
       )}
@@ -507,7 +525,7 @@ function CleanupSheet({
             </Notice>
           )}
           <MutationError error={preview.error ?? hub.error} />
-          <Group justify="flex-end">
+          <FormActions>
             <Button
               color="red"
               variant="light"
@@ -517,7 +535,7 @@ function CleanupSheet({
             >
               {tx('Merge players')}
             </Button>
-          </Group>
+          </FormActions>
         </Stack>
       </Stack>
     </ResponsiveSheet>
@@ -582,6 +600,25 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
   );
   const toggle = (id: string, on: boolean) =>
     setSelected((cur) => (on ? [...cur, id] : cur.filter((x) => x !== id)));
+  // Shown only while players are selected: the count on the left, what to do with them on the right.
+  const selectionBar = (
+    <Group justify="space-between" wrap="nowrap" gap="xs">
+      <Text size="sm" fw={600}>
+        {tx('{n} selected', { n: selected.length })}
+      </Text>
+      <Group gap="xs" wrap="nowrap">
+        <Button variant="subtle" size="compact-md" onClick={() => setSelected([])}>
+          {tx('Clear')}
+        </Button>
+        <Button variant="light" size="compact-md" onClick={() => setSheet('invite')}>
+          {tx('Invite to a lobby')}
+        </Button>
+        <Button size="compact-md" onClick={() => setSheet('announce')}>
+          {tx('Announce')}
+        </Button>
+      </Group>
+    </Group>
+  );
   return (
     <Stack gap="md">
       <Group justify="space-between">
@@ -612,43 +649,33 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
           value={q}
           onChange={(e) => setQ(e.currentTarget.value)}
         />
-        <Group gap="xs">
-          <Text size="sm" c="dimmed">
-            {tx('{n} selected', { n: selected.length })}
-          </Text>
-          <Button
-            variant="subtle"
-            size="compact-md"
-            disabled={!rows.some((r) => r.email)}
-            onClick={() => setSelected(rows.filter((r) => r.email).map((r) => r.profile_id))}
-          >
-            {tx('Select players with email')}
-          </Button>
-          <Button
-            variant="light"
-            size="compact-md"
-            disabled={!selected.length}
-            onClick={() => setSheet('announce')}
-          >
-            {tx('Announce')}
-          </Button>
-          <Button
-            variant="light"
-            size="compact-md"
-            disabled={!selected.length}
-            onClick={() => setSheet('invite')}
-          >
-            {tx('Invite to a lobby')}
-          </Button>
-        </Group>
+        <Button
+          variant="subtle"
+          size="compact-md"
+          disabled={!rows.some((r) => r.email)}
+          onClick={() => setSelected(rows.filter((r) => r.email).map((r) => r.profile_id))}
+        >
+          {tx('Select players with email')}
+        </Button>
       </Group>
+      {selected.length > 0 &&
+        (phone ? (
+          <>
+            <ActionBarSpacer />
+            <ActionBar data-testid="club-selection-bar">{selectionBar}</ActionBar>
+          </>
+        ) : (
+          <Paper p="xs" px="sm" data-testid="club-selection-bar">
+            {selectionBar}
+          </Paper>
+        ))}
       {!rows.length ? (
         <EmptyState title={tx('No players here yet')}>
           {tx('Players appear after they take part in a club tournament, or add them by hand.')}
         </EmptyState>
       ) : phone ? (
         // Phones: a row per player with the checkbox and the menu on it, no sideways scrolling.
-        <Paper p={0} variant="row" role="list" style={{ overflow: 'hidden' }}>
+        <Paper variant="list" role="list">
           <Checkbox
             p="sm"
             label={tx('Select all')}
@@ -665,7 +692,6 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
               wrap="nowrap"
               gap="xs"
               p="sm"
-              style={{ borderTop: '1px solid var(--app-border)' }}
             >
               <Checkbox
                 aria-label={tx('Select {name}', { name: p.name })}

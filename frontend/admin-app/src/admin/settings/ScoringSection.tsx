@@ -15,7 +15,7 @@ import {
 import { write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
 import type { TvSettings } from '../../types';
-import { MutationError, Section } from '../../ui';
+import { FormActions, MutationError, Section } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import type { Ctx } from '../tournament/scoring';
 import type { TournamentPrefix } from '../tournament/query';
@@ -233,7 +233,7 @@ export function TvSection({
           value={banner}
           onChange={(e) => setBanner(e.currentTarget.value)}
         />
-        <Group justify="flex-end">
+        <FormActions>
           <Button
             variant="default"
             disabled={banner === (settings.banner_text ?? '')}
@@ -242,7 +242,7 @@ export function TvSection({
           >
             {tx('Save banner')}
           </Button>
-        </Group>
+        </FormActions>
         <TextInput
           label={tx('Custom section title')}
           description={tx('Name this optional section on the TV screen.')}
@@ -261,7 +261,7 @@ export function TvSection({
           value={customInfoText}
           onChange={(e) => setCustomInfoText(e.currentTarget.value)}
         />
-        <Group justify="flex-end">
+        <FormActions>
           <Button
             variant="default"
             disabled={
@@ -275,7 +275,7 @@ export function TvSection({
           >
             {tx('Save custom section')}
           </Button>
-        </Group>
+        </FormActions>
         <NativeSelect
           label={tx('Refresh the TV screen')}
           value={String(settings.refresh_interval ?? 15)}

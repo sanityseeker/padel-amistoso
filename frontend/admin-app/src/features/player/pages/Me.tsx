@@ -49,15 +49,18 @@ export default function Me() {
           </StatusBadge>
         }
         actions={
-          <Button size="xs" variant="default" onClick={() => setEditing(!editing)}>
-            {tx(editing ? 'Cancel' : 'Edit')}
-          </Button>
+          editing ? undefined : (
+            <Button size="xs" variant="default" onClick={() => setEditing(true)}>
+              {tx('Edit')}
+            </Button>
+          )
         }
       />
       <PlayerAccount
         key={profile.id + profile.name + profile.email + profile.contact + String(editing)}
         profile={profile}
         editing={editing}
+        onDone={() => setEditing(false)}
       />
       {live.length > 0 && (
         <Paper p="md">
@@ -74,8 +77,8 @@ export default function Me() {
           </Stack>
         </Paper>
       )}
-      <Group>
-        {auth.hasToken && (
+      <Group justify="space-between">
+        {auth.hasToken ? (
           <Button
             component={Link}
             to="/admin"
@@ -84,9 +87,9 @@ export default function Me() {
           >
             {tx('Admin')}
           </Button>
+        ) : (
+          <span />
         )}
-      </Group>
-      <Group>
         <Button
           color="red"
           variant="light"

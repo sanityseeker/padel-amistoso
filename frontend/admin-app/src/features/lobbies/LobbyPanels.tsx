@@ -1,11 +1,11 @@
-import { Button, Group, Paper, Stack, Text } from '@mantine/core';
-import { IconCheck, IconX } from '@tabler/icons-react';
+import { Button, Group, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
+import { IconCheck, IconCopy, IconX } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
 import type { ParticipationClaim } from '../../types';
-import { CopyField, EmptyState, MutationError } from '../../ui';
+import { CopyField, EmptyState, MutationError, copyText } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 
 // Players who say "that earlier result is mine": approve to link it to their profile, reject to dismiss.
@@ -96,27 +96,33 @@ export function CodesPanel({ lobbyId }: { lobbyId: string }) {
     return <ErrorState error={secrets.error} retry={() => void secrets.refetch()} />;
   if (!secrets.data.length) return <EmptyState title={tx('No player codes yet.')} />;
   return (
-    <Stack gap="xs">
+    <Stack gap="sm">
       <Group>
         <Button
           variant="light"
+          leftSection={<IconCopy size={16} />}
           onClick={() =>
-            void navigator.clipboard.writeText(
+            void copyText(
               secrets.data.map((s) => `${s.player_name}: ${s.passphrase}`).join('\n'),
+              tx('Codes copied'),
             )
           }
         >
           {tx('Copy all codes')}
         </Button>
       </Group>
-      {secrets.data.map((s) => (
-        <Paper key={s.player_id} variant="row" p="sm" data-testid="lobby-code-row">
-          <Stack gap={4}>
-            <Text fw={650}>{s.player_name}</Text>
-            <CopyField value={s.passphrase} label={s.player_name} />
-          </Stack>
-        </Paper>
-      ))}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
+        {secrets.data.map((s) => (
+          <Paper key={s.player_id} p="sm" data-testid="lobby-code-row">
+            <Stack gap={4}>
+              <Text fw={650} truncate>
+                {s.player_name}
+              </Text>
+              <CopyField value={s.passphrase} label={s.player_name} />
+            </Stack>
+          </Paper>
+        ))}
+      </SimpleGrid>
     </Stack>
   );
 }

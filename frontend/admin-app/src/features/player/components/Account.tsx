@@ -1,10 +1,11 @@
 import { t as tx, useLocale } from '../../../i18n';
 import { useState } from 'react';
 import {
+  ActionIcon,
   Button,
   CopyButton,
+  Group,
   Paper,
-  PasswordInput,
   Stack,
   Text,
   TextInput,
@@ -12,16 +13,20 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconCopy, IconMail } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconEye, IconEyeOff, IconMail } from '@tabler/icons-react';
 import { playerApi } from '../../../player/api';
 import type { Profile } from '../../../player/types';
+import { FormActions } from '../../../ui';
 import { Notice } from '../../../ui/Notice';
 export function PlayerAccount({
   profile,
   editing = false,
+  onDone,
 }: {
   profile: Profile;
   editing?: boolean;
+  /** Leaves edit mode: Cancel, and after a successful save. */
+  onDone?: () => void;
 }) {
   useLocale();
   const client = useQueryClient();
@@ -48,6 +53,7 @@ export function PlayerAccount({
         message: tx('Profile updated'),
         color: 'green',
       });
+      onDone?.();
     },
   });
   const verify = useMutation({
@@ -61,7 +67,7 @@ export function PlayerAccount({
   return (
     <Stack>
       {editing ? (
-        <Paper p="xl">
+        <Paper p="md">
           <Title order={3} mb="md">
             {tx('Your profile')}
           </Title>
@@ -95,9 +101,11 @@ export function PlayerAccount({
                 value={contact}
                 onChange={(e) => setContact(e.currentTarget.value)}
               />
-              <Button type="submit" loading={save.isPending}>
-                {tx('Save profile')}
-              </Button>
+              <FormActions onCancel={onDone}>
+                <Button type="submit" loading={save.isPending}>
+                  {tx('Save profile')}
+                </Button>
+              </FormActions>
             </Stack>
           </form>
         </Paper>
@@ -137,27 +145,36 @@ export function PlayerAccount({
               {tx('Keep this private. It gives access to your player profile.')}
             </Text>
             {profile.passphrase && (
-              <>
-                <PasswordInput
-                  aria-label={tx('Your player passphrase')}
-                  readOnly
-                  value={profile.passphrase}
-                  visible={visible}
-                  onVisibilityChange={setVisible}
-                />
-                <CopyButton value={profile.passphrase}>
-                  {({ copied, copy }) => (
-                    <Button
-                      variant="subtle"
-                      mt="sm"
-                      onClick={copy}
-                      leftSection={copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
+              <TextInput
+                aria-label={tx('Your player passphrase')}
+                readOnly
+                type={visible ? 'text' : 'password'}
+                value={profile.passphrase}
+                ff={visible ? 'var(--font-mono)' : undefined}
+                rightSectionWidth={76}
+                rightSection={
+                  <Group gap={2} wrap="nowrap">
+                    <ActionIcon
+                      aria-label={visible ? tx('Hide passphrase') : tx('Show passphrase')}
+                      onClick={() => setVisible(!visible)}
                     >
-                      {copied ? tx('Copied') : tx('Copy passphrase')}
-                    </Button>
-                  )}
-                </CopyButton>
-              </>
+                      {visible ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                    </ActionIcon>
+                    <CopyButton value={profile.passphrase}>
+                      {({ copied, copy }) => (
+                        <ActionIcon
+                          aria-label={copied ? tx('Copied') : tx('Copy passphrase')}
+                          title={copied ? tx('Copied') : tx('Copy passphrase')}
+                          color={copied ? 'green' : undefined}
+                          onClick={copy}
+                        >
+                          {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                        </ActionIcon>
+                      )}
+                    </CopyButton>
+                  </Group>
+                }
+              />
             )}
           </Paper>
         </Stack>

@@ -2,19 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Fieldset,
+  Group,
   Input,
   SegmentedControl,
+  SimpleGrid,
   Stack,
   Switch,
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { useNavigate } from 'react-router-dom';
 import { write } from '../../api';
 import { useAuth } from '../../auth';
 import { useOverview } from '../../components';
 import { t as tx, useLocale } from '../../i18n';
-import { MutationError } from '../../ui';
+import { ActionBar, ActionBarSpacer, MutationError } from '../../ui';
 import { useAdminMutation } from '../../useAdminMutation';
 import { defaultTitle } from '../create/rules';
 import { ScopeFields } from '../create/ScopeFields';
@@ -24,6 +27,7 @@ export function CreateLobby({ onDone }: { onDone?: () => void }) {
   useLocale();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [sport, setSport] = useState('padel');
@@ -62,17 +66,32 @@ export function CreateLobby({ onDone }: { onDone?: () => void }) {
         create.mutate();
       }}
     >
-      <Stack gap="lg">
+      <Stack gap="lg" maw={760}>
         <MutationError error={create.error} />
         <Fieldset legend={tx('Basics')}>
           <Stack>
-            <TextInput
-              label={tx('Event name')}
-              required
-              maxLength={255}
-              value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
-            />
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <TextInput
+                label={tx('Event name')}
+                required
+                maxLength={255}
+                value={name}
+                onChange={(e) => setName(e.currentTarget.value)}
+              />
+              <Input.Wrapper label={tx('Sport')}>
+                <SegmentedControl
+                  fullWidth
+                  mt={4}
+                  aria-label={tx('Sport')}
+                  value={sport}
+                  onChange={(v) => setSport(v)}
+                  data={[
+                    { value: 'padel', label: tx('Padel') },
+                    { value: 'tennis', label: tx('Tennis') },
+                  ]}
+                />
+              </Input.Wrapper>
+            </SimpleGrid>
             <Textarea
               label={tx('Description')}
               description={tx('Shown on the sign-up page. Markdown formatting is supported.')}
@@ -82,30 +101,15 @@ export function CreateLobby({ onDone }: { onDone?: () => void }) {
               value={description}
               onChange={(e) => setDescription(e.currentTarget.value)}
             />
-            <Input.Wrapper label={tx('Sport')}>
-              <SegmentedControl
-                fullWidth
-                mt={4}
-                aria-label={tx('Sport')}
-                value={sport}
-                onChange={(v) => setSport(v)}
-                data={[
-                  { value: 'padel', label: tx('Padel') },
-                  { value: 'tennis', label: tx('Tennis') },
-                ]}
-              />
-            </Input.Wrapper>
           </Stack>
         </Fieldset>
         <Fieldset legend={tx('Where it belongs')}>
-          <Stack>
-            <ScopeFields
-              community={community}
-              setCommunity={setCommunity}
-              club={club}
-              setClub={setClub}
-            />
-          </Stack>
+          <ScopeFields
+            community={community}
+            setCommunity={setCommunity}
+            club={club}
+            setClub={setClub}
+          />
         </Fieldset>
         <Fieldset legend={tx('Visibility')}>
           <Switch
@@ -114,9 +118,22 @@ export function CreateLobby({ onDone }: { onDone?: () => void }) {
             onChange={(e) => setListed(e.currentTarget.checked)}
           />
         </Fieldset>
-        <Button type="submit" loading={create.isPending} size="md" w="fit-content">
-          {tx('Create lobby')}
-        </Button>
+        {phone ? (
+          <>
+            <ActionBarSpacer />
+            <ActionBar>
+              <Button type="submit" loading={create.isPending} size="touch" fullWidth>
+                {tx('Create lobby')}
+              </Button>
+            </ActionBar>
+          </>
+        ) : (
+          <Group justify="flex-end">
+            <Button type="submit" loading={create.isPending} size="md">
+              {tx('Create lobby')}
+            </Button>
+          </Group>
+        )}
       </Stack>
     </form>
   );

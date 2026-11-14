@@ -13,11 +13,10 @@ import {
   Table,
   Tabs,
   Text,
-  TextInput,
   Title,
   UnstyledButton,
 } from '@mantine/core';
-import { IconPin, IconSearch } from '@tabler/icons-react';
+import { IconPin } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { formatType } from '../../api';
@@ -29,7 +28,7 @@ import { formatSets } from '../../admin/tournament/scoring';
 import type { SetDecider } from '../../types';
 import { PLAYER_TOKEN, playerApi } from '../../player/api';
 import { sportProps } from '../../theme';
-import { EmptyState, EventRow, SportMark, StatusBadge } from '../../ui';
+import { EmptyState, EventCodeFinder, EventRow, SportMark, StatusBadge } from '../../ui';
 import { hostClubSlug } from '../public/meta';
 import { StandingsTable, type StandingRow } from '../tournaments';
 import { Notice } from '../../ui/Notice';
@@ -514,37 +513,13 @@ function Finder({ items }: { items: ClubEvent[] }) {
     }
   };
   return (
-    <Paper
-      p="md"
-      component="form"
-      onSubmit={(e: React.FormEvent) => {
-        e.preventDefault();
-        void go();
-      }}
-    >
-      <Stack gap="xs">
-        <Group align="flex-end" wrap="nowrap">
-          <TextInput
-            flex={1}
-            label={tx('Tournament / registration ID or alias')}
-            placeholder={tx('ID or alias')}
-            leftSection={<IconSearch size={16} />}
-            autoComplete="off"
-            spellCheck={false}
-            value={value}
-            onChange={(e) => setValue(e.currentTarget.value)}
-          />
-          <Button type="submit" loading={busy}>
-            {tx('Find')}
-          </Button>
-        </Group>
-        {message && (
-          <Text size="sm" c="dimmed" role="status">
-            {message}
-          </Text>
-        )}
-      </Stack>
-    </Paper>
+    <EventCodeFinder
+      value={value}
+      onChange={setValue}
+      onSubmit={() => void go()}
+      busy={busy}
+      status={message}
+    />
   );
 }
 

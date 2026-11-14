@@ -91,6 +91,10 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
   const { user } = useAuth();
   const navigate = useNavigate();
   const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
+  // Below 62em the summary is a row of tiles above the bar and the submit sits in the action bar.
+  const compact = !!useMediaQuery('(max-width: 61.99em)', false, {
+    getInitialValueInEffect: false,
+  });
   const [name, setName] = useState('');
   const [sport, setSport] = useState<Sport>((lobby?.sport as Sport) ?? 'padel');
   const [entry, setEntry] = useState<EntryMode | null>(null);
@@ -386,10 +390,34 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
     poChoice.thirdPlace,
   ]);
 
+  // Read-only next to the Groups field: how many entries each group gets with this count.
+  const perGroupSizes =
+    kind === 'group_playoff'
+      ? activeDraw
+        ? activeDraw.map((g) => g.players.length)
+        : groupSizes(entries.length, groupCount)
+      : [];
+  const perGroupMin = perGroupSizes.length ? Math.min(...perGroupSizes) : 0;
+  const perGroupMax = perGroupSizes.length ? Math.max(...perGroupSizes) : 0;
+  const perGroup = perGroupMin === perGroupMax ? perGroupMin : `${perGroupMin}–${perGroupMax}`;
+  const tiles = (
+    <>
+      <StatTile label={rules.builder ? tx('Teams') : tx('Players')} value={entries.length} />
+      <StatTile label={tx('Courts')} value={assignCourts ? courtNames.length : 0} />
+      {summary.map((s) => (
+        <StatTile key={s.label} label={s.label} value={s.value} />
+      ))}
+    </>
+  );
+  const minWarning = entries.length > 0 && entries.length < minPlayers && kind === 'mexicano' && (
+    <Text size="xs" c="red">
+      {tx('Add at least {n} players.', { n: minPlayers })}
+    </Text>
+  );
   const submit = (
     <Button
       type="submit"
-      size={phone ? 'touch' : 'md'}
+      size={compact ? 'touch' : 'md'}
       fullWidth
       loading={create.isPending}
       form="tournament-form"
@@ -411,28 +439,30 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
           <MutationError error={create.error} />
           <Fieldset legend={tx('Basics')}>
             <Stack>
-              <TextInput
-                label={tx('Tournament name')}
-                placeholder={lobby?.name ?? tx('Friday night padel')}
-                required={!lobby}
-                maxLength={255}
-                value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
-              />
-              <Input.Wrapper label={tx('Sport')}>
-                <SegmentedControl
-                  fullWidth
-                  mt={4}
-                  aria-label={tx('Sport')}
-                  disabled={!!lobby}
-                  data={[
-                    { value: 'padel', label: tx('Padel') },
-                    { value: 'tennis', label: tx('Tennis') },
-                  ]}
-                  value={sport}
-                  onChange={(v) => setSport(v === 'tennis' ? 'tennis' : 'padel')}
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <TextInput
+                  label={tx('Tournament name')}
+                  placeholder={lobby?.name ?? tx('Friday night padel')}
+                  required={!lobby}
+                  maxLength={255}
+                  value={name}
+                  onChange={(e) => setName(e.currentTarget.value)}
                 />
-              </Input.Wrapper>
+                <Input.Wrapper label={tx('Sport')}>
+                  <SegmentedControl
+                    fullWidth
+                    mt={4}
+                    aria-label={tx('Sport')}
+                    disabled={!!lobby}
+                    data={[
+                      { value: 'padel', label: tx('Padel') },
+                      { value: 'tennis', label: tx('Tennis') },
+                    ]}
+                    value={sport}
+                    onChange={(v) => setSport(v === 'tennis' ? 'tennis' : 'padel')}
+                  />
+                </Input.Wrapper>
+              </SimpleGrid>
               {!lobby && (
                 <ScopeFields
                   community={community}
@@ -574,15 +604,18 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
               )}
               {kind === 'group_playoff' && (
                 <Stack gap="sm">
-                  <NumberInput
-                    label={tx('Groups')}
-                    min={1}
-                    max={32}
-                    allowDecimal={false}
-                    required
-                    value={groups}
-                    onChange={setGroups}
-                  />
+                  <SimpleGrid cols={2} spacing="sm">
+                    <NumberInput
+                      label={tx('Groups')}
+                      min={1}
+                      max={32}
+                      allowDecimal={false}
+                      required
+                      value={groups}
+                      onChange={setGroups}
+                    />
+                    <StatTile label={tx('Group sizes')} value={perGroup} />
+                  </SimpleGrid>
                   <Accordion variant="contained" radius="lg">
                     <Accordion.Item value="groups">
                       <Accordion.Control>{tx('Group names and draw')}</Accordion.Control>
@@ -660,8 +693,16 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
             <Notice tone="warning">{tx('Select at least two registrants to convert.')}</Notice>
           )}
         </Stack>
-        {phone ? (
+        {compact ? (
           <>
+            {!phone && (
+              <Paper p="md" aria-label={tx('Summary')}>
+                <SimpleGrid cols={4} spacing="sm">
+                  {tiles}
+                </SimpleGrid>
+                {minWarning}
+              </Paper>
+            )}
             <ActionBarSpacer />
             <ActionBar>{submit}</ActionBar>
           </>
@@ -669,19 +710,8 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
           <Paper p="md" className={classes.summary} aria-label={tx('Summary')}>
             <Stack gap="md">
               <Text variant="eyebrow">{tx('Summary')}</Text>
-              <StatTile
-                label={rules.builder ? tx('Teams') : tx('Players')}
-                value={entries.length}
-              />
-              <StatTile label={tx('Courts')} value={assignCourts ? courtNames.length : 0} />
-              {summary.map((s) => (
-                <StatTile key={s.label} label={s.label} value={s.value} />
-              ))}
-              {entries.length > 0 && entries.length < minPlayers && kind === 'mexicano' && (
-                <Text size="xs" c="red">
-                  {tx('Add at least {n} players.', { n: minPlayers })}
-                </Text>
-              )}
+              {tiles}
+              {minWarning}
               {submit}
             </Stack>
           </Paper>

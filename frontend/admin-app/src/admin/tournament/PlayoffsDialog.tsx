@@ -15,8 +15,7 @@ import {
 import { IconPlus, IconX } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { ResponsiveSheet } from '../../ui';
-import classes from './Dialogs.module.css';
+import { FormActions, ResponsiveSheet } from '../../ui';
 import { t as tx, useLocale } from '../../i18n';
 import { api, write } from '../../api';
 import type { RecommendedEntry } from '../../types';
@@ -658,19 +657,11 @@ export function PlayoffsDialog({
               )
             : tx('This updates the tournament and its public view.')}
         </Text>
-        <Group justify="flex-end" className={classes.footer}>
-          <Button variant="default" size="touch" onClick={onClose}>
-            {tx('Cancel')}
-          </Button>
-          <Button
-            size="touch"
-            disabled={!enough}
-            loading={start.isPending}
-            onClick={() => start.mutate()}
-          >
+        <FormActions sticky onCancel={onClose}>
+          <Button disabled={!enough} loading={start.isPending} onClick={() => start.mutate()}>
             {tx('Continue')}
           </Button>
-        </Group>
+        </FormActions>
       </Stack>
     </ResponsiveSheet>
   );

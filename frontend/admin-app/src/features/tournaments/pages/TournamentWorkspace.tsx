@@ -60,7 +60,14 @@ import {
 } from '../../../admin/tournament/scoring';
 import { useRecordScore, useReviewActions } from '../../../admin/tournament/useScoreActions';
 import type { Match } from '../../../types';
-import { ActionBar, ConfirmAction, EmptyState, ResponsiveSheet, StatusBadge } from '../../../ui';
+import {
+  ActionBar,
+  ActionBarSpacer,
+  ConfirmAction,
+  EmptyState,
+  ResponsiveSheet,
+  StatusBadge,
+} from '../../../ui';
 import { PaymentsPanel, useAdminPayments } from '../../../admin/settings/PaymentsPanel';
 import { MatchList } from '../MatchList';
 import { ActivityList } from '../../../shell/ActivityList';
@@ -1034,9 +1041,12 @@ function Workspace({ id }: { id: string }) {
         </div>
       )}
       {phone && next && (
-        <ActionBar data-testid="action-bar">
-          <NextStepButton step={next} full />
-        </ActionBar>
+        <>
+          <ActionBarSpacer />
+          <ActionBar data-testid="action-bar">
+            <NextStepButton step={next} full />
+          </ActionBar>
+        </>
       )}
       {editing && editingMatch && (phone || editing.from === 'review') && (
         <AdminScoreDialog

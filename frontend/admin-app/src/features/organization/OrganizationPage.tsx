@@ -15,7 +15,14 @@ import {
   Title,
   VisuallyHidden,
 } from '@mantine/core';
-import { IconBuilding, IconDots, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import {
+  IconBuilding,
+  IconChevronRight,
+  IconDots,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+} from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { write } from '../../api';
 import { useAuth } from '../../auth';
@@ -26,6 +33,7 @@ import {
   ConfirmAction,
   EmptyState,
   EventRow,
+  FormActions,
   MutationError,
   PageHeader,
   ResponsiveSheet,
@@ -142,9 +150,15 @@ export function OrganizationPage() {
                     </Badge>
                   }
                   actions={
-                    <Button component={Link} to={`/admin/clubs/${c.id}`} variant="light">
-                      {tx('Manage club')}
-                    </Button>
+                    <ActionIcon
+                      component={Link}
+                      to={`/admin/clubs/${c.id}`}
+                      size="lg"
+                      aria-label={tx('Manage club')}
+                      title={tx('Manage club')}
+                    >
+                      <IconChevronRight size={18} />
+                    </ActionIcon>
                   }
                 />
               ))
@@ -244,9 +258,11 @@ export function OrganizationPage() {
                 onChange={setCommunity}
               />
             )}
-            <Button type="submit" loading={create.isPending}>
-              {sheet?.kind === 'rename' ? tx('Save') : title}
-            </Button>
+            <FormActions onCancel={() => setSheet(null)}>
+              <Button type="submit" loading={create.isPending}>
+                {sheet?.kind === 'rename' ? tx('Save') : title}
+              </Button>
+            </FormActions>
           </Stack>
         </form>
       </ResponsiveSheet>
