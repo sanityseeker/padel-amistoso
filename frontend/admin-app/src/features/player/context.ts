@@ -9,7 +9,7 @@ export interface PlayerSpaceContext {
   scope: string;
   scopeQuery: string;
   scopeOptions: { value: string; label: string }[];
-  /** Every entry regardless of the picked scope (except on a club subdomain): tournaments in progress and deep links. */
+  /** Every entry regardless of the picked scope (except on a club subdomain). Only for deep links and push toggles: lists use `space.entries`. */
   liveEntries: Entry[];
   /** The unscoped list is still loading (a picked scope is showing a partial list meanwhile). */
   liveLoading: boolean;

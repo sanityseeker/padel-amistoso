@@ -166,8 +166,9 @@ export function PlayerLayout() {
     placeholderData: (previous) =>
       previous && previous.profile.id === profile?.id ? previous : undefined,
   });
-  // A picked community or club narrows ratings and history, never the tournaments in progress:
-  // those come from the unscoped space. Club subdomains keep their deliberate restriction.
+  // A picked community or club narrows every list on the Hub pages (space.entries). The unscoped
+  // space only serves what is not a list: opening an event by its link and the push toggles on
+  // Profile. Club subdomains keep their deliberate restriction.
   const hostKnown = !hostClub.isPending;
   const unscoped = !!scope && hostKnown && !hostClub.data;
   const live = useQuery({
@@ -189,7 +190,8 @@ export function PlayerLayout() {
     if (query.data) saveSession(query.data);
   }, [query.data]);
   const clubEntries = hostClub.data ? (query.data?.entries ?? null) : null;
-  const dots = useDots(query.data, liveEntries, !!token && !linkBusy, clubEntries);
+  // The dots follow the pages, so they count only the entries the picked scope shows.
+  const dots = useDots(query.data, query.data?.entries ?? [], !!token && !linkBusy, clubEntries);
 
   if (linkBusy || (token && (query.isPending || hostClub.isPending))) return <Loading />;
   if (!token)

@@ -1990,6 +1990,8 @@
   "No active tournaments in this sport.": "Нет активных турниров в этом виде спорта.",
   "Payment reported": "Оплата отмечена",
   "Show all sports": "Показать все виды спорта",
+  "No active tournaments in {scope}.": "{scope}: нет активных турниров.",
+  "Show all communities": "Показать все сообщества",
   "Refund owed to you": "Вам должны вернуть оплату",
   "Payment method": "Способ оплаты",
   "Choose how you paid": "Выберите способ оплаты",

@@ -524,7 +524,7 @@ test('a finished event leads with its final standings', async ({ page, request }
   expect((await standings.boundingBox())!.y).toBeLessThan((await played.boundingBox())!.y);
 });
 
-test('a picked community scope does not hide tournaments in progress', async ({
+test('a picked community scope narrows the active tournaments but keeps deep links', async ({
   page,
   request,
 }) => {
@@ -534,11 +534,19 @@ test('a picked community scope does not hide tournaments in progress', async ({
     localStorage.setItem('padel-player-community', 'community:no-such-community'),
   );
   await openHub(page, session.access_token);
+  // The tournament is outside the picked community: the Hub hides it and offers to show it.
+  await expect(page.getByTestId('active-tournament')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Show all communities' }).click();
   await expect(page.getByTestId('active-tournament')).toHaveCount(1);
+  await page.evaluate(() =>
+    localStorage.setItem('padel-player-community', 'community:no-such-community'),
+  );
+  await page.goto('/player/matches');
+  await expect(page.getByTestId('event-card')).toHaveCount(0);
+  // Its own page still opens by link, and its push notifications stay on the profile page.
   await page.goto(`/player/matches/tournament/${id}`);
   await expect(page.getByRole('heading', { name: 'Up next' })).toBeVisible();
   await expect(page.getByText('Event not found')).toHaveCount(0);
-  // Nor its push notifications on the profile page.
   await page.goto('/player/me');
   await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
 });

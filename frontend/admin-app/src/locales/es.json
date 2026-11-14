@@ -1982,6 +1982,8 @@
   "No active tournaments in this sport.": "No hay torneos activos en este deporte.",
   "Payment reported": "Pago comunicado",
   "Show all sports": "Mostrar todos los deportes",
+  "No active tournaments in {scope}.": "No hay torneos activos en {scope}.",
+  "Show all communities": "Mostrar todas las comunidades",
   "Refund owed to you": "Te deben un reembolso",
   "Payment method": "Forma de pago",
   "Choose how you paid": "Elige cómo pagaste",

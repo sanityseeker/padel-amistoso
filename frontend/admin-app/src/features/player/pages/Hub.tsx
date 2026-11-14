@@ -21,19 +21,30 @@ import { sportsOf, type Sport } from '../stats';
 export default function Hub() {
   const gap = useMatches({ base: 'md', sm: 'xl' });
   useLocale();
-  const { space, scope, scopeQuery, scopeOptions, liveEntries, openLink, sportFilter, setSport } =
-    usePlayerSpace();
+  const {
+    space,
+    scope,
+    scopeQuery,
+    scopeOptions,
+    setScope,
+    liveEntries,
+    openLink,
+    sportFilter,
+    setSport,
+  } = usePlayerSpace();
   // The sport filter narrows every list; All (and a single-sport player) shows everything.
   const inSport = (e: Entry) => sportFilter === 'all' || (e.sport || 'padel') === sportFilter;
   // An event with an open payment stays in view whatever the sport filter says: the badge is the
   // only place the player can pay it.
   const payments = usePayments();
   const inView = (e: Entry) => inSport(e) || !!openPaymentOf(payments.data, e);
-  // Active tournaments ignore the picked scope; Past follows it like the rating and history below.
-  const activeAll = liveEntries.filter(
-    (e) => e.status === 'active' && e.entity_type === 'tournament' && !e.entity_deleted,
-  );
+  // Active tournaments follow the picked community or club, like Past, the rating and history below.
+  const isActive = (e: Entry) =>
+    e.status === 'active' && e.entity_type === 'tournament' && !e.entity_deleted;
+  const activeAll = space.entries.filter(isActive);
   const active = activeAll.filter(inView);
+  // Tournaments in progress the picked scope hides: the empty state offers to show them.
+  const hiddenByScope = !!scope && !activeAll.length && liveEntries.some(isActive);
   const board = useLeaderboard(scopeQuery);
   const rankIn = (s: Sport) => board.data?.[s].find((r) => isMe(r, space.profile))?.rank ?? null;
   // Career statistics and past events follow the picked sport; with All, every entry counts.
@@ -62,6 +73,15 @@ export default function Hub() {
               <TournamentNavCard key={entry.entity_id} entry={entry} />
             ))}
           </SimpleGrid>
+        ) : hiddenByScope ? (
+          <EmptyState
+            title={tx('No active tournaments in {scope}.', { scope: scopeName })}
+            action={
+              <Button variant="light" onClick={() => setScope('')}>
+                {tx('Show all communities')}
+              </Button>
+            }
+          />
         ) : activeAll.length ? (
           <EmptyState
             title={tx('No active tournaments in this sport.')}

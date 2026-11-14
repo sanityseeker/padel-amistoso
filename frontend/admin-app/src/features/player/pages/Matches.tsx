@@ -135,7 +135,7 @@ export default function Matches() {
   const gap = useMatches({ base: 'md', sm: 'lg' });
   useLocale();
   const client = useQueryClient();
-  const { space, liveEntries, openLink, sportFilter } = usePlayerSpace();
+  const { space, openLink, sportFilter } = usePlayerSpace();
   const [params] = useSearchParams();
   const [which, setWhich] = useState<'active' | 'finished'>(
     params.get('tab') === 'finished' ? 'finished' : 'active',
@@ -158,7 +158,8 @@ export default function Matches() {
     },
   });
   const inSport = (e: Entry) => sportFilter === 'all' || (e.sport || 'padel') === sportFilter;
-  const active = liveEntries.filter((e) => e.status === 'active' && inSport(e));
+  // Both tabs follow the picked community or club.
+  const active = space.entries.filter((e) => e.status === 'active' && inSport(e));
   const finished = space.entries.filter((e) => e.status === 'finished' && inSport(e));
   const list = which === 'active' ? active : finished;
   return (
