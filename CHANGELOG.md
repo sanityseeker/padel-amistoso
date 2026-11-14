@@ -1,3 +1,9 @@
+## v3.9.2 (2026-11-14)
+
+### Fix
+
+- consistent form action rows and tighter layouts across the React app
+
 ## v3.9.1 (2026-11-14)
 
 ### Fix
