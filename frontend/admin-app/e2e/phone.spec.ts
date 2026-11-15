@@ -89,58 +89,52 @@ test('create form: the submit bar stays on screen, nothing overflows and the tou
   expect(listed.find((t) => t.id === id)?.name).toBe(name);
 });
 
-test('bracket: the round pager and Score buttons work on a phone and a winner advances', async ({
+test('play-offs on a phone: scored in the Match centre, drawn on the Bracket tab', async ({
   page,
   request,
 }) => {
   const name = `Phone Bracket ${Date.now()}`;
   const { id } = await createTournament(request, 'po', name);
   await openTournament(page, id, name);
-  // On a phone the bracket carries the match cards, under the Matches tab.
   await page.getByRole('tab', { name: 'Matches' }).click();
-  await expect(page.getByTestId('bracket')).toBeVisible();
   expect(await noHorizontalOverflow(page)).toBe(true);
 
-  const matches = (await (await request.get(`/api/tournaments/${id}/po/playoffs`)).json())
-    .matches as { id: string; team1: string[]; team2: string[]; round_label: string }[];
-  const semi = matches.find((m) => m.round_label === 'Semi-Final')!;
-  const pager = page.getByRole('radiogroup', { name: 'Round' });
-  // The pager opens on "To play": every match that can be scored now.
-  await expect(pager.getByRole('radio', { name: 'To play' })).toBeChecked();
-  await expect(pager.getByRole('radio', { name: 'Semi-Final' })).toHaveCount(1);
-  const finalTab = pager.locator('label').filter({ hasText: /^Final$/ });
-  await expectInViewport(page, finalTab);
-  expect(await noHorizontalOverflow(page)).toBe(true);
-
-  // The first-round Score button is on screen and opens the bottom sheet.
-  const score = page.getByRole('button', {
-    name: `Score: ${semi.team1.join(' & ')} vs ${semi.team2.join(' & ')}`,
-  });
-  await score.scrollIntoViewIfNeeded();
-  await expectInViewport(page, score);
-  await score.click();
+  const playoffs = async () =>
+    (await (await request.get(`/api/tournaments/${id}/po/playoffs`)).json()).matches as {
+      id: string;
+      team1: string[];
+      team2: string[];
+      round_label: string;
+      score: number[] | null;
+    }[];
+  const semi = (await playoffs()).find((m) => m.round_label === 'Semi-Final')!;
+  const [a, b] = [semi.team1.join(' & '), semi.team2.join(' & ')];
+  // On a phone the row's Record score button opens the score sheet.
+  const record = page.getByRole('button', { name: `Record score: ${a} vs ${b}`, exact: true });
+  await record.scrollIntoViewIfNeeded();
+  await expectInViewport(page, record);
+  await record.click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByTestId('score-1').fill('21');
   await page.getByTestId('score-2').fill('7');
   await page.keyboard.press('Enter');
   await expect
-    .poll(
-      async () =>
-        (
-          (await (await request.get(`/api/tournaments/${id}/po/playoffs`)).json()).matches as {
-            id: string;
-            score: number[] | null;
-          }[]
-        ).find((m) => m.id === semi.id)?.score,
-    )
+    .poll(async () => (await playoffs()).find((m) => m.id === semi.id)?.score)
     .toEqual([21, 7]);
+  // The winner is in the final.
+  await expect
+    .poll(async () => {
+      const f = (await playoffs()).find((m) => m.round_label === 'Final')!;
+      return [...f.team1, ...f.team2].join(' | ');
+    })
+    .toContain(semi.team1[0]!);
 
-  // Final round: the semi-final winner is already in the final card.
-  await finalTab.click();
-  await expect(pager.getByRole('radio', { name: 'Final', exact: true })).toBeChecked();
-  await expect(page.getByTestId('bracket-slot')).toHaveCount(1);
-  await expect(page.getByTestId('bracket-slot')).toContainText(semi.team1.join(' & '));
-  await expect(page.getByTestId('bracket-slot')).not.toContainText(semi.team2.join(' & '));
+  await page.getByRole('tab', { name: 'Bracket' }).click();
+  await expect(
+    page.getByTestId('bracket').getByRole('img', { name: 'Play-off bracket' }),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
   expect(await noHorizontalOverflow(page)).toBe(true);
 });
 
@@ -216,7 +210,7 @@ test('the tournament and lobby settings drawers fit the phone width', async ({ p
   expect(await noHorizontalOverflow(page)).toBe(true);
 });
 
-test('bracket: double elimination round picker reaches the last round on a phone', async ({
+test('bracket: double elimination shows the Winners and Losers pictures on a phone', async ({
   page,
   request,
 }) => {
@@ -234,14 +228,13 @@ test('bracket: double elimination round picker reaches the last round on a phone
   expect(created.ok()).toBeTruthy();
   const id = (await created.json()).id as string;
   await openTournament(page, id, name);
-  await page.getByRole('tab', { name: 'Matches' }).click();
-  await expect(page.getByTestId('bracket')).toBeVisible();
-  expect(await noHorizontalOverflow(page)).toBe(true);
-  // Double elimination has too many rounds for chips: a select reaches every one, in the viewport.
-  const picker = page.getByRole('combobox', { name: 'Round' });
-  await expectInViewport(page, picker);
-  await expect(picker.locator('option', { hasText: 'Grand Final' }).first()).toBeAttached();
-  await picker.selectOption({ index: (await picker.locator('option').count()) - 1 });
-  await expect(page.getByTestId('bracket-slot')).toHaveCount(1);
+  await page.getByRole('tab', { name: 'Bracket' }).click();
+  const bracket = page.getByTestId('bracket');
+  // Double elimination is drawn as two pictures, Winners and Losers, each in its own viewer.
+  await expect(bracket.getByRole('img', { name: 'Play-off bracket' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(bracket.getByRole('img', { name: 'Losers' })).toBeVisible({ timeout: 30_000 });
+  await expect(bracket.getByTestId('bracket-diagram')).toHaveCount(2);
   expect(await noHorizontalOverflow(page)).toBe(true);
 });

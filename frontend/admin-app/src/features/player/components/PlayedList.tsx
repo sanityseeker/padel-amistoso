@@ -85,11 +85,16 @@ export function PlayedList({
   items,
   path,
   testId,
+  title,
+  titleOrder = 2,
 }: {
   items: PlayedItem[];
   /** The player's path (rounds already played), for ranks and sat-out rounds. */
   path?: PathRound[];
   testId?: string;
+  /** Heading of the list; "Played" by default. */
+  title?: string;
+  titleOrder?: 2 | 3;
 }) {
   useLocale();
   const standings = path ? standingsOf(path) : new Map<string, Standing>();
@@ -123,7 +128,7 @@ export function PlayedList({
   return (
     <>
       <Group justify="space-between" align="baseline" gap="xs">
-        <Title order={2}>{tx('Played')}</Title>
+        <Title order={titleOrder}>{title ?? tx('Played')}</Title>
         <Text size="sm" c="dimmed" data-testid="played-summary">
           {summary}
         </Text>

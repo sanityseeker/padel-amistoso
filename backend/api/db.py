@@ -754,6 +754,9 @@ def init_db() -> None:
         # notes routes, never by the save_tournament upsert.
         if "admin_notes" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN admin_notes TEXT")
+        # Migrate: organizer announcements (JSON list), written by the save_tournament upsert.
+        if "announcements" not in cols:
+            conn.execute("ALTER TABLE tournaments ADD COLUMN announcements TEXT")
         # Migrate: add season_id to registrations if missing
         reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
         if reg_cols and "season_id" not in reg_cols:

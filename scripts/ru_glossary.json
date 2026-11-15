@@ -330,9 +330,13 @@
       ],
       "forbidden": [
         "площадка",
-        "поле"
+        "поле",
+        "суды",
+        "судов",
+        "судам",
+        "судах"
       ],
-      "note": "English UI also uses Pistas in Spanish; Russian is always корт."
+      "note": "English UI also uses Pistas in Spanish; Russian is always корт. Суд (law court) is a machine-translation error; the forms are listed without суд, суда and суде so that судья and судейство stay allowed."
     },
     {
       "id": "group",
@@ -447,17 +451,48 @@
       "en": [
         "Consolation bracket"
       ],
-      "ru": "дополнительная сетка",
+      "ru": "нижняя сетка",
       "stems": [
-        "дополнительн сетк",
-        "дополнительная сетка"
+        "нижн сетк",
+        "нижняя сетка"
       ],
       "forbidden": [
         "утешительная сетка",
         "утешительной сетк",
         "утешительную сетк"
       ],
-      "note": "User ruling. Espejo's second bracket. The Minsport padel rules use дополнительный турнир."
+      "note": "User ruling 2026-11-15: Espejo's second bracket shows as нижняя сетка, like the double-elimination lower bracket (верхняя/нижняя)."
+    },
+    {
+      "id": "match_tiebreak",
+      "en": [
+        "Match tie-break"
+      ],
+      "ru": "супер-тай-брейк",
+      "stems": [
+        "супер-тай-брейк"
+      ],
+      "forbidden": [
+        "матч-тай-брейк"
+      ],
+      "note": "User ruling 2026-11-15."
+    },
+    {
+      "id": "direct_playoff",
+      "en": [
+        "Direct Play-off"
+      ],
+      "ru": "плей-офф",
+      "stems": [
+        "плей-офф"
+      ],
+      "forbidden": [
+        "прямой плей-офф",
+        "прямого плей-офф",
+        "прямом плей-офф",
+        "сетка на выбывание"
+      ],
+      "note": "User ruling 2026-11-15: the format name is just Плей-офф."
     },
     {
       "id": "final",
@@ -784,7 +819,7 @@
         "лидерборд",
         "таблица лидеров"
       ],
-      "note": ""
+      "note": "User ruling 2026-11-15: short form таблица; the overall leaderboard on the club page and in the Player Hub is общая таблица."
     },
     {
       "id": "padel",
@@ -974,9 +1009,43 @@
       ],
       "forbidden": [
         "режим телевизора",
-        "ТВ-режим"
+        "ТВ-режим",
+        "публичный экран",
+        "публичном экран",
+        "публичного экран"
       ],
-      "note": ""
+      "note": "Also TV screen. One term everywhere, including the Info guide."
+    },
+    {
+      "id": "entry_fee",
+      "en": [
+        "Entry fee",
+        "Fee"
+      ],
+      "ru": "взнос за участие",
+      "stems": [
+        "взнос"
+      ],
+      "forbidden": [
+        "вступительный взнос",
+        "вступительного взнос"
+      ],
+      "note": "Short form взнос. Вступительный взнос is a membership joining fee, not a tournament entry fee."
+    },
+    {
+      "id": "loss_discount",
+      "en": [
+        "Loss discount"
+      ],
+      "ru": "понижающий коэффициент за поражение",
+      "stems": [
+        "понижающ коэффициент"
+      ],
+      "forbidden": [
+        "скидка за поражение",
+        "без скидки"
+      ],
+      "note": "Mexicano tuning: a multiplier on the loser's points. Скидка is a shop discount."
     },
     {
       "id": "cancel_dismiss",
@@ -1273,7 +1342,8 @@
     "дефолт",
     "тайбрейк",
     "плейофф",
-    "сетап"
+    "сетап",
+    "пуш"
   ],
   "anglicisms_allowed_note": "Every loanword used in the UI must appear as a ru value in concepts, or in loanwords_allowed below.",
   "loanwords_allowed": [
@@ -1480,12 +1550,12 @@
       {
         "key": "SW",
         "label": "С+",
-        "title": "Выигранные сеты"
+        "title": "Сетов выиграно"
       },
       {
         "key": "SL",
         "label": "С−",
-        "title": "Проигранные сеты"
+        "title": "Сетов проиграно"
       },
       {
         "key": "SD",
@@ -1498,12 +1568,12 @@
         {
           "key": "PF",
           "label": "Г+",
-          "title": "Выигранные геймы"
+          "title": "Геймов выиграно"
         },
         {
           "key": "PA",
           "label": "Г−",
-          "title": "Проигранные геймы"
+          "title": "Геймов проиграно"
         },
         {
           "key": "Diff",
@@ -1515,12 +1585,12 @@
         {
           "key": "PF",
           "label": "О+",
-          "title": "Выигранные очки"
+          "title": "Очков выиграно"
         },
         {
           "key": "PA",
           "label": "О−",
-          "title": "Проигранные очки"
+          "title": "Очков проиграно"
         },
         {
           "key": "Diff",
@@ -1528,6 +1598,7 @@
           "title": "Разница очков"
         }
       ]
-    }
+    },
+    "note": "User ruling 2026-11-15: descriptions start with the word of the abbreviation (Геймов выиграно for Г+)."
   }
 }

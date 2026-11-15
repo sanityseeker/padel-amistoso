@@ -116,14 +116,6 @@ def _list_entry(tid: str, data: dict[str, Any]) -> WorkspaceTournament:
     )
 
 
-def _has_matches(payload: dict[str, Any]) -> bool:
-    """Mirror of the frontend's ``allMatches(data).length > 0``."""
-    raw = payload.get("all_matches") or payload.get("matches") or []
-    if isinstance(raw, dict):
-        return any(raw.values())
-    return bool(raw)
-
-
 @router.get("/{tid}/workspace", response_model=WorkspaceResponse)
 async def get_workspace(tid: str, user: User | None = Depends(get_current_user_optional)) -> WorkspaceResponse:
     """Return the workspace of one tournament: status, the phase's matches, settings and access."""
@@ -152,8 +144,8 @@ async def get_workspace(tid: str, user: User | None = Depends(get_current_user_o
         else:
             path = "playoffs"
             payload = await mex_playoffs(tid, user=user)
-            if not _has_matches(payload):
-                rounds = await mex_matches(tid, user=user)
+            # The Mexicano rounds stay readable once the play-offs have started.
+            rounds = await mex_matches(tid, user=user)
     else:
         status = await po_status(tid)
         group_stage = False

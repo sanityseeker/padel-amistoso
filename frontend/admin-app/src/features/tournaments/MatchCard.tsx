@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Badge, Group, Paper, Skeleton, Stack, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../../i18n';
-import { formatRoundLabel } from '../../roundLabel';
+import { formatRoundLabel, queueRoundLabel } from '../../roundLabel';
 import { ScoreDigits, StatusBadge } from '../../ui';
 import { tiebreakOf, type MatchView, type SideView } from './adapters';
 import classes from './MatchCard.module.css';
@@ -74,6 +74,9 @@ export interface MatchCardProps {
   showCourt?: boolean;
   /** `false` when the tournament does not assign courts: no "Waiting for a court" placeholder. */
   courts?: boolean;
+  /** Court queue views: a match still to play without a court shows no round number (the queue
+   * does not follow round order); the number appears once it is on court or played. */
+  queueLabels?: boolean;
   /** Spectator lists: a scheduled match of the signed-in player, tinted and labelled "Your match". */
   yours?: boolean;
 }
@@ -93,16 +96,25 @@ export function MatchCard({
   hideScores,
   showCourt = true,
   courts = true,
+  queueLabels = false,
   yours,
 }: MatchCardProps) {
   useLocale();
   const tv = density === 'tv';
   const meta = [
-    match.roundLabel && formatRoundLabel(match.roundLabel),
-    // A court means "playing there now"; a match still to play without one waits in the queue.
+    match.roundLabel &&
+      (queueLabels && courts && !match.court && match.rawStatus === 'scheduled'
+        ? queueRoundLabel(match.roundLabel)
+        : formatRoundLabel(match.roundLabel)),
+    // A court means "playing there now"; a match still to play without one waits in the queue,
+    // either for a free court or for a player who is still on another court.
     showCourt
       ? match.court ||
-        (courts && match.rawStatus === 'scheduled' ? tx('Waiting for a court') : null)
+        (courts && match.rawStatus === 'scheduled'
+          ? match.waitingForPlayers
+            ? tx('Waiting for players to finish')
+            : tx('Waiting for a court')
+          : null)
       : null,
   ]
     .filter(Boolean)

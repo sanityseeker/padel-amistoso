@@ -206,7 +206,8 @@ The app gives each player a unique **passphrase** (for example, `brave-little-ti
   - **Immediate**: the app applies the score immediately.
   - **Required**: the score stays pending until the opponent team does one of these actions: it accepts the score, it sends a correction, or it sends the score to the organizer.
 - **Match comments**: add a short note to a match (for example, "Moved to Court 2"). The public screen shows the note.
-- **Announcement banner**: show a message to all players on the public screen.
+- **Announcement banner**: show a message to all players on the public screen and on their Player Hub event page.
+- **Announcements**: post short Markdown messages during play from the tournament's **Announcements** tab (up to 1000 characters each; the app keeps the 20 newest, pinned ones are kept first). They show on each player's Player Hub event page and on the TV screen, newest first with the posting time, and update live. Pin a post to keep it on top, or delete it. With **Notify players** (on by default), players who turned notifications on get a push notification that opens their event page. The Hub card shows an *Announcement* badge, marked *New announcement* until the player opens the event page or marks it as seen.
 - **Co-editing**: share a tournament with other registered users as co-editors. Co-editors can manage rounds and scores. Only the owner or an admin can delete the tournament or manage the collaborators.
 - **Player list changes**: you can add players during the tournament (in Mexicano, and in Group + Play-off during the group phase). In Mexicano rounds, you can also remove a player if the player has no pending match. In the other cases, use [Withdraw](#withdrawing-a-participant).
 - **Player contacts and email**: record the contact data and email of each player. If SMTP is configured, the app can send these emails: passphrase reminders, round schedules, organizer announcements, and final results.

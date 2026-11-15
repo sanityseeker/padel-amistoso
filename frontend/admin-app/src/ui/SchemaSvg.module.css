@@ -1,0 +1,22 @@
+/* The bracket SVG names these variables (backend/viz/bracket_schema.py, theme "css"). */
+.schema {
+  --br-bg: transparent;
+  --br-surface: var(--color-surface);
+  /* A text tint over the card: the plain border token is too faint for card edges on the dark page. */
+  --br-border: color-mix(in srgb, var(--color-text) 24%, var(--color-surface));
+  --br-text: var(--color-text);
+  --br-muted: var(--color-text-muted);
+  --br-accent: var(--color-primary);
+  --br-loss: var(--color-error);
+  --br-gold: var(--color-yellow);
+  --br-on-gold: var(--app-on-ball);
+  --br-font: var(--mantine-font-family);
+  display: block;
+  max-width: 100%;
+}
+.schema > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: inherit;
+}

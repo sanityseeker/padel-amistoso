@@ -25,6 +25,9 @@ from __future__ import annotations
 
 import io
 import math
+import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import matplotlib
@@ -35,6 +38,7 @@ matplotlib.use("Agg")  # headless — no display needed
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import networkx as nx
+from matplotlib import font_manager
 from matplotlib.patches import FancyBboxPatch
 
 from ..tournaments.pairing import seed_with_group_diversity
@@ -87,6 +91,7 @@ def render_schema(
     output_scale: float = 1.0,
     num_winners: int = 1,
     third_place: bool = False,
+    theme: SchemaTheme = "light",
 ) -> bytes:
     """
     Generate a tournament block‑scheme and return it as image bytes.
@@ -116,6 +121,9 @@ def render_schema(
         Multiplier for arrowhead size (1.0 = default).
     output_scale:
         Multiplier for final figure size (1.0 = default).
+    theme:
+        ``"light"`` / ``"dark"`` colours, or ``"css"`` for an SVG coloured by
+        CSS variables (forces ``fmt="svg"``).
 
     Returns
     -------
@@ -125,8 +133,10 @@ def render_schema(
     layout = _compute_layout(
         group_sizes, advance_per_group, elimination, num_winners=num_winners, third_place=third_place
     )
-    fig = _draw(
+    return _render(
         layout,
+        theme=theme,
+        fmt=fmt,
         title=title,
         figsize=figsize,
         dpi=dpi,
@@ -136,7 +146,16 @@ def render_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    return _fig_to_bytes(fig, fmt=fmt, dpi=dpi)
+
+
+def _render(layout: dict, *, theme: SchemaTheme, fmt: Literal["png", "svg", "pdf"], dpi: int, **draw: object) -> bytes:
+    """Draw *layout* in *theme* and encode it; the "css" theme is always an SVG."""
+    if theme == "css":
+        fmt = "svg"
+    with plt.rc_context(_rc(theme)):
+        fig = _draw(layout, dpi=dpi, palette=_PALETTES[theme], **draw)  # type: ignore[arg-type]
+        img = _fig_to_bytes(fig, fmt=fmt, dpi=dpi)
+    return _css_variables(img) if theme == "css" else img
 
 
 def _filter_layout_by_side(layout: dict, side: str) -> dict:
@@ -195,6 +214,7 @@ def render_playoff_schema(
     output_scale: float = 1.0,
     num_winners: int = 1,
     third_place: bool = False,
+    theme: SchemaTheme = "light",
 ) -> bytes:
     """Generate a play-off bracket schema from participant names.
 
@@ -209,8 +229,10 @@ def render_playoff_schema(
     )
     if side and elimination == EliminationType.DOUBLE:
         layout = _filter_layout_by_side(layout, side)
-    fig = _draw(
+    return _render(
         layout,
+        theme=theme,
+        fmt=fmt,
         title=title,
         figsize=figsize,
         dpi=dpi,
@@ -220,7 +242,6 @@ def render_playoff_schema(
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    return _fig_to_bytes(fig, fmt=fmt, dpi=dpi)
 
 
 def build_graph(
@@ -1115,27 +1136,64 @@ def _build_double_elim_bracket(
 # Renderer
 # ────────────────────────────────────────────────────────────────────────────
 
-# Colour palette (kind → facecolor, edgecolor, text colour)
-_STYLE: dict[str, dict] = {
-    BracketNodeKind.GROUP: {"fc": "#4A90D9", "ec": "#2C5F8A", "tc": "white"},
-    BracketNodeKind.ADVANCE: {"fc": "#E8E8E8", "ec": "#999999", "tc": "#333333"},
-    BracketNodeKind.BYE: {"fc": "#F5F5F5", "ec": "#CCCCCC", "tc": "#999999"},
-    BracketNodeKind.MATCH: {"fc": "#F5A623", "ec": "#C47D10", "tc": "white"},
-    BracketNodeKind.WINNERS_MATCH: {"fc": "#F5A623", "ec": "#C47D10", "tc": "white"},
-    BracketNodeKind.LOSERS_MATCH: {"fc": "#D07050", "ec": "#A04830", "tc": "white"},
-    BracketNodeKind.LOSERS_BLOCK: {"fc": "#D04545", "ec": "#992D2D", "tc": "white"},
-    BracketNodeKind.GRAND_FINAL: {"fc": "#8B5CF6", "ec": "#6D3FCC", "tc": "white"},
-    BracketNodeKind.CHAMPION: {"fc": "#FFD700", "ec": "#B8960F", "tc": "#333333"},
+# Themes: "light" and "dark" draw the app's own colours ("Hardcourt Nights", see
+# frontend/admin-app/src/theme/palette.ts) into the image. "css" draws an SVG whose colours are CSS
+# variables (``var(--br-<role>, <light colour>)``), so a page that inserts the SVG into its HTML
+# restyles it with its own theme; the fallbacks keep it readable when it is opened on its own.
+SchemaTheme = Literal["light", "dark", "css"]
+
+
+@dataclass(frozen=True)
+class _Palette:
+    bg: str
+    surface: str
+    border: str
+    text: str
+    muted: str
+    accent: str
+    loss: str
+    gold: str
+    on_gold: str
+
+
+_PALETTES: dict[str, _Palette] = {
+    "light": _Palette(
+        bg="#eff2f6",
+        surface="#fafbfc",
+        border="#bfc9d8",
+        text="#0d1520",
+        muted="#4a5a6e",
+        accent="#1a5fa3",
+        loss="#c0301e",
+        gold="#b89000",
+        on_gold="#0d1520",
+    ),
+    "dark": _Palette(
+        bg="#07101c",
+        surface="#0e1c2e",
+        border="#2a3f5a",
+        text="#e4ecf5",
+        muted="#8ea6be",
+        accent="#2e8ad4",
+        loss="#ef4444",
+        gold="#d4a800",
+        on_gold="#07101c",
+    ),
+    # Placeholder colours, replaced by CSS variables after drawing (see ``_css_variables``).
+    "css": _Palette(
+        bg="#0b0c01",
+        surface="#0b0c02",
+        border="#0b0c03",
+        text="#0b0c04",
+        muted="#0b0c05",
+        accent="#0b0c06",
+        loss="#0b0c07",
+        gold="#0b0c08",
+        on_gold="#0b0c09",
+    ),
 }
 
-# Edge styles by relation type
-_EDGE_STYLE: dict[str, dict] = {
-    "win": {"color": "#4A9660", "lw": 1.8, "linestyle": "solid"},  # muted green
-    "loss": {"color": "#C04040", "lw": 2.0, "linestyle": (0, (5, 3))},  # red dashed — thicker & clearly dashed
-    "neutral": {"color": "#888888", "lw": 1.5, "linestyle": "solid"},  # grey
-}
-
-# Soft per-group colours — cycle if there are more groups than entries.
+# Group colours stay fixed in every theme: white text on a mid-tone fill reads on light and dark.
 _GROUP_COLOURS: list[dict[str, str]] = [
     {"fc": "#5B9BD5", "ec": "#3A6FA0", "tc": "white"},  # soft blue
     {"fc": "#70AD47", "ec": "#4E7A31", "tc": "white"},  # soft green
@@ -1145,23 +1203,35 @@ _GROUP_COLOURS: list[dict[str, str]] = [
     {"fc": "#4DBFBF", "ec": "#338A8A", "tc": "white"},  # soft teal
 ]
 
-# Lighter tints of the same hues for advance nodes.
-_GROUP_ADVANCE_COLOURS: list[dict[str, str]] = [
-    {"fc": "#D0E2F3", "ec": "#5B9BD5", "tc": "#2B4F73"},  # light blue
-    {"fc": "#DAE9CE", "ec": "#70AD47", "tc": "#3A5C24"},  # light green
-    {"fc": "#FBE0CB", "ec": "#ED7D31", "tc": "#7A3F12"},  # light orange
-    {"fc": "#E5D6F0", "ec": "#A47FC4", "tc": "#553D6B"},  # light purple
-    {"fc": "#F5D3D3", "ec": "#E06B6B", "tc": "#6E2E2E"},  # light red
-    {"fc": "#D1F0F0", "ec": "#4DBFBF", "tc": "#265D5D"},  # light teal
-]
+
+def _node_styles(p: _Palette) -> dict[str, dict[str, str]]:
+    """Node kind → facecolor, edgecolor, text colour. Matches are cards; the edge marks the kind."""
+    card = {"fc": p.surface, "ec": p.border, "tc": p.text}
+    return {
+        BracketNodeKind.GROUP: {"fc": p.accent, "ec": p.accent, "tc": "white"},
+        BracketNodeKind.ADVANCE: card,
+        BracketNodeKind.BYE: {"fc": p.bg, "ec": p.border, "tc": p.muted},
+        BracketNodeKind.MATCH: card,
+        BracketNodeKind.WINNERS_MATCH: card,
+        BracketNodeKind.LOSERS_MATCH: {**card, "ec": p.loss},
+        BracketNodeKind.LOSERS_BLOCK: {**card, "ec": p.loss},
+        BracketNodeKind.GRAND_FINAL: {**card, "ec": p.gold},
+        BracketNodeKind.CHAMPION: {"fc": p.gold, "ec": p.gold, "tc": p.on_gold},
+    }
 
 
-# Soft per-round colours for playoff match nodes.
-_ROUND_COLOURS: dict[str, dict[str, str]] = {
-    "Quarter-Final": {"fc": "#E8924F", "ec": "#B56B2E", "tc": "white"},  # warm amber
-    "Semi-Final": {"fc": "#5CA8C8", "ec": "#3D7A96", "tc": "white"},  # slate blue
-    "Final": {"fc": "#D4A843", "ec": "#A07E2A", "tc": "white"},  # muted gold
-}
+def _round_styles(p: _Palette) -> dict[str, dict[str, str]]:
+    """Per-round overrides for play-off match nodes: the Final gets a gold edge."""
+    return {"Final": {"fc": p.surface, "ec": p.gold, "tc": p.text}}
+
+
+def _edge_styles(p: _Palette) -> dict[str, dict]:
+    """Edge styles by relation type."""
+    return {
+        "win": {"color": p.accent, "lw": 1.8, "linestyle": "solid"},
+        "loss": {"color": p.loss, "lw": 1.6, "linestyle": (0, (5, 3))},
+        "neutral": {"color": p.muted, "lw": 1.4, "linestyle": "solid"},
+    }
 
 
 def _group_style(group_index: int) -> dict[str, str]:
@@ -1169,9 +1239,50 @@ def _group_style(group_index: int) -> dict[str, str]:
     return _GROUP_COLOURS[group_index % len(_GROUP_COLOURS)]
 
 
-def _advance_style(group_index: int) -> dict[str, str]:
-    """Return the colour style for an advance node by group index."""
-    return _GROUP_ADVANCE_COLOURS[group_index % len(_GROUP_ADVANCE_COLOURS)]
+def _advance_style(group_index: int, p: _Palette) -> dict[str, str]:
+    """An advance node is a card edged in its group's colour."""
+    return {"fc": p.surface, "ec": _group_style(group_index)["fc"], "tc": p.text}
+
+
+# ── Font ────────────────────────────────────────────────────────────────────
+# Onest, the app's body face, built by scripts/build_schema_fonts.py: one family per unicode subset,
+# so matplotlib falls back from Latin to Cyrillic per glyph. An SVG for the "css" theme names
+# ``var(--br-font)`` instead, so the page's own font draws the text.
+_FONT_DIR = Path(__file__).parent / "fonts"
+_FONT_FAMILIES = ["Onest", "Onest LatinExt", "Onest Cyrillic", "Onest CyrillicExt", "DejaVu Sans"]
+_fonts_registered = False
+
+
+def _register_fonts() -> None:
+    global _fonts_registered
+    if _fonts_registered:
+        return
+    for path in sorted(_FONT_DIR.glob("*.ttf")):
+        font_manager.fontManager.addfont(str(path))
+    _fonts_registered = True
+
+
+def _rc(theme: SchemaTheme) -> dict:
+    """matplotlib settings for one render; applied with ``plt.rc_context`` so nothing leaks."""
+    _register_fonts()
+    rc: dict = {"font.family": _FONT_FAMILIES}
+    if theme == "css":
+        rc["svg.fonttype"] = "none"  # keep text as <text>, so the page font and colours apply
+        rc["svg.hashsalt"] = "amistoso-bracket"  # stable element ids, so equal brackets give equal bytes
+    return rc
+
+
+def _css_variables(svg: bytes) -> bytes:
+    """Replace the "css" theme's placeholder colours and font with CSS variables (light fallbacks)."""
+    text = svg.decode()
+    light = _PALETTES["light"]
+    for role, placeholder in vars(_PALETTES["css"]).items():
+        var = f"var(--br-{role.replace('_', '-')}, {getattr(light, role)})"
+        text = re.sub(re.escape(placeholder), var, text, flags=re.IGNORECASE)
+    text = re.sub(r"font-family:[^;\"]*", "font-family: var(--br-font, 'Onest', sans-serif)", text)
+    # The <metadata> block only carries a creation timestamp; dropping it keeps the bytes stable.
+    text = re.sub(r"<metadata>.*?</metadata>\s*", "", text, flags=re.DOTALL)
+    return text.encode()
 
 
 def _draw(
@@ -1185,8 +1296,12 @@ def _draw(
     arrow_scale: float = 1.0,
     title_font_scale: float = 1.0,
     output_scale: float = 1.0,
+    palette: _Palette = _PALETTES["light"],
 ) -> plt.Figure:
     """Render the layout dict to a matplotlib Figure."""
+    node_styles = _node_styles(palette)
+    round_styles = _round_styles(palette)
+    edge_styles = _edge_styles(palette)
     G = layout["graph"]
     positions = layout["positions"]
     node_meta = layout["node_meta"]
@@ -1194,7 +1309,8 @@ def _draw(
 
     if not positions:
         fig, ax = plt.subplots(figsize=(4, 2))
-        ax.text(0.5, 0.5, "No data", ha="center", va="center", fontsize=14)
+        fig.set_facecolor(palette.bg)
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", fontsize=14, color=palette.muted)
         ax.axis("off")
         return fig
 
@@ -1226,12 +1342,12 @@ def _draw(
     )
 
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-    fig.set_facecolor("#FAFAFA")
-    ax.set_facecolor("#FAFAFA")
+    fig.set_facecolor(palette.bg)
+    ax.set_facecolor(palette.bg)
     ax.axis("off")
 
     if title:
-        ax.set_title(title, fontsize=16, fontweight="bold", pad=20)
+        ax.set_title(title, fontsize=16, fontweight="bold", pad=20, color=palette.text)
 
     def _node_box_size(kind: str) -> tuple[float, float]:
         """Box size in data units for a given node kind."""
@@ -1291,7 +1407,7 @@ def _draw(
         tx, ty = _edge_center_anchor(x1, y1, bw1, bh1, -dx, -dy)
 
         rel = edata.get("relation", "neutral")
-        es = _EDGE_STYLE.get(rel, _EDGE_STYLE["neutral"])
+        es = edge_styles.get(rel, edge_styles["neutral"])
         edge_lw = es["lw"] * line_width
         # Loss edges arc downward (negative rad) so they visually separate from
         # win/neutral edges; the curvature increases with line distance so that
@@ -1333,11 +1449,11 @@ def _draw(
         if kind == BracketNodeKind.GROUP and gi is not None:
             style = _group_style(gi)
         elif kind == BracketNodeKind.ADVANCE and gi is not None:
-            style = _advance_style(gi)
-        elif kind == BracketNodeKind.MATCH and rnd and rnd in _ROUND_COLOURS:
-            style = _ROUND_COLOURS[rnd]
+            style = _advance_style(gi, palette)
+        elif kind == BracketNodeKind.MATCH and rnd and rnd in round_styles:
+            style = round_styles[rnd]
         else:
-            style = _STYLE.get(kind, _STYLE[BracketNodeKind.MATCH])
+            style = node_styles.get(kind, node_styles[BracketNodeKind.MATCH])
 
         x, y = positions[nid]
 
@@ -1466,7 +1582,7 @@ def _draw(
             va="bottom",
             fontsize=12 * text_k / box_scale,
             fontstyle="italic",
-            color="#555555",
+            color=palette.muted,
         )
 
     ax.set_xlim(*x_lim)

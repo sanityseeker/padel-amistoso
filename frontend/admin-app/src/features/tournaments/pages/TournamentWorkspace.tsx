@@ -25,7 +25,6 @@ import {
   IconX,
   IconArrowBackUp,
   IconCheck,
-  IconPencil,
   IconSettings,
   IconActivity,
   IconLayoutSidebarRightCollapse,
@@ -43,6 +42,7 @@ import { useRegisterWorkspace } from '../../switcher/workspace';
 import { workspaceQuery } from '../../../admin/tournament/query';
 import { PlayerCodes } from '../../../admin/tournament/PlayerCodes';
 import { TournamentNotes } from '../../../admin/settings/NotesPanel';
+import { AnnouncementsPanel } from '../../../admin/tournament/AnnouncementsPanel';
 import { latestRound } from '../../../admin/tournament/pairings';
 import { ReviewQueue } from '../../../admin/tournament/ReviewQueue';
 import { AdminScoreDialog, AdminScoreEntry } from '../../../admin/tournament/AdminScoreEntry';
@@ -52,6 +52,7 @@ import { PlayoffsDialog } from '../../../admin/tournament/PlayoffsDialog';
 import { ExportDialog } from '../../../admin/tournament/ExportDialog';
 import { TournamentSettings, type SettingsTab } from '../../../admin/settings/TournamentSettings';
 import {
+  allMatches,
   historyOnly,
   matchDecider,
   pageMatches,
@@ -180,17 +181,20 @@ function Workspace({ id }: { id: string }) {
   // Review exists while there is something in it, and stays while it is open: resolving the last item
   // shows "Nothing to review." instead of switching tabs under the organizer.
   const [keepReview, setKeepReview] = useState(false);
+  // Matches view in the play-offs: the live stage, or the earlier one (group stage / Mexicano
+  // rounds), which is read-only.
+  const [stage, setStage] = useState<'now' | 'earlier'>('now');
+  const [earlierGroup, setEarlierGroup] = useState<string>('all');
   const hasReview = !!page && canEdit && (pageReviews.length > 0 || keepReview);
-  // On a phone the knockout bracket carries the match cards, so there is no second Matches tab.
-  const bracketOnly = phone && playoffCtx;
-  const firstView = bracketOnly ? 'bracket' : 'matches';
+  const firstView = 'matches';
   const allowed = [
-    ...(bracketOnly ? ['bracket'] : ['matches']),
+    'matches',
     ...(hasStandings ? ['standings'] : []),
-    ...(playoffCtx && !bracketOnly ? ['bracket'] : []),
+    ...(playoffCtx ? ['bracket'] : []),
     ...(hasReview ? ['review'] : []),
     ...(canEdit ? ['players'] : []),
     ...(showPayments ? ['payments'] : []),
+    ...(canEdit ? ['announcements'] : []),
     ...(canEdit ? ['notes'] : []),
   ];
   const view = useViewState(
@@ -682,122 +686,185 @@ function Workspace({ id }: { id: string }) {
     return pending.find((m) => matches.indexOf(m) > at) ?? pending[0];
   };
 
-  const matchesPane = (
-    <Stack gap="sm">
+  // The stage the play-offs left behind stays readable: the group matches, or the Mexicano rounds.
+  const earlierGroups =
+    playoffCtx && loaded?.groups?.matches && !Array.isArray(loaded.groups.matches)
+      ? loaded.groups.matches
+      : null;
+  const earlierRounds =
+    playoffCtx && !earlierGroups && loaded?.rounds ? allMatches(loaded.rounds) : [];
+  const earlierName = earlierGroups ? tx('Group stage') : tx('Mexicano rounds');
+  const earlierAll = earlierGroups ? Object.values(earlierGroups).flat() : earlierRounds;
+  const hasEarlier = earlierAll.length > 0;
+  const stageSwitch = hasEarlier && (
+    <SegmentedControl
+      size="xs"
+      value={stage}
+      onChange={(value) => setStage(value as 'now' | 'earlier')}
+      aria-label={tx('Stage')}
+      data-testid="stage-switch"
+      data={[
+        { value: 'now', label: tx('Play-offs') },
+        { value: 'earlier', label: earlierName },
+      ]}
+    />
+  );
+  const earlierNames = earlierGroups ? Object.keys(earlierGroups) : [];
+  const earlierShown =
+    earlierGroups && earlierGroup !== 'all' && earlierGroups[earlierGroup]
+      ? earlierGroups[earlierGroup]
+      : earlierAll;
+  const earlierPane = (
+    <Stack gap="sm" data-testid="earlier-stage-matches">
       <Group justify="space-between">
-        <Title order={3}>{tx('Match centre')}</Title>
-        <Group gap="xs">
-          <SegmentedControl
-            ref={filterRef}
-            value={filter}
-            onChange={setFilter}
-            data={[
-              { value: 'pending', label: tx('To play') },
-              { value: 'completed', label: tx('Completed') },
-              { value: 'all', label: tx('All matches') },
-            ]}
-          />
-          {twoPane && (
-            <Button
-              size="compact-sm"
-              variant="subtle"
-              color="gray"
-              leftSection={
-                showStandingsPane ? (
-                  <IconLayoutSidebarRightCollapse size={16} />
-                ) : (
-                  <IconLayoutSidebarRightExpand size={16} />
-                )
-              }
-              aria-expanded={showStandingsPane}
-              aria-controls="standings-pane"
-              data-testid="standings-toggle"
-              onClick={() => {
-                if (showStandingsPane && tab === 'standings') setTab(firstView);
-                setStandingsHidden(showStandingsPane);
-              }}
-            >
-              {showStandingsPane ? tx('Hide standings') : tx('Show standings')}
-            </Button>
-          )}
-        </Group>
+        <Title order={3}>{earlierName}</Title>
+        {stageSwitch}
       </Group>
-      {loaded?.groupStage && groupNames.length > 1 && (
+      {earlierNames.length > 1 && (
         <ScrollArea type="never" scrollbars="x">
           <SegmentedControl
             size="xs"
-            value={group ?? 'all'}
-            onChange={(value) =>
-              view.patch({ group: value === 'all' ? undefined : value }, { replace: true })
-            }
-            aria-label={tx('Group (matches left)')}
+            value={earlierGroup}
+            onChange={setEarlierGroup}
+            aria-label={tx('Group')}
             data={[
               { value: 'all', label: tx('All groups') },
-              ...groupNames.map((name) => {
-                const left = pendingIn(matches.filter((m) => groupOf.get(m.id) === name));
-                return { value: name, label: left ? `${name} (${left})` : name };
-              }),
+              ...earlierNames.map((name) => ({ value: name, label: name })),
             ]}
           />
         </ScrollArea>
       )}
-      {playoffCtx && !phone && roundValues.length > 1 && (
-        <ScrollArea type="never" scrollbars="x">
-          <SegmentedControl
-            size="xs"
-            value={round ?? 'all'}
-            onChange={(value) =>
-              view.patch(value === 'all' ? { round: undefined } : { round: value, filter: 'all' })
-            }
-            aria-label={tx('Round', { context: 'knockout' })}
-            data={[
-              { value: 'all', label: tx('All') },
-              ...roundValues.map((label) => ({ value: label, label: formatRoundLabel(label) })),
-            ]}
-          />
-        </ScrollArea>
-      )}
-      {!!sitOuts?.length && (
-        <Text size="sm" c="dimmed">
-          {tx('Sitting out: {names}', { names: sitOuts.join(', ') })}
-        </Text>
-      )}
-      {!visible.length ? (
-        <EmptyState title={emptyTitle.title}>{emptyTitle.text}</EmptyState>
-      ) : (
-        <MatchList
-          matches={visible}
-          ctx={ctx}
-          courts={status.assign_courts !== false}
-          settings={settings}
-          canEdit={scoreable}
-          selectedId={selectedId}
-          editingId={editing && !phone && editing.from === 'list' ? editing.id : null}
-          onScore={scoreFromList}
-          quick={quick}
-          renderMenu={renderMenu}
-          renderEditor={(m) => (
-            <AdminScoreEntry
-              key={`${m.id}-record`}
-              surface="inline"
-              tid={id}
-              match={m}
-              ctx={ctx}
-              settings={settings}
-              totalPoints={status.total_points_per_match ?? 0}
-              purpose="record"
-              canClear={canClear}
-              onClose={() => closeEditor(m.id)}
-              onSubmit={(payload) => {
-                saved.current = true;
-                void record.mutate({ match: m, payload });
-              }}
-            />
-          )}
-        />
-      )}
+      <MatchList
+        matches={earlierShown}
+        ctx={earlierGroups ? 'gp-group' : 'mex'}
+        courts={status.assign_courts !== false}
+        settings={settings}
+        canEdit={false}
+        onScore={ignoreScore}
+      />
     </Stack>
   );
+
+  const matchesPane =
+    hasEarlier && stage === 'earlier' ? (
+      earlierPane
+    ) : (
+      <Stack gap="sm">
+        {stageSwitch}
+        <Group justify="space-between">
+          <Title order={3}>{tx('Match centre')}</Title>
+          <Group gap="xs">
+            <SegmentedControl
+              ref={filterRef}
+              value={filter}
+              onChange={setFilter}
+              data={[
+                { value: 'pending', label: tx('To play') },
+                { value: 'completed', label: tx('Completed') },
+                { value: 'all', label: tx('All matches') },
+              ]}
+            />
+            {twoPane && (
+              <Button
+                size="compact-sm"
+                variant="subtle"
+                color="gray"
+                leftSection={
+                  showStandingsPane ? (
+                    <IconLayoutSidebarRightCollapse size={16} />
+                  ) : (
+                    <IconLayoutSidebarRightExpand size={16} />
+                  )
+                }
+                aria-expanded={showStandingsPane}
+                aria-controls="standings-pane"
+                data-testid="standings-toggle"
+                onClick={() => {
+                  if (showStandingsPane && tab === 'standings') setTab(firstView);
+                  setStandingsHidden(showStandingsPane);
+                }}
+              >
+                {showStandingsPane ? tx('Hide standings') : tx('Show standings')}
+              </Button>
+            )}
+          </Group>
+        </Group>
+        {loaded?.groupStage && groupNames.length > 1 && (
+          <ScrollArea type="never" scrollbars="x">
+            <SegmentedControl
+              size="xs"
+              value={group ?? 'all'}
+              onChange={(value) =>
+                view.patch({ group: value === 'all' ? undefined : value }, { replace: true })
+              }
+              aria-label={tx('Group (matches left)')}
+              data={[
+                { value: 'all', label: tx('All groups') },
+                ...groupNames.map((name) => {
+                  const left = pendingIn(matches.filter((m) => groupOf.get(m.id) === name));
+                  return { value: name, label: left ? `${name} (${left})` : name };
+                }),
+              ]}
+            />
+          </ScrollArea>
+        )}
+        {playoffCtx && !phone && roundValues.length > 1 && (
+          <ScrollArea type="never" scrollbars="x">
+            <SegmentedControl
+              size="xs"
+              value={round ?? 'all'}
+              onChange={(value) =>
+                view.patch(value === 'all' ? { round: undefined } : { round: value, filter: 'all' })
+              }
+              aria-label={tx('Round', { context: 'knockout' })}
+              data={[
+                { value: 'all', label: tx('All') },
+                ...roundValues.map((label) => ({ value: label, label: formatRoundLabel(label) })),
+              ]}
+            />
+          </ScrollArea>
+        )}
+        {!!sitOuts?.length && (
+          <Text size="sm" c="dimmed">
+            {tx('Sitting out: {names}', { names: sitOuts.join(', ') })}
+          </Text>
+        )}
+        {!visible.length ? (
+          <EmptyState title={emptyTitle.title}>{emptyTitle.text}</EmptyState>
+        ) : (
+          <MatchList
+            matches={visible}
+            ctx={ctx}
+            courts={status.assign_courts !== false}
+            settings={settings}
+            canEdit={scoreable}
+            selectedId={selectedId}
+            editingId={editing && !phone && editing.from === 'list' ? editing.id : null}
+            onScore={scoreFromList}
+            quick={quick}
+            renderMenu={renderMenu}
+            renderEditor={(m) => (
+              <AdminScoreEntry
+                key={`${m.id}-record`}
+                surface="inline"
+                tid={id}
+                match={m}
+                ctx={ctx}
+                settings={settings}
+                totalPoints={status.total_points_per_match ?? 0}
+                purpose="record"
+                canClear={canClear}
+                onClose={() => closeEditor(m.id)}
+                onSubmit={(payload) => {
+                  saved.current = true;
+                  void record.mutate({ match: m, payload });
+                }}
+              />
+            )}
+          />
+        )}
+      </Stack>
+    );
 
   const standingsGroup = groupNames.includes(view.state.group ?? '')
     ? view.state.group!
@@ -892,16 +959,15 @@ function Workspace({ id }: { id: string }) {
       )}
       <Tabs value={twoPane && tab === 'standings' ? 'matches' : tab} onChange={setTab}>
         <Tabs.List mb="md">
-          {bracketOnly && <Tabs.Tab value="bracket">{tx('Matches')}</Tabs.Tab>}
           {twoPane ? (
             <Tabs.Tab value="matches">{tx('Overview')}</Tabs.Tab>
           ) : (
             <>
-              {!bracketOnly && <Tabs.Tab value="matches">{tx('Matches')}</Tabs.Tab>}
+              <Tabs.Tab value="matches">{tx('Matches')}</Tabs.Tab>
               {hasStandings && <Tabs.Tab value="standings">{tx('Standings')}</Tabs.Tab>}
             </>
           )}
-          {playoffCtx && !bracketOnly && <Tabs.Tab value="bracket">{tx('Bracket')}</Tabs.Tab>}
+          {playoffCtx && <Tabs.Tab value="bracket">{tx('Bracket')}</Tabs.Tab>}
           {hasReview && (
             <Tabs.Tab
               value="review"
@@ -941,47 +1007,14 @@ function Workspace({ id }: { id: string }) {
               {tx('Payments')}
             </Tabs.Tab>
           )}
+          {canEdit && <Tabs.Tab value="announcements">{tx('Announcements')}</Tabs.Tab>}
           {canEdit && <Tabs.Tab value="notes">{tx('Notes')}</Tabs.Tab>}
         </Tabs.List>
-        {!twoPane && !bracketOnly && <Tabs.Panel value="matches">{matchesPane}</Tabs.Panel>}
+        {!twoPane && <Tabs.Panel value="matches">{matchesPane}</Tabs.Panel>}
         {!twoPane && hasStandings && <Tabs.Panel value="standings">{standingsPane}</Tabs.Panel>}
         {playoffCtx && (
           <Tabs.Panel value="bracket">
-            <Bracket
-              matches={matches}
-              ctx={ctx}
-              settings={settings}
-              tid={id}
-              prefix={prefix}
-              pendingChip={bracketOnly}
-              actions={
-                canEdit
-                  ? (m) =>
-                      m.team1.length && m.team2.length && !m.walkover ? (
-                        <Button
-                          size="compact-sm"
-                          variant={m.status === 'completed' ? 'subtle' : 'light'}
-                          color={m.status === 'completed' ? 'gray' : 'court'}
-                          leftSection={
-                            m.status === 'completed' ? (
-                              <IconPencil size={14} />
-                            ) : (
-                              <IconCheck size={14} />
-                            )
-                          }
-                          aria-label={`${tx('Score', { context: 'action' })}: ${m.team1.join(' & ')} vs ${m.team2.join(' & ')}`}
-                          onClick={() =>
-                            setEditing({ id: m.id, purpose: 'record', from: 'review' })
-                          }
-                        >
-                          {m.status === 'completed'
-                            ? tx('Edit')
-                            : tx('Score', { context: 'action' })}
-                        </Button>
-                      ) : null
-                  : undefined
-              }
-            />
+            <Bracket matches={matches} settings={settings} tid={id} prefix={prefix} />
           </Tabs.Panel>
         )}
         {hasReview && (
@@ -1014,6 +1047,11 @@ function Workspace({ id }: { id: string }) {
         {showPayments && (
           <Tabs.Panel value="payments">
             <PaymentsPanel base={`/tournaments/${id}`} scope="tournament" />
+          </Tabs.Panel>
+        )}
+        {canEdit && (
+          <Tabs.Panel value="announcements">
+            <AnnouncementsPanel tid={id} announcements={settings.announcements ?? []} />
           </Tabs.Panel>
         )}
         {canEdit && (

@@ -37,6 +37,8 @@ export interface MatchView {
   /** Both sides are known (a bracket slot can still be empty). */
   ready: boolean;
   walkover: boolean;
+  /** Still to play and held back by a player on another court (a court may be free). */
+  waitingForPlayers: boolean;
 }
 
 function sides(
@@ -116,6 +118,7 @@ export function toMatchView(m: Match, settings: TvSettings, ctx: Ctx): MatchView
     sets: m.sets,
     ready: m.team1.length > 0 && m.team2.length > 0,
     walkover: !!m.walkover,
+    waitingForPlayers: !!m.waiting_for_players,
   };
 }
 
@@ -135,7 +138,7 @@ export function toPlayerMatchView(
       ? { key: 'tbd', label: tx('Waiting for your opponent'), tone: 'neutral' }
       : m.score
         ? m.score_confirmed
-          ? { key: 'final', label: tx('Final'), tone: 'neutral' }
+          ? { key: 'final', label: tx('Final', { context: 'status' }), tone: 'neutral' }
           : { key: 'await', label: tx('Awaiting confirmation'), tone: 'warning' }
         : { key: 'play', label: tx('To play'), tone: 'info' },
   );
@@ -153,6 +156,7 @@ export function toPlayerMatchView(
     sets: m.sets,
     ready,
     walkover: !!m.walkover,
+    waitingForPlayers: !!m.waiting_for_players,
   };
 }
 

@@ -133,7 +133,9 @@ class TestTypesAndPhases:
         ws = _assert_parity(client, tid, "mex", auth_headers)
         assert ws["path"] == "playoffs"
         assert ws["data"]["matches"]
-        assert ws["rounds"] is None
+        # The Mexicano rounds stay readable once the play-offs have started.
+        assert ws["rounds"] == _get(client, f"{tid}/mex/matches", auth_headers)
+        assert ws["rounds"]["all_matches"]
 
     def test_mexicano_finished_without_playoffs_lists_rounds(
         self, client: TestClient, auth_headers: dict[str, str]

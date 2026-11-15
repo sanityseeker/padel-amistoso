@@ -350,6 +350,44 @@ class TvSettingsRequest(BaseModel):
     correction_window_seconds: int | None = Field(default=None, ge=0, le=3600)
 
 
+ANNOUNCEMENT_MAX_LENGTH = 1000
+ANNOUNCEMENTS_MAX_ITEMS = 20
+
+
+def _announcement_text(value: str) -> str:
+    """Strip an announcement and reject a blank one."""
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("Announcement text must not be empty")
+    return stripped
+
+
+AnnouncementText = Annotated[str, Field(max_length=ANNOUNCEMENT_MAX_LENGTH), AfterValidator(_announcement_text)]
+
+
+class Announcement(BaseModel):
+    """One organizer post of a tournament (Markdown), shown on the Player Hub event page and the TV."""
+
+    id: str
+    text: str = Field(max_length=ANNOUNCEMENT_MAX_LENGTH)
+    created_at: str
+    pinned: bool = False
+
+
+class AnnouncementCreate(BaseModel):
+    """Post a new announcement; ``notify`` also sends a web push to the tournament's subscribers."""
+
+    text: AnnouncementText
+    notify: bool = True
+
+
+class AnnouncementUpdate(BaseModel):
+    """Edit the text and/or pin state of an announcement (only supplied fields change)."""
+
+    text: AnnouncementText | None = None
+    pinned: bool | None = None
+
+
 class TvSettings(BaseModel):
     """Full TV display settings with defaults."""
 
@@ -696,6 +734,7 @@ class SchemaPreviewRequest(BaseModel):
     output_scale: float = Field(default=1.0, ge=0.5, le=3.0)
     num_winners: int = Field(default=1, ge=1, le=64)
     third_place: bool = False
+    theme: Literal["light", "dark"] = "light"
 
     @field_validator("group_sizes")
     @classmethod

@@ -23,24 +23,6 @@
   max-width: 40vw;
   object-fit: contain;
 }
-.banner {
-  font-size: var(--fs-tv-lg);
-}
-.customInfoTitle {
-  font-size: var(--fs-tv-lg);
-}
-.customInfoMarkdown :global(p),
-.customInfoMarkdown :global(li) {
-  font-size: var(--fs-tv-md);
-  line-height: 1.35;
-}
-.customInfoMarkdown :global(h3),
-.customInfoMarkdown :global(h4),
-.customInfoMarkdown :global(h5),
-.customInfoMarkdown :global(h6) {
-  font-size: var(--fs-tv-lg);
-  line-height: 1.15;
-}
 /* One card per court; on a wide screen the cards are large enough to read from the other side of a hall. */
 .courts {
   display: grid;
@@ -80,19 +62,8 @@
   overflow: auto;
   max-width: 100%;
 }
-.bracketImage {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  cursor: zoom-in;
-  background: white;
-  border-radius: var(--mantine-radius-md);
-}
 .lightbox {
   height: calc(100dvh - 9rem);
-}
-.lightboxImage {
-  background: white;
 }
 /* The page's own header bar, the same height and rule as the app header (which the TV route hides). */
 /* The TV route has no app header, so this bar clears the status bar itself (the shell already keeps

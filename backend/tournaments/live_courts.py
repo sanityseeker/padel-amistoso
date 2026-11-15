@@ -33,7 +33,18 @@ started a match.  When there are more players than the courts can hold, this
 spreads the waiting evenly.  Each match takes the free court its players
 played on least.
 
+With ``ordered_rounds`` (team-mode Group+Playoff) the round order is a hard
+rule instead of a tie-break: a match goes on court, or into a queue slot, only
+when every lower-round match of either of its teams is played, on court or in
+an earlier slot.  Group balancing and the rest of the ranking pick among the
+eligible matches; ``lag`` only breaks ties.  This cannot deadlock: the lowest
+open round of a group is always eligible.  Old plans are re-planned on the next
+refill; matches already on court stay.
+
 A score waiting for confirmation frees the court: the match was played.
+
+A waiting match is flagged ``waiting_for_players`` when one of its players is
+still on court, so a free court next to it is not shown as "waiting for a court".
 """
 
 from __future__ import annotations
@@ -92,6 +103,7 @@ def refill_courts(
     scope_of: Callable[[Match], str | None] | None = None,
     capacity: Mapping[str, int] | None = None,
     round_order: bool = False,
+    ordered_rounds: bool = False,
 ) -> None:
     """Fill free courts with waiting matches and re-plan the queue (see the module docstring).
 
@@ -100,11 +112,15 @@ def refill_courts(
     group and *capacity* says how many matches a group can play at once; the
     group with the most time left (matches left / capacity) goes first.
     With *round_order* a group's earlier rounds go before its later ones.
+    With *ordered_rounds* a match is eligible only when every lower-round
+    match (round number above 0) of one of its teams is already played, on
+    court or placed in an earlier slot.
     Waiting matches get a slot (their place in the queue) and no court.
     """
-    if not courts:
-        return
     matches = list(matches)
+    if not courts:
+        _flag_waiting(matches)
+        return
     index = {c.id: i for i, c in enumerate(courts)}
     ready = [m for m in matches if _ready(m)]
     # 1. What is on court now.  Older data has no flags: then the first
@@ -224,7 +240,22 @@ def refill_courts(
             for m in remaining:
                 sc = scope[id(m)]
                 first_round[sc] = min(first_round.get(sc, m.round_number), m.round_number)
-            fits = [m for m in remaining if id(m) not in {id(x) for x in chosen} and not _ids(m) & blocked]
+            placed = {id(x) for x in chosen}
+
+            def prereqs_done(m: Match) -> bool:
+                # No lower-round match of a team of *m* may still wait (or be picked just now).
+                if not ordered_rounds or m.round_number <= 0:
+                    return True
+                return not any(
+                    o is not m
+                    and id(o) not in placed
+                    and 0 < o.round_number < m.round_number
+                    and scope[id(o)] == scope[id(m)]
+                    and _ids(o) & _ids(m)
+                    for o in remaining
+                )
+
+            fits = [m for m in remaining if id(m) not in placed and not _ids(m) & blocked and prereqs_done(m)]
             if not fits:
                 break
             best = min(fits, key=lambda m: (borrows(m), rank(m, first_round)))
@@ -249,3 +280,14 @@ def refill_courts(
             remaining = [m for m in remaining if id(m) not in done]
             slot += 1
         now = False
+    _flag_waiting(matches)
+
+
+def _flag_waiting(matches: list[Match]) -> None:
+    """Mark the waiting matches held back by a player who is still on court."""
+    playing: set[str] = set()
+    for m in matches:
+        if is_on_court(m):
+            playing |= _ids(m)
+    for m in matches:
+        m.waiting_for_players = _ready(m) and not is_on_court(m) and bool(_ids(m) & playing)

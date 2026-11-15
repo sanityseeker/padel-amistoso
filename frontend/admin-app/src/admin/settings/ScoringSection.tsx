@@ -226,7 +226,9 @@ export function TvSection({
         )}
         <Textarea
           label={tx('Banner message')}
-          description={tx('Shown across the top of the TV screen.')}
+          description={tx(
+            'Shown across the top of the TV screen and in the Player Hub. Markdown formatting is supported.',
+          )}
           maxLength={5000}
           autosize
           minRows={2}
@@ -245,7 +247,7 @@ export function TvSection({
         </FormActions>
         <TextInput
           label={tx('Custom section title')}
-          description={tx('Name this optional section on the TV screen.')}
+          description={tx('Name this optional section on the TV screen and in the Player Hub.')}
           maxLength={120}
           value={customInfoTitle}
           onChange={(e) => setCustomInfoTitle(e.currentTarget.value)}
@@ -253,7 +255,7 @@ export function TvSection({
         <Textarea
           label={tx('Custom section description')}
           description={tx(
-            'Shown on TV when the description is not empty. Markdown formatting is supported.',
+            'Shown on the TV screen and in the Player Hub when the description is not empty. Markdown formatting is supported.',
           )}
           maxLength={5000}
           autosize

@@ -18,7 +18,7 @@ from ..auth.deps import get_current_user, get_current_user_optional, get_current
 from ..auth.models import User
 from ..models import Court, EliminationType, InputFormat, Player, TournamentType
 from ..tournaments import PlayoffTournament
-from ..viz import render_playoff_schema
+from ..viz import SchemaTheme, render_playoff_schema
 from .helpers import (
     _require_club_join_access,
     stage_progress_payload,
@@ -261,6 +261,7 @@ async def po_playoffs_schema(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    theme: SchemaTheme = Query("light", description="light, dark, or css (an SVG coloured by CSS variables)"),
     side: Literal["winners", "losers"] | None = Query(None),
     user: User | None = Depends(get_current_user_optional),
 ) -> Response:
@@ -301,6 +302,7 @@ async def po_playoffs_schema(
         elim,
         auto_title,
         fmt,
+        theme,
         box_scale,
         line_width,
         arrow_scale,
@@ -322,6 +324,7 @@ async def po_playoffs_schema(
         # elimination splits one combined layout into winners/losers views.
         side=None if t.espejo else side,
         fmt=fmt,
+        theme=theme,
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
@@ -330,8 +333,9 @@ async def po_playoffs_schema(
         num_winners=num_winners,
         third_place=third_place,
     )
-    _schema_cache_put(key, img, fmt)
-    return _schema_image_response(img, fmt, etag=key[:16])
+    fmt_out = "svg" if theme == "css" else fmt
+    _schema_cache_put(key, img, fmt_out)
+    return _schema_image_response(img, fmt_out, etag=key[:16])
 
 
 @router.post("/{tid}/po/record")

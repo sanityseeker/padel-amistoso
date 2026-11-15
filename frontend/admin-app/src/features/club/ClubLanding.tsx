@@ -429,7 +429,7 @@ function Leaderboard({
     >
       <Group justify="space-between" align="flex-end">
         <Title order={2} id="club-board-title">
-          {tx('Leaderboard')}
+          {tx('Leaderboard', { context: 'overall' })}
         </Title>
         {seasons.length > 0 && (
           <Select

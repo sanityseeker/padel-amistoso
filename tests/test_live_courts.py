@@ -41,7 +41,10 @@ def _check_invariants(matches: list[Match], courts: list[Court]) -> None:
         busy |= _ids(m)
     if len(on) < len(courts):
         waiting = [m for m in matches if m.team1 and m.team2 and not court_done(m) and not is_on_court(m)]
-        assert all(_ids(m) & busy for m in waiting), "a court is idle while a match could be played"
+        # A match held back by an earlier open round of its team is not eligible (team-mode round order).
+        assert all(_ids(m) & busy or _lower_open(m, matches) for m in waiting), (
+            "a court is idle while a match could be played"
+        )
 
 
 def _play_out(t, matches, record, courts, rng) -> dict[str, float]:
@@ -93,14 +96,32 @@ class TestGroupStage:
         assert len(on_after) >= len(on) - 1
         _check_invariants(t.all_group_matches(), t.courts)
 
+    def test_match_held_by_a_busy_player_says_so(self):
+        # 2 groups of 4 teams on 4 courts: once one round-1 match ends, the next
+        # matches of its teams wait for teams still on court, not for a court.
+        t = _gp([4, 4], 4)
+        group_a = t.groups[0].matches
+        first = next(m for m in group_a if is_on_court(m))
+        t.record_group_result(first.id, (6, 2))
+        on = [m for m in t.all_group_matches() if is_on_court(m)]
+        assert len(on) < len(t.courts)  # a court is free
+        playing = set().union(*(_ids(m) for m in on))
+        waiting = [m for m in group_a if m.status == MatchStatus.SCHEDULED and not is_on_court(m)]
+        assert waiting
+        for m in waiting:
+            assert m.waiting_for_players == bool(_ids(m) & playing)
+        assert any(m.waiting_for_players for m in waiting)
+        assert not any(m.waiting_for_players for m in on)
+        assert not first.waiting_for_players
+
     def test_groups_finish_together(self):
-        # 7 teams (21 matches, 3 at once) vs 4 teams (6 matches, 2 at once) on 4 courts.
-        t = _gp([7, 4], 4)
-        finish = _play_out(t, t.all_group_matches, lambda m: t.record_group_result(m.id, (6, 3)), t.courts, None)
-        last = {g.name: max(finish[m.id] for m in g.matches) for g in t.groups}
-        end = max(last.values())
+        # 7 teams (21 matches, 3 at once) vs 4 teams (6 matches, 2 at once) on 4 courts, averaged over
+        # seeded match lengths (a single run with random lengths is too noisy).
+        runs = [_timed_run([7, 4], 4, seed) for seed in range(20)]
+        big = sum(r["A"] for r in runs) / len(runs)
+        small = sum(r["B"] for r in runs) / len(runs)
         # The small group is not done long before the big one: it keeps finishing in the last stretch.
-        assert last["B"] > 0.6 * end
+        assert small > 0.6 * big
 
     def test_rest_is_spread_when_there_are_more_teams_than_courts(self):
         # 6 teams, 1 court: a team never plays twice in a row while its round has a match without it.
@@ -211,5 +232,151 @@ def test_seven_and_six_teams_on_six_courts_finish_together():
     runs = [_timed_run([7, 6], 6, seed) for seed in range(20)]
     gap = sum(r["A"] - r["B"] for r in runs) / len(runs)
     end = sum(r["A"] for r in runs) / len(runs)
-    assert gap < 1.5, f"groups finish {gap:.2f} match lengths apart"
+    # Round order is strict: the 6-team group plays 5 rounds at full speed (about 5.5 match lengths) and the
+    # 7-team group needs 7 rounds (about 7.6), so they are at best ~2 apart.  Slowing the small group down
+    # to close the gap would only waste court time.
+    assert gap < 2.5, f"groups finish {gap:.2f} match lengths apart"
     assert end < 8.5, f"group stage takes {end:.2f} match lengths"
+
+
+# --- Round order: every team's matches go on court in round order (team mode) ---
+
+
+def _lower_open(m: Match, ms: list[Match]) -> list[Match]:
+    """Lower-round matches of either team of *m* that are neither played nor on court."""
+    return [
+        o
+        for o in ms
+        if o is not m
+        and 0 < o.round_number < m.round_number
+        and o.team1
+        and o.team2
+        and _ids(o) & _ids(m)
+        and not court_done(o)
+        and not is_on_court(o)
+    ]
+
+
+def _check_round_order(ms: list[Match], n_courts: int) -> None:
+    on = [m for m in ms if is_on_court(m)]
+    for m in on:
+        assert not _lower_open(m, ms), f"{m.round_label} started before an earlier round of its team"
+    busy: set[str] = set().union(*(_ids(m) for m in on)) if on else set()
+    if len(on) < n_courts:
+        # No court idles while an eligible match fits: every waiting match is held by a busy
+        # player or by an earlier round of its team that is itself held back.
+        for m in ms:
+            if m.team1 and m.team2 and not court_done(m) and not is_on_court(m):
+                assert _ids(m) & busy or _lower_open(m, ms), "a court is idle while an eligible match fits"
+
+
+def _random_run(t: GroupPlayoffTournament, seed: int, *, on_step=None) -> int:
+    """Finish a random match on court each step; checks order and idle courts. Returns steps."""
+    rng = random.Random(seed)
+    steps = 0
+    while True:
+        ms = t.all_group_matches()
+        _check_round_order(ms, len(t.courts))
+        on = [m for m in ms if is_on_court(m)]
+        if not on:
+            break
+        if on_step is not None:
+            on_step(steps)
+        m = rng.choice(on)
+        t.record_group_result(m.id, (6, 3))
+        steps += 1
+    assert all(court_done(m) for m in t.all_group_matches() if m.team1 and m.team2)
+    return steps
+
+
+class TestRoundOrder:
+    @pytest.mark.parametrize(
+        "sizes,n_courts", [([5, 7], 4), ([6, 6], 6), ([8], 4), ([5], 2), ([7], 3), ([5, 7], 6), ([3, 6], 2)]
+    )
+    @pytest.mark.parametrize("seed", range(8))
+    def test_rounds_go_on_court_in_order(self, sizes, n_courts, seed):
+        t = _gp(sizes, n_courts)
+        _random_run(t, seed)
+
+    def test_early_finish_pulls_next_eligible_match_never_a_busy_team(self):
+        t = _gp([6, 6], 6)
+        for _ in range(10):
+            on = [m for m in t.all_group_matches() if is_on_court(m)]
+            first = on[0]
+            t.record_group_result(first.id, (6, 1))
+            ms = t.all_group_matches()
+            on_after = [m for m in ms if is_on_court(m)]
+            seen: set[str] = set()
+            for m in on_after:
+                assert not (_ids(m) & seen), "a busy team was put on a second court"
+                seen |= _ids(m)
+            _check_round_order(ms, len(t.courts))
+            if not on_after:
+                break
+
+    def test_queue_slots_respect_round_order(self):
+        t = _gp([7], 3)
+        ms = [m for m in t.all_group_matches() if not court_done(m)]
+        for m in ms:
+            for o in ms:
+                if o is not m and 0 < o.round_number < m.round_number and _ids(o) & _ids(m):
+                    assert o.slot_number <= m.slot_number, "a later round was planned before an earlier one"
+
+    def test_withdrawal_mid_stage_does_not_block_later_rounds(self):
+        t = _gp([6, 6], 4)
+        first = next(m for m in t.all_group_matches() if is_on_court(m))
+        t.record_group_result(first.id, (6, 2))
+        victim = next(m for m in t.all_group_matches() if not court_done(m) and not is_on_court(m)).team1[0]
+        t.withdraw(victim.id)
+        _random_run(t, 3)
+
+    def test_late_added_stubs_get_rounds_and_are_scheduled(self):
+        t = _gp([4, 4], 3)
+        group = t.groups[0]
+        last = max(m.round_number for m in group.matches)
+        stubs = t.add_player_to_group(Player(name="Late"), group.name)
+        assert [m.round_number for m in stubs] == list(range(last + 1, last + 1 + len(stubs)))
+        assert all(m.round_label == f"Group {group.name} R{m.round_number}" for m in stubs)
+        _random_run(t, 5)
+        assert all(court_done(m) for m in stubs)
+
+    def test_late_added_team_after_some_results(self):
+        t = _gp([5], 2)
+        for _ in range(3):
+            m = next(m for m in t.all_group_matches() if is_on_court(m))
+            t.record_group_result(m.id, (6, 4))
+        t.add_player_to_group(Player(name="Late"), "A")
+        _random_run(t, 11)
+
+    def test_save_load_round_trip_keeps_the_plan(self):
+        import pickle
+
+        t = _gp([5, 7], 4)
+        for _ in range(4):
+            m = next(m for m in t.all_group_matches() if is_on_court(m))
+            t.record_group_result(m.id, (6, 4))
+
+        def plan(x: GroupPlayoffTournament) -> list[tuple[str, int, str | None, bool]]:
+            return [
+                (m.id, m.slot_number, m.court.name if m.court else None, bool(m.on_court))
+                for m in x.all_group_matches()
+            ]
+
+        before = plan(t)
+        loaded = pickle.loads(pickle.dumps(t))
+        assert plan(loaded) == before
+        loaded.refill_group_courts()
+        assert plan(loaded) == before
+        _random_run(loaded, 2)
+
+    def test_old_plan_is_replanned_in_order_and_on_court_matches_stay(self):
+        t = _gp([6, 6], 6)
+        on = {m.id: m.court.id for m in t.all_group_matches() if is_on_court(m)}
+        # Simulate an old out-of-order plan: swap the slots of two queued matches of one team.
+        queued = [m for m in t.all_group_matches() if not is_on_court(m) and not court_done(m)]
+        a = min(queued, key=lambda m: m.round_number)
+        b = max((m for m in queued if _ids(m) & _ids(a)), key=lambda m: m.round_number)
+        a.slot_number, b.slot_number = b.slot_number, a.slot_number
+        t.refill_group_courts()
+        assert {m.id: m.court.id for m in t.all_group_matches() if is_on_court(m)} == on
+        assert a.slot_number <= b.slot_number

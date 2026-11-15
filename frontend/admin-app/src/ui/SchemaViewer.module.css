@@ -1,0 +1,21 @@
+/* Narrower than the box (a small zoom step): keep the drawing centred. */
+.picture {
+  margin-inline: auto;
+}
+.open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: zoom-in;
+  border-radius: var(--mantine-radius-md);
+}
+.open:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+.level {
+  font-variant-numeric: tabular-nums;
+}

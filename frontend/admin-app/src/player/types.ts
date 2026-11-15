@@ -1,4 +1,4 @@
-import type { Match } from '../types';
+import type { Announcement, Match } from '../types';
 
 export interface Profile {
   id: string;
@@ -151,6 +151,12 @@ export interface TvPlayerSettings {
   score_confirmation?: 'immediate' | 'required';
   /** Seconds the submitter may still correct a score nobody has confirmed yet (0 = no window). */
   correction_window_seconds?: number;
+  /** The organizer's banner (Markdown) and custom information section (title + Markdown). */
+  banner_text?: string;
+  custom_info_title?: string;
+  custom_info_text?: string;
+  /** The organizer's announcements, pinned first then newest first. */
+  announcements?: Announcement[];
 }
 export interface PathRound {
   round_number: number;

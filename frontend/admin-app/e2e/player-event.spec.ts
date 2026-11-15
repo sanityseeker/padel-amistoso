@@ -319,6 +319,45 @@ test("the Hub match card shows the organizer's note and no court placeholder whe
   await expect(page.getByTestId('event-up-next')).not.toContainText('Waiting for a court');
 });
 
+test('Up next follows the real court assignments; a queued match waits under Later', async ({
+  page,
+  request,
+}) => {
+  // Two groups on one court: one match is on court, the others wait in the queue.
+  const { id } = await createTournament(request, 'gp', `Queue ${Date.now()}`, {
+    court_names: ['Court 1'],
+  });
+  const groups = await (await request.get(`/api/tournaments/${id}/gp/groups`)).json();
+  const raw = groups.all_matches ?? groups.matches;
+  const matches = (Array.isArray(raw) ? raw : Object.values(raw).flat()) as (Match & {
+    court: string | null;
+  })[];
+  const secrets = await secretsOf(request, id);
+  const playing = new Set(
+    matches.filter((m) => m.court).flatMap((m) => [...m.team1_ids, ...m.team2_ids]),
+  );
+  const queuedName = Object.entries(secrets).find(([pid]) => !playing.has(pid))![1].name;
+  const { session } = await profileFor(request, id, queuedName, 'queue');
+  await openHub(page, session.access_token, queuedName);
+  // The home card has no match to show, only why: the match waits for a court.
+  const card = page.getByTestId('active-tournament');
+  await expect(card.getByTestId('active-tournament-idle')).toHaveText('Waiting for a court');
+  await expect(card.getByTestId('player-match')).toHaveCount(0);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await expect(page.getByTestId('event-later')).toContainText('Waiting for a court');
+  await expect(page.getByTestId('event-up-next')).toHaveCount(0);
+  // A match without a court shows no round number: the queue does not follow round order.
+  await expect(page.getByTestId('event-later')).toContainText(/Group [A-Z]/);
+  await expect(page.getByTestId('event-later')).not.toContainText(/\bR\d+\b/);
+  // Once a match holds a court, its round label shows.
+  const onCourt = matches.find((m) => m.court)!;
+  const playingName = secrets[onCourt.team1_ids[0]!]!.name;
+  const onCourtProfile = await profileFor(request, id, playingName, 'queue-on-court');
+  await openHub(page, onCourtProfile.session.access_token, playingName);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await expect(page.getByTestId('event-up-next')).toContainText(/\bR\d+\b/);
+});
+
 test('the next match card shows the contacts the other players shared, and tap copies one', async ({
   page,
   request,
@@ -549,4 +588,59 @@ test('a picked community scope narrows the active tournaments but keeps deep lin
   await expect(page.getByText('Event not found')).toHaveCount(0);
   await page.goto('/player/me');
   await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+});
+
+test('the organizer banner and custom information show on the event page and as a badge on the card', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'mex', `Notes ${Date.now()}`);
+  const { session } = await profileFor(request, id, 'Ana', 'notes');
+  await page.setViewportSize({ width: 375, height: 800 });
+  await openHub(page, session.access_token);
+  const card = page.getByTestId('active-tournament');
+  await expect(card).toHaveCount(1);
+  // Nothing written: no badge, no link, no sections.
+  await expect(card.getByTestId('active-tournament-announcement')).toHaveCount(0);
+  await expect(card.getByTestId('active-tournament-info')).toHaveCount(0);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await expect(page.getByTestId('event-up-next')).toBeVisible();
+  await expect(page.getByTestId('event-announcement')).toHaveCount(0);
+  await expect(page.getByTestId('event-custom-info')).toHaveCount(0);
+
+  await patchTvSettings(request, id, {
+    banner_text: 'Doors close at **nine**',
+    custom_info_title: 'Tournament format',
+    custom_info_text: '**Short sets**\nNo-ad scoring',
+  });
+  await page.reload();
+  const banner = page.getByTestId('event-announcement');
+  await expect(banner).toContainText('Doors close at nine');
+  await expect(banner.getByText('nine', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
+  const info = page.getByTestId('event-custom-info');
+  await expect(info.getByText('Short sets', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
+  await expect(info).toContainText('No-ad scoring');
+  await expect(page.getByRole('heading', { name: 'Tournament format' })).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBeTruthy();
+
+  await page.goto('/player');
+  const badge = page.getByTestId('active-tournament').getByTestId('active-tournament-announcement');
+  await expect(badge).toHaveText('Announcement');
+  // The card shows the badge only, never the text.
+  await expect(page.getByTestId('active-tournament')).not.toContainText('Doors close');
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBeTruthy();
+  await badge.click();
+  await expect(page).toHaveURL(new RegExp(`/player/matches/tournament/${id}$`));
+  await expect(page.getByTestId('event-announcement')).toBeVisible();
+
+  // Cleared again: both disappear.
+  await patchTvSettings(request, id, { banner_text: '', custom_info_text: '' });
+  await page.reload();
+  await expect(page.getByTestId('event-up-next')).toBeVisible();
+  await expect(page.getByTestId('event-announcement')).toHaveCount(0);
+  await expect(page.getByTestId('event-custom-info')).toHaveCount(0);
 });

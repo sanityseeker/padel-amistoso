@@ -1,16 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActionIcon, Box, Group, Loader, Modal, Stack, Text, UnstyledButton } from '@mantine/core';
+import { useRef, useState } from 'react';
+import { ActionIcon, Box, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import {
   IconArrowUpRight,
   IconDownload,
+  IconMaximize,
   IconMinus,
   IconPlus,
   IconZoomReset,
 } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import type { TvSettings } from '../../types';
-import { schemaQuery } from '../../bracketSchema';
-import { ZoomableImage, type ZoomableImageHandle } from '../../ui';
+import { schemaQuery, useSchemaSvg, useSchemaTheme, withQuery } from '../../bracketSchema';
+import { SchemaViewer, ZoomableImage, type ZoomableImageHandle } from '../../ui';
 import { prefixFor, type Playoffs, type TvMeta } from './model';
 import classes from './Tv.module.css';
 
@@ -24,25 +25,14 @@ function hash(text: string): string {
   return (h >>> 0).toString(36);
 }
 
-// The server draws the bracket (GET /{prefix}/playoffs-schema). The URL carries the organizer's drawing
-// settings and a key made from the play-off data, so the picture is fetched again only when the bracket
-// changes. A changed bracket keeps showing the previous picture until the new one has loaded, so the page
-// does not collapse and jump while the server renders.
-function useStableImage(url: string) {
-  const [shown, setShown] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let live = true;
-    setFailed(false);
-    const image = new window.Image();
-    image.onload = () => live && setShown(url);
-    image.onerror = () => live && setFailed(true);
-    image.src = url;
-    return () => {
-      live = false;
-    };
-  }, [url]);
-  return { shown, failed };
+// The server draws the bracket (GET /{prefix}/playoffs-schema) as an SVG coloured by CSS variables,
+// placed in the page so it follows the app theme. The URL carries the organizer's drawing settings and a
+// key made from the play-off data, so the picture is fetched again only when the bracket changes. A
+// changed bracket keeps showing the previous picture until the new one has loaded, so the page does not
+// collapse and jump while the server renders.
+interface Opened {
+  url: string;
+  svg: string;
 }
 
 function Picture({
@@ -54,10 +44,10 @@ function Picture({
   url: string;
   label: string;
   pendingNote?: string;
-  onOpen: (url: string) => void;
+  onOpen: (opened: Opened) => void;
 }) {
-  const { shown, failed } = useStableImage(url);
-  if (failed && !shown)
+  const { svg, error } = useSchemaSvg(url);
+  if (error && !svg)
     return pendingNote ? (
       <Text c="dimmed" size="sm" data-testid="bracket-pending">
         {pendingNote}
@@ -66,14 +56,21 @@ function Picture({
   return (
     <Stack gap={4}>
       <Text variant="eyebrow">{label}</Text>
-      {shown ? (
-        <UnstyledButton
-          onClick={() => onOpen(shown)}
-          title={tx('Click to expand')}
-          aria-label={`${label}: ${tx('Click to expand')}`}
-        >
-          <img className={classes.bracketImage} src={shown} alt={label} />
-        </UnstyledButton>
+      {svg ? (
+        <SchemaViewer
+          markup={svg}
+          label={label}
+          onOpen={() => onOpen({ url, svg })}
+          actions={
+            <ActionIcon
+              variant="default"
+              aria-label={`${label}: ${tx('Enlarge')}`}
+              onClick={() => onOpen({ url, svg })}
+            >
+              <IconMaximize size={16} aria-hidden />
+            </ActionIcon>
+          }
+        />
       ) : (
         <Loader size="sm" aria-label={tx('Loading')} />
       )}
@@ -99,7 +96,10 @@ export function BracketImage({
   split: boolean;
 }) {
   useLocale();
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<Opened | null>(null);
+  const theme = useSchemaTheme();
+  // Opening or saving the picture gives a file in the colours the app shows now.
+  const file = open ? withQuery(open.url, { theme }) : undefined;
   const [zoom, setZoom] = useState(1);
   const zoomer = useRef<ZoomableImageHandle>(null);
   const query = schemaQuery(settings, { _k: hash(JSON.stringify(playoffs)) });
@@ -162,7 +162,7 @@ export function BracketImage({
             <ActionIcon
               variant="default"
               component="a"
-              href={open ?? undefined}
+              href={file}
               target="_blank"
               rel="noopener"
               aria-label={tx('Open original image')}
@@ -172,7 +172,7 @@ export function BracketImage({
             <ActionIcon
               variant="default"
               component="a"
-              href={open ?? undefined}
+              href={file}
               download="bracket"
               aria-label={tx('Download image')}
             >
@@ -184,10 +184,9 @@ export function BracketImage({
         {open && (
           <ZoomableImage
             ref={zoomer}
-            src={open}
+            svg={open.svg}
             alt={tx('Bracket')}
             className={classes.lightbox}
-            imageClassName={classes.lightboxImage}
             maxHeight="calc(100dvh - 9rem)"
             onScaleChange={setZoom}
             testId="tv-bracket-zoom"

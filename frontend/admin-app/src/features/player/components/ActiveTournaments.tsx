@@ -1,6 +1,16 @@
 import { useEffect } from 'react';
-import { Card, Group, Skeleton, Stack, Text, Title, UnstyledButton } from '@mantine/core';
-import { IconChevronRight, IconMessage } from '@tabler/icons-react';
+import {
+  ActionIcon,
+  Anchor,
+  Card,
+  Group,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+  UnstyledButton,
+} from '@mantine/core';
+import { IconCheck, IconChevronRight, IconMessage } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
@@ -8,10 +18,19 @@ import { formatType } from '../../../api';
 import type { Entry } from '../../../player/types';
 import { MatchCard, toPlayerMatchView } from '../../tournaments';
 import { StatusBadge } from '../../../ui';
-import { isTbd, lifecycleIn, useEventData } from '../eventData';
+import { isTbd, lifecycleIn, useEventData, usesCourts } from '../eventData';
 import { entryPath } from '../context';
 import { MatchActions } from '../MatchActions';
 import { MatchContacts, useMatchContacts } from '../MatchContacts';
+import {
+  ANNOUNCEMENTS_ANCHOR,
+  announcementsOf,
+  bannerOf,
+  INFO_ANCHOR,
+  infoTextOf,
+  newestAnnouncementAt,
+} from '../../public/OrganizerNotes';
+import { useAnnouncementSeen } from '../../public/announcementSeen';
 import { PaymentBadge, useOpenPayment } from '../payments';
 import { sportProps } from '../../../theme';
 import classes from '../Player.module.css';
@@ -48,15 +67,27 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
     if (finished && entry.status === 'active')
       void client.invalidateQueries({ queryKey: ['player', 'space'] });
   }, [client, finished, entry.status]);
-  // Nothing to score right now: say why in one line (sitting out, or the opponent is not known yet).
+  // Nothing to score right now: say why in one line (sitting out, the next match waits in the
+  // court queue, or the opponent is not known yet).
+  const queued = data?.schedule.next.find((m) => !isTbd(m) && m.status === 'scheduled');
   const idle =
     data && !pending && !data.finished && !data.withdrawn
       ? data.sittingOut
         ? tx('You sit out this round')
-        : data.schedule.next.some(isTbd)
-          ? tx('Waiting for your opponent')
-          : null
+        : queued && usesCourts(data.status)
+          ? queued.waiting_for_players
+            ? tx('Waiting for players to finish')
+            : tx('Waiting for a court')
+          : data.schedule.next.some(isTbd)
+            ? tx('Waiting for your opponent')
+            : null
       : null;
+  // The organizer's notes: the card only points at them, the event page shows the text.
+  const posts = announcementsOf(data?.tv).length > 0;
+  const announcement = !!bannerOf(data?.tv) || posts;
+  const hasInfo = !!infoTextOf(data?.tv);
+  // "New": an announcement posted after the player last opened this event page (this browser only).
+  const seen = useAnnouncementSeen(entry.entity_id, newestAnnouncementAt(data?.tv));
   return (
     <Card
       p={0}
@@ -101,10 +132,48 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
           <IconChevronRight size={20} aria-hidden />
         </Group>
       </UnstyledButton>
-      {payment && (
-        <div className={classes.navCardBody}>
-          <PaymentBadge payment={payment} />
-        </div>
+      {(payment || announcement || hasInfo) && (
+        <Group gap="xs" className={classes.navCardBody}>
+          {payment && <PaymentBadge payment={payment} />}
+          {announcement && (
+            <UnstyledButton
+              component={Link}
+              to={posts ? `${entryPath(entry)}#${ANNOUNCEMENTS_ANCHOR}` : entryPath(entry)}
+              data-testid="active-tournament-announcement"
+              data-new={seen.isNew || undefined}
+            >
+              <StatusBadge
+                tone={seen.isNew ? 'warning' : 'info'}
+                variant={seen.isNew ? 'outline' : 'light'}
+                style={{ cursor: 'pointer' }}
+              >
+                {seen.isNew ? tx('New announcement') : tx('Announcement')}
+              </StatusBadge>
+            </UnstyledButton>
+          )}
+          {seen.isNew && (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={seen.markSeen}
+              aria-label={tx('Mark announcements as seen')}
+              data-testid="active-tournament-announcement-seen"
+            >
+              <IconCheck size={14} aria-hidden />
+            </ActionIcon>
+          )}
+          {hasInfo && (
+            <Anchor
+              component={Link}
+              to={`${entryPath(entry)}#${INFO_ANCHOR}`}
+              size="xs"
+              data-testid="active-tournament-info"
+            >
+              {tx('Information')}
+            </Anchor>
+          )}
+        </Group>
       )}
       {idle && (
         <div className={classes.navCardBody}>
@@ -118,7 +187,8 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
           <MatchCard
             density="slot"
             testId="player-match"
-            courts={data.status.assign_courts !== false}
+            courts={usesCourts(data.status)}
+            queueLabels
             match={toPlayerMatchView(pending, {
               decider: pending.effective_decider || data.tv.set_decider || 'full_set',
               expand: data.expand,

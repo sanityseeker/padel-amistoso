@@ -226,7 +226,9 @@ async def delete_season(season_id: str, user: User = Depends(get_current_user)) 
 async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = Depends(get_current_user)) -> dict:
     """Assign a tournament to a season (or remove from one).
 
-    Validates that the tournament's community matches the season's club community.
+    Validates that the tournament's community matches the season's club community
+    and that a tournament with a club stays in it: a season of another club is
+    rejected with 400.  A tournament without a club takes the season's club.
     """
     from .helpers import _require_editor_access  # noqa: PLC0415
     from . import state  # noqa: PLC0415
@@ -250,7 +252,11 @@ async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = De
                     400,
                     f"Tournament belongs to community '{tournament_community}' but the season belongs to community '{club['community_id']}'",
                 )
-            _require_club_join_access(season["club_id"], user, _tournaments[tid].get("club_id"))
+            current_club = _tournaments[tid].get("club_id")
+            if current_club and current_club != season["club_id"]:
+                raise HTTPException(400, "The season belongs to a different club than the tournament")
+            _require_club_join_access(season["club_id"], user, current_club)
+            # A tournament without a club joins the season's club.
             new_club_id = season["club_id"]
         else:
             new_club_id = _tournaments[tid].get("club_id")
@@ -285,7 +291,11 @@ async def set_registration_season(rid: str, req: SetSeasonRequest, user: User = 
                 400,
                 f"Registration belongs to community '{reg_community}' but the season belongs to community '{club['community_id']}'",
             )
-        _require_club_join_access(season["club_id"], user, registration.get("club_id"))
+        current_club = registration.get("club_id")
+        if current_club and current_club != season["club_id"]:
+            raise HTTPException(400, "The season belongs to a different club than the registration")
+        _require_club_join_access(season["club_id"], user, current_club)
+        # A registration without a club joins the season's club.
         new_club_id = season["club_id"]
     else:
         new_club_id = registration.get("club_id")

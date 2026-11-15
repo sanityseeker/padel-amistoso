@@ -15,7 +15,6 @@ import {
 import { useDocumentTitle } from '@mantine/hooks';
 import {
   IconMaximize,
-  IconSpeakerphone,
   IconMinimize,
   IconPlayerPause,
   IconPlayerPlay,
@@ -32,7 +31,7 @@ import { DisplayButton } from '../../shell/DisplayMenu';
 import { followTournament, TOURNAMENT_UPDATE_EVENT } from '../../shell/followTournament';
 import { sportProps } from '../../theme';
 import { StatusBadge } from '../../ui';
-import { Markdown } from '../public/Markdown';
+import { Announcements, OrganizerBanner, OrganizerInfo } from '../public/OrganizerNotes';
 import { PlayerCardModal } from './PlayerCardModal';
 import { Champions, sectionKeys, TvBoard } from './TvBoard';
 import { Section, useOpenState } from './TvSection';
@@ -41,7 +40,6 @@ import { TvPaymentButton } from './TvPayment';
 import { loadLive, resolveSlug, type TvMeta } from './model';
 import { useTvPlayer } from './useTvPlayer';
 import classes from './Tv.module.css';
-import { Notice } from '../../ui/Notice';
 
 const CYCLE_MS = 15_000;
 
@@ -320,21 +318,30 @@ function Tv({ slug }: { slug: string }) {
 
         {data && tid && <HubInvite tid={tid} player={player} />}
         {data && tid && <TvPaymentButton tid={tid} session={player.session} />}
-        {data?.settings.banner_text?.trim() && (
-          <Notice icon={<IconSpeakerphone />} data-testid="tv-banner">
-            <Text className={classes.banner}>{data.settings.banner_text.trim()}</Text>
-          </Notice>
+        {data && <OrganizerBanner notes={data.settings} size="tv" testId="tv-banner" />}
+        {data && (
+          <Announcements
+            notes={data.settings}
+            size="tv"
+            testId="tv-announcements"
+            wrap={(title, body) => (
+              <Section id="announcements" title={title} state={openState}>
+                {body}
+              </Section>
+            )}
+          />
         )}
-        {data?.settings.custom_info_text?.trim() && (
-          <Section
-            id="custom-info"
-            title={data.settings.custom_info_title?.trim() || tx('Information')}
-            state={openState}
-          >
-            <Box className={classes.customInfoMarkdown} data-testid="tv-custom-info">
-              <Markdown source={data.settings.custom_info_text.trim()} />
-            </Box>
-          </Section>
+        {data && (
+          <OrganizerInfo
+            notes={data.settings}
+            size="tv"
+            testId="tv-custom-info"
+            wrap={(title, body) => (
+              <Section id="custom-info" title={title} state={openState}>
+                {body}
+              </Section>
+            )}
+          />
         )}
         {live.error && !data && <ErrorState error={live.error} retry={() => void live.refetch()} />}
         {!data && !live.error && <Loading />}

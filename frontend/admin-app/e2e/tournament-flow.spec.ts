@@ -77,14 +77,30 @@ async function hubRating(request: APIRequestContext, token: string) {
 }
 
 // Score one bracket match from the Bracket tab; `first` is the score of the side listed first.
-async function scoreInBracket(page: Page, m: BracketMatch, first: number, second: number) {
-  await page
-    .getByRole('button', { name: `Score: ${m.team1.join(' & ')} vs ${m.team2.join(' & ')}` })
-    .click();
+// Play-off matches are scored in the Match centre: the row's own score boxes, or the score dialog.
+async function scoreInMatches(page: Page, m: BracketMatch, first: number, second: number) {
+  const [a, b] = [m.team1.join(' & '), m.team2.join(' & ')];
+  const box = page.getByLabel(`Score: ${a}`, { exact: true });
+  const record = page.getByRole('button', { name: `Record score: ${a} vs ${b}`, exact: true });
+  await expect(box.or(record)).toBeVisible();
+  if (await box.isVisible()) {
+    await box.fill(String(first));
+    await page.getByLabel(`Score: ${b}`, { exact: true }).fill(String(second));
+    await page.getByRole('button', { name: `Save result: ${a} vs ${b}`, exact: true }).click();
+    return;
+  }
+  await record.click();
   await page.getByTestId('score-1').fill(String(first));
   await page.getByTestId('score-2').fill(String(second));
   await page.keyboard.press('Enter');
 }
+
+const finalOf = async (request: APIRequestContext, id: string, prefix: 'gp' | 'po') =>
+  (await bracketOf(request, id, prefix)).find((m) => m.round_label === 'Final')!;
+const finalTeams = async (request: APIRequestContext, id: string, prefix: 'gp' | 'po') => {
+  const f = await finalOf(request, id, prefix);
+  return [...f.team1, ...f.team2].join(' | ');
+};
 
 test('Group + Play-offs: groups, bracket advancement, final, champion and a rating change', async ({
   page,
@@ -117,28 +133,25 @@ test('Group + Play-offs: groups, bracket advancement, final, champion and a rati
   const winnerToken = await linkedProfile(request, id, TEAMS[champion]![0]!, headers);
   const loserToken = await linkedProfile(request, id, TEAMS[beaten]![0]!, headers);
 
-  await page.getByRole('tab', { name: 'Bracket' }).click();
-  const slots = page.getByTestId('bracket-slot');
-  await expect(slots).toHaveCount(3);
-  const final = slots.last();
-  await expect(final).not.toContainText(champion);
+  await page.getByRole('tab', { name: /^(Matches|Overview)$/ }).click();
+  expect(await finalTeams(request, id, 'gp')).not.toContain(champion);
 
-  await scoreInBracket(page, semis[0]!, 21, 12);
-  // The semi-final winner moves into the final slot.
-  await expect(final).toContainText(champion);
-  await expect(final).not.toContainText(beaten);
+  await scoreInMatches(page, semis[0]!, 21, 12);
+  // The semi-final winner moves into the final.
+  await expect.poll(() => finalTeams(request, id, 'gp')).toContain(champion);
+  expect(await finalTeams(request, id, 'gp')).not.toContain(beaten);
 
-  await scoreInBracket(page, semis[1]!, 21, 14);
-  const finalMatch = (await bracketOf(request, id, 'gp')).find((m) => m.round_label === 'Final')!;
+  await scoreInMatches(page, semis[1]!, 21, 14);
+  await expect.poll(() => finalTeams(request, id, 'gp')).toContain(semis[1]!.team1[0]!);
+  const finalMatch = await finalOf(request, id, 'gp');
   expect(finalMatch.team1.concat(finalMatch.team2).sort()).toEqual(
     [semis[0]!.team1[0]!, semis[1]!.team1[0]!].sort(),
   );
-  await expect(final).toContainText(semis[1]!.team1[0]!);
   expect((await statusOf(request, id, 'gp')).champion).toBeNull();
 
-  // The champion team wins the final, whichever side of the card it is on.
+  // The champion team wins the final, whichever side of the row it is on.
   const championFirst = finalMatch.team1[0] === champion;
-  await scoreInBracket(page, finalMatch, championFirst ? 21 : 9, championFirst ? 9 : 21);
+  await scoreInMatches(page, finalMatch, championFirst ? 21 : 9, championFirst ? 9 : 21);
 
   await expect.poll(async () => (await statusOf(request, id, 'gp')).phase).toBe('finished');
   await expect(page.getByText(`Champions: ${champion}`)).toBeVisible();
@@ -162,23 +175,27 @@ test('Direct Playoffs: winners advance round by round to the champion', async ({
   const name = `Flow PO ${Date.now()}`;
   const { id } = await createTournament(request, 'po', name);
   await openTournament(page, id, name);
-  await page.getByRole('tab', { name: 'Bracket' }).click();
   const semis = (await bracketOf(request, id, 'po')).filter((m) => m.round_label === 'Semi-Final');
   expect(semis).toHaveLength(2);
-  const slots = page.getByTestId('bracket-slot');
-  await expect(slots).toHaveCount(3);
-  const final = slots.last();
   const [a, b] = [semis[0]!.team2, semis[1]!.team2];
 
-  // Second-listed sides win, so a lower seed visibly advances.
-  await scoreInBracket(page, semis[0]!, 8, 21);
-  await expect(final).toContainText(a.join(' & '));
-  await scoreInBracket(page, semis[1]!, 11, 21);
-  await expect(final).toContainText(b.join(' & '));
-  const finalMatch = (await bracketOf(request, id, 'po')).find((m) => m.round_label === 'Final')!;
+  // Second-listed sides win, so a lower seed advances.
+  await scoreInMatches(page, semis[0]!, 8, 21);
+  await expect.poll(() => finalTeams(request, id, 'po')).toContain(a[0]!);
+  await scoreInMatches(page, semis[1]!, 11, 21);
+  await expect.poll(() => finalTeams(request, id, 'po')).toContain(b[0]!);
+  const finalMatch = await finalOf(request, id, 'po');
   expect(finalMatch.team1.length + finalMatch.team2.length).toBe(a.length + b.length);
 
-  await scoreInBracket(page, finalMatch, 21, 17);
+  // The Bracket tab shows the picture of the same bracket.
+  await page.getByRole('tab', { name: 'Bracket' }).click();
+  await expect(
+    page.getByTestId('bracket').getByRole('img', { name: 'Play-off bracket' }),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole('tab', { name: /^(Matches|Overview)$/ }).click();
+  await scoreInMatches(page, finalMatch, 21, 17);
   await expect.poll(async () => (await statusOf(request, id, 'po')).phase).toBe('finished');
   await expect(page.getByText(`Champions: ${finalMatch.team1.join(' & ')}`)).toBeVisible();
 });

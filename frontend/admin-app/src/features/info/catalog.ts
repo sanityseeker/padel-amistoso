@@ -640,7 +640,7 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
   en: {
     txt_txt_info: 'Info',
     txt_txt_info_admin_flow_comm_desc:
-      'Post announcements. They show on the view of each player and on the TV display. Send email notifications to all players or to selected players. When the event is complete, export a self-contained HTML or PDF summary with the full bracket and all match results. Then archive the tournament to keep your list short.',
+      'Post announcements in the Announcements tab (Markdown). They show on the event page of each player in the Player Hub and on the TV display, and players with notifications on get a push notification. Send email notifications to all players or to selected players. When the event is complete, export a self-contained HTML or PDF summary with the full bracket and all match results. Then archive the tournament to keep your list short.',
     txt_txt_info_admin_flow_comm_title: '6) Communicate and finish',
     txt_txt_info_admin_flow_creds_desc:
       'On the tournament page, open the Players tab. There you can see, copy, download, or print all passphrases as QR-code cards. You can also send the passphrases by email, to one player or to all players. Players can link their passphrase to their Player Hub profile. Then they see all their events in one place.',
@@ -841,7 +841,7 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
   es: {
     txt_txt_info: 'Info',
     txt_txt_info_admin_flow_comm_desc:
-      'Publica anuncios que aparecen en la vista de cada jugador y en la pantalla TV. Envía notificaciones por email dirigidas a todos los jugadores o a personas seleccionadas. Una vez finalizado el evento, exporta un resumen en HTML o PDF con el cuadro completo y el historial de partidos, y luego archiva el torneo para mantener la lista ordenada.',
+      'Publica avisos en la pestaña Avisos (Markdown). Aparecen en la página del evento de cada jugador en el área del jugador y en la pantalla TV, y los jugadores con las notificaciones activadas reciben una notificación push. Envía notificaciones por email dirigidas a todos los jugadores o a personas seleccionadas. Una vez finalizado el evento, exporta un resumen en HTML o PDF con el cuadro completo y el historial de partidos, y luego archiva el torneo para mantener la lista ordenada.',
     txt_txt_info_admin_flow_comm_title: '6) Comunicar y cerrar',
     txt_txt_info_admin_flow_creds_desc:
       'En la página del torneo, abre la pestaña Jugadores para ver, copiar, descargar o imprimir todas las contraseñas como tarjetas QR listas para entregar. También puedes enviar credenciales individualmente o de forma masiva por email directamente desde esa pestaña. Los jugadores pueden vincular opcionalmente su contraseña a su perfil de Player Hub para acceso entre eventos.',
@@ -1042,13 +1042,13 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
   ru: {
     txt_txt_info: 'Справка',
     txt_txt_info_admin_flow_comm_desc:
-      'Публикуйте объявления. Их видит каждый игрок, они показаны и на экране ТВ. Отправляйте письма всем игрокам или выбранным игрокам. После завершения события экспортируйте автономный отчёт HTML или PDF с полной сеткой и счётом всех матчей. Затем отправьте турнир в архив, чтобы сократить список.',
+      'Публикуйте объявления на вкладке «Объявления» (Markdown). Каждый игрок видит их на странице турнира в личном кабинете, они показаны и на экране ТВ. Игроки с включёнными уведомлениями получат push-уведомление. Отправляйте письма всем игрокам или выбранным игрокам. После завершения события экспортируйте автономный отчёт HTML или PDF с полной сеткой и счётом всех матчей. Затем отправьте турнир в архив, чтобы сократить список.',
     txt_txt_info_admin_flow_comm_title: '6) Сообщите итоги и завершите',
     txt_txt_info_admin_flow_creds_desc:
       'На странице турнира откройте вкладку «Игроки». Там можно посмотреть, скопировать, скачать или напечатать все кодовые фразы как карточки с QR-кодами. Также можно отправить кодовые фразы по email одному игроку или всем игрокам. Игроки могут связать кодовую фразу с личным кабинетом. Тогда все их события видны в одном месте.',
     txt_txt_info_admin_flow_creds_title: '3) Отправьте кодовые фразы игрокам',
     txt_txt_info_admin_flow_launch_desc:
-      'Преобразуйте лобби в турнир одним нажатием. Выберите формат: группы + плей-офф, Mexicano или прямой плей-офф. Задайте размеры групп, названия кортов и правила счёта. Приложение само добавит всех зарегистрированных игроков. У каждого игрока остаётся та же кодовая фраза, поэтому напечатанные и отправленные коды продолжают работать.',
+      'Преобразуйте лобби в турнир одним нажатием. Выберите формат: группы + плей-офф, Mexicano или плей-офф. Задайте размеры групп, названия кортов и правила счёта. Приложение само добавит всех зарегистрированных игроков. У каждого игрока остаётся та же кодовая фраза, поэтому напечатанные и отправленные коды продолжают работать.',
     txt_txt_info_admin_flow_launch_title: '2) Запуск',
     txt_txt_info_admin_flow_prepare_desc:
       'Можно сразу создать турнир с готовым списком игроков. Или сначала открыть лобби регистрации и собрать заявки. Функции лобби: свои вопросы (например, уровень игры или свободное время), необязательный код регистрации, открытый список игроков и соредакторы, которые помогают управлять заявками.',
@@ -1120,7 +1120,7 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
       '<em>E</em> — ожидаемый итог (0–1), зависит от разницы рейтингов. Против соперника с более высоким рейтингом ваш <em>E</em> ниже, поэтому победа над сильным соперником приносит больше очков. Когда <em>S</em> &gt; <em>E</em>, рейтинг растёт. Когда <em>S</em> &lt; <em>E</em>, рейтинг падает. <em>K</em> задаёт наибольшее изменение за матч (см. значения коэффициента K ниже).',
     txt_txt_info_elo_update_title: 'Изменение рейтинга',
     txt_txt_info_formats_elim_desc:
-      '<p>Олимпийская система и система до двух поражений доступны во всех форматах с плей-офф. Espejo доступен в форматах «группы + плей-офф» и «прямой плей-офф», но не в Mexicano.</p><ul><li><strong>Олимпийская система:</strong> игрок или команда выбывает после первого поражения.</li><li><strong>До двух поражений:</strong> параллельная нижняя сетка даёт каждому второй шанс. Финалист выбывает только после двух поражений, поэтому важна стабильность на всей дистанции.</li><li><strong>Espejo:</strong> дополнительная сетка для тех, кто проиграл в первом круге. Две сетки идут отдельно. Чемпион верхней сетки становится чемпионом турнира. Победитель дополнительной сетки становится её чемпионом. Событие завершается после окончания обеих сеток.</li></ul>',
+      '<p>Олимпийская система и система до двух поражений доступны во всех форматах с плей-офф. Espejo доступен в форматах «группы + плей-офф» и «плей-офф», но не в Mexicano.</p><ul><li><strong>Олимпийская система:</strong> игрок или команда выбывает после первого поражения.</li><li><strong>До двух поражений:</strong> параллельная нижняя сетка даёт каждому второй шанс. Финалист выбывает только после двух поражений, поэтому важна стабильность на всей дистанции.</li><li><strong>Espejo:</strong> нижняя сетка для тех, кто проиграл в первом круге. Две сетки идут отдельно. Чемпион верхней сетки становится чемпионом турнира. Победитель нижней сетки становится её чемпионом. Событие завершается после окончания обеих сеток.</li></ul>',
     txt_txt_info_formats_elim_title: 'Олимпийская система, до двух поражений и Espejo',
     txt_txt_info_formats_gp_desc1:
       'Приложение делит игроков на группы, и каждая группа играет по круговой системе. Затем лучшие игроки или команды каждой группы выходят в сетку на выбывание. Формат поддерживает счёт падела и тенниса.',
@@ -1132,18 +1132,18 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
     txt_txt_info_formats_mex_desc2:
       'В разделе <em>Дополнительные настройки</em> можно подробно управлять счётом и парами:',
     txt_txt_info_formats_mex_list:
-      '<ul><li><strong>Разница силы</strong> — наибольшая разница рейтинга в одной группе. Если оставить поле пустым, приложение использует распределение змейкой.</li><li><strong>Бонус за победу</strong> — дополнительные очки победителю в таблице. Приложение добавляет их к очкам матча.</li><li><strong>Сила соперника (0–1)</strong> — бонус за матч с сильными соперниками, по их среднему числу очков. Чем больше значение, тем сильнее эффект.</li><li><strong>Скидка за поражение (0–1)</strong> — множитель очков проигравшей команды. Пример: при 0,75 поражение 12–20 даёт 9 очков, а не 12.</li><li><strong>Допуск баланса</strong> — разница силы команд, которую система пар допускает, чтобы избежать повторов.</li><li><strong>Веса повторов партнёра и соперника</strong> — штрафы, когда у игрока тот же партнёр или соперник. Чем больше значение, тем разнообразнее сочетания.</li><li><strong>Затухание повторов</strong> — старые повторы значат меньше новых.</li><li><strong>Вес баланса партнёров</strong> — штраф для партнёров с очень разной силой.</li></ul>',
+      '<ul><li><strong>Разница силы</strong> — наибольшая разница рейтинга в одной группе. Если оставить поле пустым, приложение использует распределение змейкой.</li><li><strong>Бонус за победу</strong> — дополнительные очки победителю в таблице. Приложение добавляет их к очкам матча.</li><li><strong>Сила соперника (0–1)</strong> — бонус за матч с сильными соперниками, по их среднему числу очков. Чем больше значение, тем сильнее эффект.</li><li><strong>Понижающий коэффициент за поражение (0–1)</strong> — множитель очков проигравшей команды. Пример: при 0,75 поражение 12–20 даёт 9 очков, а не 12.</li><li><strong>Допуск баланса</strong> — разница силы команд, которую система пар допускает, чтобы избежать повторов.</li><li><strong>Веса повторов партнёра и соперника</strong> — штрафы, когда у игрока тот же партнёр или соперник. Чем больше значение, тем разнообразнее сочетания.</li><li><strong>Затухание повторов</strong> — старые повторы значат меньше новых.</li><li><strong>Вес баланса партнёров</strong> — штраф для партнёров с очень разной силой.</li></ul>',
     txt_txt_info_formats_mex_title: 'Mexicano + плей-офф',
     txt_txt_info_formats_po_desc:
       'Начните сразу с сетки. Задайте нужный посев, и приложение сразу создаст сетку. Групповой этап не нужен. Этот формат подходит для событий на выбывание и для сеток с полностью своим посевом.',
-    txt_txt_info_formats_po_title: 'Прямой плей-офф',
+    txt_txt_info_formats_po_title: 'Плей-офф',
     txt_txt_info_formats_schema_desc:
       'Создайте схему ниже, чтобы увидеть полную структуру сетки до создания события. Схему можно экспортировать как PNG, SVG или PDF.',
     txt_txt_info_formats_schema_title: 'Предпросмотр схемы сетки',
     txt_txt_info_formats_title: 'Форматы турниров',
     txt_txt_info_github_link: 'Полная документация на GitHub →',
     txt_txt_info_glance_designed_desc:
-      'В приложении три формата турниров: группы + плей-офф, Mexicano и прямой плей-офф. Также есть соредакторы, ввод счёта игроками, объявления и ссылки, которыми можно поделиться. При преобразовании лобби регистрации в турнир кодовые фразы игроков не меняются.',
+      'В приложении три формата турниров: группы + плей-офф, Mexicano и плей-офф. Также есть соредакторы, ввод счёта игроками, объявления и ссылки, которыми можно поделиться. При преобразовании лобби регистрации в турнир кодовые фразы игроков не меняются.',
     txt_txt_info_glance_designed_title: 'Форматы и инструменты',
     txt_txt_info_glance_no_accounts_desc:
       'Игрокам не нужны имя пользователя и пароль. Приложение выдаёт каждому игроку уникальную кодовую фразу из нескольких слов. Она открывает личный список матчей, ввод счёта и личный кабинет. Организатор может передать кодовую фразу на печатной карточке, как QR-код или по email.',
@@ -1205,7 +1205,7 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
     txt_txt_info_po_trans_mex_title: 'Из Mexicano',
     txt_txt_info_po_trans_title: 'Начало плей-офф после групп или Mexicano',
     txt_txt_info_qs_step1_desc:
-      'На главной странице админки нажмите «Новый турнир». Выберите формат (группы + плей-офф, Mexicano или прямой плей-офф) и вид спорта. Введите имена игроков или команд и названия кортов. Для Mexicano также введите очки за матч. Настройки счёта и пар каждого формата находятся в разделе «Дополнительные настройки» этой же формы. Нажмите «Создать турнир».',
+      'На главной странице админки нажмите «Новый турнир». Выберите формат (группы + плей-офф, Mexicano или плей-офф) и вид спорта. Введите имена игроков или команд и названия кортов. Для Mexicano также введите очки за матч. Настройки счёта и пар каждого формата находятся в разделе «Дополнительные настройки» этой же формы. Нажмите «Создать турнир».',
     txt_txt_info_qs_step1_title: '1) Создайте событие',
     txt_txt_info_qs_step2_desc:
       'Откройте турнир и нажмите вкладку «Игроки». У каждого игрока есть кодовая фраза (например, brave-little-tiger) и QR-код. Можно напечатать карточки, скопировать один код или отправить все коды по email. Игроку нужен только этот код, чтобы видеть свои матчи и вводить счёт. Аккаунт не нужен.',

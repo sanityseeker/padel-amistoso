@@ -22,7 +22,12 @@ interface StatusPayload {
   withdrawals?: { member_ids: string[] }[];
   /** `false` when the organizer does not assign courts. */
   assign_courts?: boolean;
+  courts?: { id: string; name: string }[];
 }
+
+/** The event runs a court queue: the organizer assigns courts and has set some up. */
+export const usesCourts = (status: { assign_courts?: boolean; courts?: unknown[] }) =>
+  status.assign_courts !== false && (status.courts?.length ?? 0) > 0;
 interface MatchesPayload {
   all_matches?: PlayerMatch[];
   matches?: PlayerMatch[] | Record<string, PlayerMatch[]>;
@@ -70,9 +75,12 @@ export interface EventData {
   endpoint: string;
   context: string;
   setsAvailable: boolean;
-  /** Match the Hub card shows (`schedule.now`): one that needs the player, else one waiting on someone else. */
+  /** Match the Hub card shows (`schedule.now`): one that needs the player (on its court when the
+   * event assigns courts), else one waiting on someone else. */
   pending: PlayerMatch | null;
   schedule: Schedule;
+  /** Which stage the event has left behind (its matches are `historyIds`), once the play-offs run. */
+  earlier: 'groups' | 'mexicano' | null;
   /** Earlier-phase matches (group stage, Mexicano rounds) shown as read-only history. */
   historyIds: ReadonlySet<string>;
   /** Mexicano: the player sits out the round in play and has no match. */
@@ -84,7 +92,8 @@ export interface EventData {
 
 /** The player's matches, split by what they can do with them. */
 export interface Schedule {
-  /** The match that needs the player; else one waiting on someone else. */
+  /** The match that needs the player (on its court when the event assigns courts); else one
+   * waiting on someone else. */
   now: PlayerMatch | null;
   /** Everything else still to play, including matches whose opponent is not known yet. */
   next: PlayerMatch[];
@@ -97,6 +106,14 @@ export interface Schedule {
 const order = (a: PlayerMatch, b: PlayerMatch) =>
   (a.round_number ?? Infinity) - (b.round_number ?? Infinity) ||
   (a.slot_number ?? Infinity) - (b.slot_number ?? Infinity);
+
+// Matches still to play, in the organizer's court queue order: the one on court now, then the
+// queue (slot_number), which can put a later round first when an earlier one waits for players
+// who are still on court. Without courts every slot is 0 and the round decides.
+const queueOrder = (a: PlayerMatch, b: PlayerMatch) =>
+  Number(!!b.on_court) - Number(!!a.on_court) ||
+  (a.slot_number ?? Infinity) - (b.slot_number ?? Infinity) ||
+  order(a, b);
 
 /** My side of a match: ids of the side that holds `playerId`, or null. */
 export function sideOf(m: PlayerMatch, expand: (ids: string[]) => string[], playerId: string) {
@@ -197,16 +214,22 @@ export function useEventData(entry: Entry | undefined, options: { poll?: number 
         .sort(order);
       const stateOf = (m: PlayerMatch) =>
         lifecycleOf(m, expand, entry!.player_id, historyIds.has(m.id));
-      const needs = mine.filter((m) => ['open', 'confirm', 'correction'].includes(stateOf(m)));
+      const needs = mine
+        .filter((m) => ['open', 'confirm', 'correction'].includes(stateOf(m)))
+        .sort(queueOrder);
       const waiting = mine.filter((m) =>
         ['waiting', 'correction-sent', 'escalated', 'review'].includes(stateOf(m)),
       );
-      const now = needs[0] ?? waiting[0] ?? null;
+      // Up next follows the real court assignments: with courts, a match still to score is "now"
+      // only while it holds a court; one still in the queue waits under Later. A score to confirm
+      // or correct needs the player wherever the match was played.
+      const courts = usesCourts(status);
+      const current = needs.filter((m) => !courts || !!m.court || stateOf(m) !== 'open');
+      const now = current[0] ?? waiting[0] ?? null;
       const schedule: Schedule = {
         now,
-        next: [...needs, ...mine.filter((m) => stateOf(m) === 'tbd')]
-          .filter((m) => m !== now)
-          .sort(order),
+        // Known matches in queue order; the ones whose opponent is not known yet come last.
+        next: [...needs, ...mine.filter((m) => stateOf(m) === 'tbd')].filter((m) => m !== now),
         waiting: waiting.filter((m) => m !== now),
         played: mine.filter((m) => stateOf(m) === 'final'),
       };
@@ -219,7 +242,10 @@ export function useEventData(entry: Entry | undefined, options: { poll?: number 
         status,
         tv,
         matches: mine,
-        standings: live.standings ?? past?.standings ?? null,
+        standings: gpLater
+          ? (past?.standings ?? null)
+          : (live.standings ?? past?.standings ?? null),
+        earlier: gpLater ? 'groups' : mexLater && liveMatches.length > 0 ? 'mexicano' : null,
         expand,
         endpoint: `${prefix}/${group ? 'record-group' : prefix === 'po' || mex ? 'record' : 'record-playoff'}`,
         context: group ? 'gp-group' : mex ? 'mex' : `${prefix}-playoff`,

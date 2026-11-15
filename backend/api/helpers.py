@@ -184,9 +184,11 @@ def _store_tournament(
     from .db import get_db  # noqa: PLC0415
 
     with get_db() as conn:
-        if season_id and not club_id:
+        if season_id:
             row = conn.execute("SELECT club_id FROM seasons WHERE id = ?", (season_id,)).fetchone()
             if row is not None:
+                if club_id and row["club_id"] != club_id:
+                    raise HTTPException(400, "The season belongs to a different club than the tournament")
                 club_id = row["club_id"]
         community_id, club_id = align_community_to_club(conn, community_id, club_id)
         club_id, season_id = revalidate_scope_for_community(conn, community_id, club_id, season_id)
@@ -315,6 +317,7 @@ def _serialize_match(m: Match, points_target: int | None = None) -> dict:
         "third_set_loss": m.third_set_loss,
         "slot_number": m.slot_number,
         "on_court": live_courts.is_on_court(m),
+        "waiting_for_players": getattr(m, "waiting_for_players", False),
         "round_number": m.round_number,
         "round_label": m.round_label,
         "comment": m.comment or "",

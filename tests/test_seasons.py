@@ -707,6 +707,64 @@ class TestTournamentClubAssignment:
         assert res.json()["club_id"] == club["id"]
         assert _state._tournaments[tid]["club_id"] == club["id"]
 
+    def test_season_of_another_club_is_rejected(self, client, auth_headers) -> None:
+        club_a, comm = _setup_club(client, auth_headers)
+        club_b = _create_club(client, auth_headers, comm["id"], name="Club B")
+        season_b = _create_season(client, auth_headers, club_b["id"])
+        tid = self._create_gp(client, auth_headers, comm["id"], club_id=club_a["id"])
+        res = client.patch(f"/api/tournaments/{tid}/season", json={"season_id": season_b["id"]}, headers=auth_headers)
+        assert res.status_code == 400
+        assert _state._tournaments[tid]["club_id"] == club_a["id"]
+        assert _state._tournaments[tid].get("season_id") is None
+
+    def test_season_of_the_same_club_is_accepted(self, client, auth_headers) -> None:
+        club_a, comm = _setup_club(client, auth_headers)
+        season_a = _create_season(client, auth_headers, club_a["id"])
+        tid = self._create_gp(client, auth_headers, comm["id"], club_id=club_a["id"])
+        res = client.patch(f"/api/tournaments/{tid}/season", json={"season_id": season_a["id"]}, headers=auth_headers)
+        assert res.status_code == 200
+        assert _state._tournaments[tid]["club_id"] == club_a["id"]
+        assert _state._tournaments[tid]["season_id"] == season_a["id"]
+
+    def test_create_with_club_and_season_of_another_club_is_rejected(self, client, auth_headers) -> None:
+        club_a, comm = _setup_club(client, auth_headers)
+        club_b = _create_club(client, auth_headers, comm["id"], name="Club B")
+        season_b = _create_season(client, auth_headers, club_b["id"])
+        res = client.post(
+            "/api/tournaments/group-playoff",
+            json={
+                "name": "GP",
+                "player_names": ["A", "B", "C", "D"],
+                "num_groups": 1,
+                "top_per_group": 2,
+                "court_names": ["Court 1"],
+                "community_id": comm["id"],
+                "club_id": club_a["id"],
+                "season_id": season_b["id"],
+            },
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+
+    def test_registration_season_of_another_club_is_rejected(self, client, auth_headers) -> None:
+        club_a, comm = _setup_club(client, auth_headers)
+        club_b = _create_club(client, auth_headers, comm["id"], name="Club B")
+        season_a = _create_season(client, auth_headers, club_a["id"])
+        season_b = _create_season(client, auth_headers, club_b["id"])
+        res = client.post(
+            "/api/registrations",
+            json={"name": "Lobby", "community_id": comm["id"], "club_id": club_a["id"]},
+            headers=auth_headers,
+        )
+        rid = res.json()["id"]
+        res = client.patch(f"/api/registrations/{rid}/season", json={"season_id": season_b["id"]}, headers=auth_headers)
+        assert res.status_code == 400
+        res = client.patch(f"/api/registrations/{rid}/season", json={"season_id": season_a["id"]}, headers=auth_headers)
+        assert res.status_code == 200
+        with get_db() as conn:
+            row = conn.execute("SELECT club_id, season_id FROM registrations WHERE id = ?", (rid,)).fetchone()
+        assert (row["club_id"], row["season_id"]) == (club_a["id"], season_a["id"])
+
     def test_clearing_season_keeps_club_id(self, client, auth_headers) -> None:
         """Removing season_id should preserve the existing club_id (tournament still belongs to club)."""
         club, comm = _setup_club(client, auth_headers)

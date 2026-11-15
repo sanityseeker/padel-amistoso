@@ -2795,6 +2795,54 @@ class TestTournamentPath:
         finally:
             _tournaments.pop(tid, None)
 
+    def test_tournament_path_group_playoff_keeps_all_group_rows_after_playoffs_start(self, client: TestClient) -> None:
+        """Starting the play-offs adds rows; the group rounds, late-added team included, stay."""
+        from backend.models import Court, Player
+        from backend.tournaments.group_playoff import GroupPlayoffTournament
+
+        tid = f"t-{uuid.uuid4().hex[:8]}"
+        passphrase = f"pp-{uuid.uuid4().hex[:12]}"
+        p1, p2, p3, p4 = (Player(name=n) for n in ("Alice", "Bob", "Charlie", "Dani"))
+        late = Player(name="Late")
+
+        _insert_tournament(tid, name="Path History Cup")
+        _insert_player_secret(tid, p1.id, p1.name, passphrase, uuid.uuid4().hex)
+        token = _create_profile(client, name=p1.name, participant_passphrase=passphrase)["access_token"]
+
+        t = GroupPlayoffTournament(
+            players=[p1, p2, p3, p4], num_groups=1, courts=[Court(name="C1")], top_per_group=4, team_mode=True
+        )
+        t.generate()
+        stubs = t.add_player_to_group(late, t.groups[0].name)
+        assert all(m.round_number > 0 for m in stubs)
+        for match in list(t.pending_group_matches()):
+            t.record_group_result(match.id, (9, 7))
+        _tournaments[tid] = {
+            "name": "Path History Cup",
+            "type": "group_playoff",
+            "tournament": t,
+            "owner": "admin",
+            "public": True,
+            "sport": "padel",
+            "assign_courts": True,
+        }
+
+        def group_rows() -> list[dict]:
+            res = client.get(f"/api/player-profile/tournament-path/{tid}/{p1.id}", headers=_headers(token))
+            assert res.status_code == 200, res.text
+            return [row for row in res.json()["rounds"] if row.get("stage") != "playoff"]
+
+        try:
+            before = group_rows()
+            # The late team's matches are real rounds after the original ones.
+            assert len(before) == len({m.round_number for m in t.groups[0].matches})
+            assert any(row["round_label"] == stubs[0].round_label for row in before)
+            t.start_playoffs()
+            after = group_rows()
+            assert [r["round_label"] for r in after] == [r["round_label"] for r in before]
+        finally:
+            _tournaments.pop(tid, None)
+
     def test_tournament_path_mexicano_returns_round_rows(self, client: TestClient) -> None:
         from backend.models import Court, Player
         from backend.tournaments.mexicano import MexicanoTournament

@@ -144,23 +144,21 @@ test('recommended play-offs for a Mexicano tournament', async ({ page, request }
   );
 });
 
-test('bracket renders for a direct play-off and shows the diagram', async ({ page, request }) => {
+test('the Bracket tab shows the diagram of a direct play-off', async ({ page, request }) => {
   const { id } = await createTournament(request, 'po', `Bracket ${Date.now()}`);
   await loginAdmin(page);
   await page.goto(`/admin/t/${id}`);
-  await page.getByRole('tab', { name: 'Bracket' }).click();
-  const bracket = page.getByTestId('bracket');
-  await expect(bracket).toBeVisible();
-  // Two semi-finals and a final.
-  await expect(bracket.getByTestId('bracket-slot')).toHaveCount(3);
-  await expect(bracket.getByText('Final', { exact: true }).first()).toBeVisible();
   const diagram = page.waitForResponse(
-    (r) => r.url().includes('/po/playoffs-schema') && r.status() === 200,
+    (r) => r.url().includes('/po/playoffs-schema') && r.url().includes('theme=css') && r.ok(),
     { timeout: 30_000 },
   );
-  await bracket.getByText('Diagram', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Bracket' }).click();
   await diagram;
+  const bracket = page.getByTestId('bracket');
   await expect(bracket.getByRole('img', { name: 'Play-off bracket' })).toBeVisible();
+  // Two semi-finals and a final, drawn in the page.
+  await expect(bracket.locator('svg text', { hasText: 'Semi-Final' }).first()).toBeVisible();
+  await expect(bracket.locator('svg text', { hasText: /^Final$/ }).first()).toBeAttached();
 });
 
 test('an organizer still sees the whole bracket and its diagram while the schedule is hidden', async ({
@@ -174,9 +172,9 @@ test('an organizer still sees the whole bracket and its diagram while the schedu
   await page.goto(`/admin/t/${id}`);
   await page.getByRole('tab', { name: 'Bracket' }).click();
   const bracket = page.getByTestId('bracket');
-  await expect(bracket.getByTestId('bracket-slot')).toHaveCount(3);
-  await bracket.getByText('Diagram', { exact: true }).click();
-  await expect(bracket.getByRole('img', { name: 'Play-off bracket' })).toBeVisible();
+  await expect(bracket.getByRole('img', { name: 'Play-off bracket' })).toBeVisible({
+    timeout: 30_000,
+  });
 });
 
 test('match comment and score history beside the score button', async ({ page, request }) => {

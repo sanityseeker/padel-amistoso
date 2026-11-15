@@ -50,6 +50,13 @@ export function ScopeFields({
     enabled: !!club,
   });
   const showSeason = !!setSeason && !!club;
+  // A season of another club can never stay selected: without a club there is none, and once the
+  // club's seasons are known the pick must be one of them (the API rejects any other).
+  const known = seasons.data;
+  useEffect(() => {
+    if (!setSeason || !season) return;
+    if (!club || (known && !known.some((s) => s.id === season))) setSeason(null);
+  }, [club, known, season, setSeason]);
   return (
     <SimpleGrid cols={{ base: 1, sm: showSeason ? 3 : 2 }}>
       <Select

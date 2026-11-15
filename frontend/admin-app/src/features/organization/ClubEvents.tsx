@@ -181,7 +181,12 @@ export function ClubEvents({ club }: { club: Club }) {
     r.kind === 'lobby' ? `/register/${r.alias || r.id}` : `/tv/${r.alias || r.id}`;
   const openPath = (r: ClubEvent) =>
     r.kind === 'lobby' ? `/admin/lobby/${r.id}` : `/admin/t/${r.id}`;
-  const seasonOptions = (seasons.data ?? []).map((s) => ({ value: s.id, label: s.name }));
+  // This club's seasons only (events listed here belong to it); an archived one is shown only on the
+  // event that already has it, since the API refuses new assignments to it.
+  const seasonOptionsFor = (current: string | null) =>
+    (seasons.data ?? [])
+      .filter((s) => s.active || s.id === current)
+      .map((s) => ({ value: s.id, label: s.name }));
 
   const row = (r: ClubEvent, isPinned: boolean, position: number) => (
     <EventRow
@@ -207,14 +212,14 @@ export function ClubEvents({ club }: { club: Club }) {
       }
       actions={
         <Group gap={4} wrap="nowrap">
-          {r.canEdit && seasonOptions.length > 0 && (
+          {r.canEdit && (seasons.data ?? []).length > 0 && (
             <Select
               size="xs"
               w={150}
               clearable
               aria-label={`${tx('Season')}: ${r.name}`}
               placeholder={tx('No season')}
-              data={seasonOptions}
+              data={seasonOptionsFor(r.seasonId)}
               value={r.seasonId}
               onChange={(season) => setSeason.mutate({ row: r, season })}
               visibleFrom="sm"

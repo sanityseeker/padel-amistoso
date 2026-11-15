@@ -209,6 +209,8 @@ export interface Match {
   slot_number?: number;
   /** Being played now: the match holds its court. */
   on_court?: boolean;
+  /** Waiting because one of its players is still on court elsewhere (not for a free court). */
+  waiting_for_players?: boolean;
   round_number?: number;
   round_label: string;
   comment?: string;
@@ -276,6 +278,15 @@ export interface TvSettings {
   custom_info_title?: string;
   custom_info_text?: string;
   correction_window_seconds?: number;
+  /** The organizer's posts, pinned first then newest first (GET .../tv-settings carries them). */
+  announcements?: Announcement[];
+}
+/** One organizer announcement (Markdown text, UTC ISO time). */
+export interface Announcement {
+  id: string;
+  text: string;
+  created_at: string;
+  pinned: boolean;
 }
 // One entry of GET /api/tournaments/{tid}/player-secrets (`players` keyed by player id).
 export interface PlayerSecret {
@@ -329,6 +340,10 @@ export interface TournamentStatus {
   stage_played?: number | null;
   stage_total?: number | null;
   champion?: string[] | null;
+  /** Several winners (a shared title). */
+  winners?: string[][];
+  /** `club` when the ELO column is the club's own rating. */
+  elo_scope?: string;
   leaderboard?: Standing[];
   is_finished?: boolean;
   mexicano_ended?: boolean;

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from ..models import EliminationType
-from ..viz import render_playoff_schema, render_schema
+from ..viz import SchemaTheme, render_playoff_schema, render_schema
 from .helpers import (
     _schema_cache_get,
     _schema_cache_key,
@@ -50,6 +50,7 @@ async def schema_preview(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    theme: SchemaTheme = Query("light", description="light, dark, or css (an SVG coloured by CSS variables)"),
     num_winners: int = Query(1, ge=1, le=64),
     third_place: bool = Query(False),
 ) -> Response:
@@ -74,6 +75,7 @@ async def schema_preview(
         elimination,
         title,
         fmt,
+        theme,
         box_scale,
         line_width,
         arrow_scale,
@@ -92,6 +94,7 @@ async def schema_preview(
         elimination=elimination,
         title=title,
         fmt=fmt,
+        theme=theme,
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
@@ -101,8 +104,9 @@ async def schema_preview(
         third_place=third_place,
     )
 
-    _schema_cache_put(key, img, fmt)
-    return _schema_image_response(img, fmt, etag=key[:16])
+    fmt_out = "svg" if theme == "css" else fmt
+    _schema_cache_put(key, img, fmt_out)
+    return _schema_image_response(img, fmt_out, etag=key[:16])
 
 
 @router.get("/playoff-preview")
@@ -117,6 +121,7 @@ async def playoff_schema_preview(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(0.7, ge=0.5, le=3.0),
+    theme: SchemaTheme = Query("light", description="light, dark, or css (an SVG coloured by CSS variables)"),
     num_winners: int = Query(1, ge=1, le=64),
     third_place: bool = Query(False),
 ) -> Response:
@@ -134,6 +139,7 @@ async def playoff_schema_preview(
         elimination,
         title,
         fmt,
+        theme,
         box_scale,
         line_width,
         arrow_scale,
@@ -153,14 +159,16 @@ async def playoff_schema_preview(
         elimination=elimination,
         title=title,
         fmt=fmt,
+        theme=theme,
         box_scale=box_scale,
         line_width=line_width,
         arrow_scale=arrow_scale,
         title_font_scale=title_font_scale,
         output_scale=output_scale,
     )
-    _schema_cache_put(key, img, fmt)
-    return _schema_image_response(img, fmt, etag=key[:16])
+    fmt_out = "svg" if theme == "css" else fmt
+    _schema_cache_put(key, img, fmt_out)
+    return _schema_image_response(img, fmt_out, etag=key[:16])
 
 
 @router.post("/preview")
@@ -183,6 +191,7 @@ async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
         req.output_scale,
         req.num_winners,
         req.third_place,
+        req.theme,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -201,6 +210,7 @@ async def schema_preview_post(req: SchemaPreviewRequest) -> Response:
         output_scale=req.output_scale,
         num_winners=req.num_winners,
         third_place=req.third_place,
+        theme=req.theme,
     )
 
     _schema_cache_put(key, img, "png")

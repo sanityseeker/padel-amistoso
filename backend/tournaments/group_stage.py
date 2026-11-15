@@ -289,12 +289,17 @@ class Group:
         # Team mode: generate one match vs every existing member right away.
         new_matches: list[Match] = []
         if self.team_mode:
-            for existing_player in existing:
+            # The new team plays one opponent per round, after the current last
+            # round, so the court queue keeps every team's rounds in order.
+            last_round = max((m.round_number for m in self.matches), default=0)
+            for offset, existing_player in enumerate(existing, start=1):
+                round_no = last_round + offset
                 new_matches.append(
                     Match(
                         team1=[player],
                         team2=[existing_player],
-                        round_label=f"Group {self.name}",
+                        round_number=round_no,
+                        round_label=f"Group {self.name} R{round_no}",
                     )
                 )
             self.matches.extend(new_matches)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { SchemaSvg } from './SchemaSvg';
 import classes from './ZoomableImage.module.css';
 
 export interface ZoomableImageHandle {
@@ -25,8 +26,10 @@ const clampScale = (s: number) => Math.min(MAX, Math.max(MIN, s));
 // A picture that zooms and pans in place: two-finger pinch and double-tap on touch screens,
 // ctrl + wheel (trackpad pinch) and double-click with a mouse, drag to pan once zoomed. At 1x a
 // one-finger swipe still scrolls the page (touch-action: pan-x pan-y); zoomed in, it pans the image.
+// Pass `src` for an image file, or `svg` for sanitized bracket markup placed in the page (SchemaSvg).
 export function ZoomableImage({
   src,
+  svg,
   alt,
   maxHeight,
   className,
@@ -35,7 +38,8 @@ export function ZoomableImage({
   ref,
   testId,
 }: {
-  src: string;
+  src?: string;
+  svg?: string;
   alt: string;
   /** CSS max-height of the picture at 1x, e.g. 560 or 'calc(100dvh - 8rem)'. */
   maxHeight?: number | string;
@@ -46,7 +50,7 @@ export function ZoomableImage({
   testId?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const img = useRef<HTMLImageElement>(null);
+  const img = useRef<HTMLImageElement & HTMLDivElement>(null);
   const [view, setViewState] = useState<View>({ s: 1, x: 0, y: 0 });
   const current = useRef(view);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -117,7 +121,7 @@ export function ZoomableImage({
 
   useEffect(() => {
     setView({ s: 1, x: 0, y: 0 });
-  }, [src, setView]);
+  }, [src, svg, setView]);
 
   useEffect(() => {
     onScaleChange?.(view.s);
@@ -213,6 +217,7 @@ export function ZoomableImage({
     current.current.s > MIN ? setView({ s: 1, x: 0, y: 0 }) : zoomAt(DOUBLE_TAP_SCALE, x, y);
 
   const zoomed = view.s > MIN;
+  const transform = `translate(${view.x}px, ${view.y}px) scale(${view.s})`;
   return (
     <div
       ref={box}
@@ -229,17 +234,24 @@ export function ZoomableImage({
         toggle(p.x, p.y);
       }}
     >
-      <img
-        ref={img}
-        src={src}
-        alt={alt}
-        draggable={false}
-        className={[classes.image, imageClassName].filter(Boolean).join(' ')}
-        style={{
-          maxHeight,
-          transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`,
-        }}
-      />
+      {svg !== undefined ? (
+        <SchemaSvg
+          ref={img}
+          markup={svg}
+          label={alt}
+          className={[classes.image, imageClassName].filter(Boolean).join(' ')}
+          style={{ maxHeight, transform }}
+        />
+      ) : (
+        <img
+          ref={img}
+          src={src}
+          alt={alt}
+          draggable={false}
+          className={[classes.image, imageClassName].filter(Boolean).join(' ')}
+          style={{ maxHeight, transform }}
+        />
+      )}
     </div>
   );
 }

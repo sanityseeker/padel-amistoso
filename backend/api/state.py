@@ -205,14 +205,15 @@ def _save_tournament(tid: str) -> bool:
         blob = pickle.dumps(data["tournament"], protocol=pickle.HIGHEST_PROTOCOL)
         tv_raw = json.dumps(data["tv_settings"]) if data.get("tv_settings") else None
         email_raw = json.dumps(data["email_settings"]) if data.get("email_settings") else None
+        announcements_raw = json.dumps(data["announcements"]) if data.get("announcements") else None
         with get_db() as conn:
             previous = conn.execute("SELECT club_id FROM tournaments WHERE id = ?", (tid,)).fetchone()
             previous_club_id = previous["club_id"] if previous else None
             conn.execute(
                 """
                 INSERT INTO tournaments
-                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id, club_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id, club_id, announcements)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name            = excluded.name,
                     public          = excluded.public,
@@ -226,7 +227,8 @@ def _save_tournament(tid: str) -> bool:
                     community_id    = excluded.community_id,
                     created_at      = excluded.created_at,
                     season_id       = excluded.season_id,
-                    club_id         = excluded.club_id
+                    club_id         = excluded.club_id,
+                    announcements   = excluded.announcements
                 """,
                 (
                     tid,
@@ -245,6 +247,7 @@ def _save_tournament(tid: str) -> bool:
                     data.get("created_at") or datetime.now(timezone.utc).isoformat(),
                     data.get("season_id"),
                     data.get("club_id"),
+                    announcements_raw,
                 ),
             )
     except (sqlite3.Error, pickle.PicklingError, OSError) as exc:
@@ -348,7 +351,8 @@ def get_tournament_data(tid: str) -> dict | None:
         with get_db() as conn:
             row = conn.execute(
                 """SELECT id, name, type, owner, public, alias, tv_settings,
-                          tournament_blob, version, sport, community_id, created_at, season_id, club_id
+                          tournament_blob, version, sport, community_id, created_at, season_id, club_id,
+                          announcements
                    FROM tournaments WHERE id = ?""",
                 (tid,),
             ).fetchone()
@@ -368,6 +372,7 @@ def get_tournament_data(tid: str) -> dict | None:
             "created_at": row["created_at"] if "created_at" in row.keys() else "",
             "season_id": row["season_id"] if "season_id" in row.keys() else None,
             "club_id": row["club_id"] if "club_id" in row.keys() else None,
+            "announcements": _announcements_of(row),
         }
     except (sqlite3.Error, pickle.UnpicklingError) as exc:
         logger.warning("Could not load tournament %s for backfill: %s", tid, exc)
@@ -479,6 +484,18 @@ def _delete_tournament(tid: str) -> None:
     notify_global()
 
 
+def _announcements_of(row: sqlite3.Row) -> list[dict]:
+    """Decode the ``announcements`` JSON column (missing, empty or corrupt -> no announcements)."""
+    raw = row["announcements"] if "announcements" in row.keys() else None
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return items if isinstance(items, list) else []
+
+
 def _load_state() -> None:
     """Restore all tournaments from SQLite on startup.
 
@@ -488,7 +505,7 @@ def _load_state() -> None:
     try:
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id, club_id FROM tournaments"
+                "SELECT id, name, type, owner, public, alias, tv_settings, tournament_blob, version, sport, assign_courts, email_settings, community_id, created_at, season_id, club_id, announcements FROM tournaments"
             ).fetchall()
     except sqlite3.Error as exc:  # noqa: BLE001
         logger.warning("Could not load state (starting fresh): %s", exc)
@@ -519,6 +536,7 @@ def _load_state() -> None:
             "created_at": row["created_at"] if "created_at" in row.keys() else "",
             "season_id": row["season_id"] if "season_id" in row.keys() else None,
             "club_id": row["club_id"] if "club_id" in row.keys() else None,
+            "announcements": _announcements_of(row),
         }
         _tournament_versions[tid] = row["version"]
 

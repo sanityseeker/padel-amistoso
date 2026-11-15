@@ -36,6 +36,7 @@ from .db import init_db
 from .elo_recalc import flush_elo_recalculation
 from .state import persist_failed as _persist_failed
 from .routes_admin_players import router as admin_players_router
+from .routes_announcements import router as announcements_router
 from .routes_clubs import public_events_router
 from .routes_clubs import router as clubs_router
 from .routes_communities import router as communities_router
@@ -409,6 +410,7 @@ async def subdomain_router(request: Request, call_next):
 
 # Register routers
 app.include_router(admin_players_router)
+app.include_router(announcements_router)
 app.include_router(auth_router)
 app.include_router(clubs_router)
 app.include_router(public_events_router)

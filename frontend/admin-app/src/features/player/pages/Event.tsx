@@ -1,6 +1,7 @@
 import { Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { IconExternalLink, IconInfoCircle, IconMessage } from '@tabler/icons-react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
 import { formatType } from '../../../api';
 import { ErrorState, Loading } from '../../../components';
@@ -22,10 +23,19 @@ import { phaseText } from '../components/ActiveTournaments';
 import { usePlayerSpace } from '../context';
 import { EntryPaymentBlock, EntryPaymentStatus } from '../payments';
 import type { PathRound, PlayerMatch } from '../../../player/types';
-import { useEventData } from '../eventData';
+import { useEventData, usesCourts } from '../eventData';
 import { MatchActions } from '../MatchActions';
 import { MatchContacts, useMatchContacts } from '../MatchContacts';
 import { Notice } from '../../../ui/Notice';
+import {
+  ANNOUNCEMENTS_ANCHOR,
+  Announcements,
+  INFO_ANCHOR,
+  newestAnnouncementAt,
+  OrganizerBanner,
+  OrganizerInfo,
+} from '../../public/OrganizerNotes';
+import { markAnnouncementsSeen } from '../../public/announcementSeen';
 
 // One event, in the order a player needs it: one status banner, your next match (score, confirm,
 // correct, escalate), later and played matches, a standings snapshot, your path and notifications.
@@ -44,6 +54,20 @@ function EventView({ kind, id }: { kind: string; id: string }) {
     space.entries.find((e) => e.entity_type === kind && e.entity_id === id);
   const tournament = entry?.entity_type === 'tournament' && !entry.entity_deleted;
   const event = useEventData(tournament ? entry : undefined);
+  // The Hub card links to `#info`: scroll there once the organizer's section is on the page.
+  const { hash } = useLocation();
+  const hasInfo = !!event.data?.tv.custom_info_text?.trim();
+  const newest = newestAnnouncementAt(event.data?.tv);
+  useEffect(() => {
+    if (hash === `#${INFO_ANCHOR}` && hasInfo)
+      document.getElementById(INFO_ANCHOR)?.scrollIntoView({ block: 'start' });
+    if (hash === `#${ANNOUNCEMENTS_ANCHOR}` && newest)
+      document.getElementById(ANNOUNCEMENTS_ANCHOR)?.scrollIntoView({ block: 'start' });
+  }, [hash, hasInfo, newest]);
+  // Opening the event page shows every announcement: the Hub card stops calling them new.
+  useEffect(() => {
+    if (tournament && newest) markAnnouncementsSeen(id, newest);
+  }, [tournament, id, newest]);
   const ranked =
     tournament &&
     (entry.tournament_type === 'group_playoff' || entry.tournament_type === 'mexicano');
@@ -150,7 +174,8 @@ function EventView({ kind, id }: { kind: string; id: string }) {
         match={viewOf(m)}
         density="row"
         testId="player-match"
-        courts={data.status.assign_courts !== false}
+        courts={usesCourts(data.status)}
+        queueLabels
         actions={
           <MatchContacts
             match={m}
@@ -211,9 +236,18 @@ function EventView({ kind, id }: { kind: string; id: string }) {
       ? playedPath(path.data.rounds, inProgress)
       : undefined;
   const played = (data?.schedule.played ?? []).map((m) => ({
+    id: m.id,
     view: viewOf(m),
     comment: m.comment,
   }));
+  // After the group stage / Mexicano rounds the event is in its play-offs: the current stage leads
+  // and the earlier stage stays below with its table and its matches.
+  const earlier = data?.earlier ?? null;
+  const playedEarlier = earlier ? played.filter((p) => data?.historyIds.has(p.id)) : [];
+  const playedNow = earlier ? played.filter((p) => !data?.historyIds.has(p.id)) : played;
+  const earlierTitle = earlier === 'mexicano' ? tx('Mexicano rounds') : tx('Group stage');
+  const earlierStandings =
+    earlier === 'mexicano' ? tx('Mexicano standings') : tx('Group standings');
   const results = Object.fromEntries(
     played.map((p) => [p.view.roundLabel ?? '', resultOf(p.view)]),
   );
@@ -221,7 +255,11 @@ function EventView({ kind, id }: { kind: string; id: string }) {
   // next leads and the table sits under your own rounds, a tap away from the overview.
   const standingsBlock = standings.length > 0 && (
     <Stack gap="sm" data-testid="event-standings">
-      <Title order={2}>{tx(data?.finished ? 'Final standings' : 'Standings')}</Title>
+      {earlier ? (
+        <Title order={3}>{earlierStandings}</Title>
+      ) : (
+        <Title order={2}>{tx(data?.finished ? 'Final standings' : 'Standings')}</Title>
+      )}
       {standings.map((s) => (
         <Paper key={s.name} p={{ base: 'xs', sm: 'md' }}>
           {s.name && (
@@ -257,7 +295,7 @@ function EventView({ kind, id }: { kind: string; id: string }) {
   const showRound = (row: PathRound) =>
     flash(
       document.querySelector<HTMLElement>(
-        `[data-testid="event-played"] [data-round="${CSS.escape(row.round_label)}"]`,
+        `[data-testid^="event-played"] [data-round="${CSS.escape(row.round_label)}"]`,
       ),
     );
   return (
@@ -267,15 +305,18 @@ function EventView({ kind, id }: { kind: string; id: string }) {
       <Stack gap="md">
         {head}
         {banner && notice(banner, 'event-banner')}
+        {data && <OrganizerBanner notes={data.tv} testId="event-announcement" />}
       </Stack>
+      {data && <Announcements notes={data.tv} testId="event-announcements" />}
       <EntryPaymentBlock entry={entry} />
       {failure && <ErrorState error={failure} retry={() => void event.refetch()} />}
       {!failure && !data && <Loading />}
       {data && (
         <>
-          {data.finished && standingsBlock}
+          {data.finished && !earlier && standingsBlock}
           {section(tx('Up next'), upNext, true, 'event-up-next')}
           {section(tx('Later'), data.schedule.next, true, 'event-later')}
+          <OrganizerInfo notes={data.tv} testId="event-custom-info" />
           {/* Overview first: where you stand. Then each round's story in Played. */}
           {ranked && (
             <Stack gap="sm">
@@ -289,9 +330,30 @@ function EventView({ kind, id }: { kind: string; id: string }) {
               />
             </Stack>
           )}
-          {played.length > 0 && (
+          {playedNow.length > 0 && (
             <Stack gap="sm">
-              <PlayedList testId="event-played" items={played} path={pathRounds} />
+              <PlayedList
+                testId="event-played"
+                items={playedNow}
+                title={earlier ? tx('Play-offs') : undefined}
+                path={earlier ? pathRounds?.filter((r) => r.stage === 'playoff') : pathRounds}
+              />
+            </Stack>
+          )}
+          {earlier && (standings.length > 0 || playedEarlier.length > 0) && (
+            <Stack gap="md" data-testid="event-earlier-stage">
+              <Title order={2}>{earlierTitle}</Title>
+              {standingsBlock}
+              {playedEarlier.length > 0 && (
+                <Stack gap="sm">
+                  <PlayedList
+                    testId="event-played-earlier"
+                    items={playedEarlier}
+                    titleOrder={3}
+                    path={pathRounds?.filter((r) => r.stage !== 'playoff')}
+                  />
+                </Stack>
+              )}
             </Stack>
           )}
           {noMatches &&
@@ -304,7 +366,7 @@ function EventView({ kind, id }: { kind: string; id: string }) {
             ))}
         </>
       )}
-      {!data?.finished && standingsBlock}
+      {!data?.finished && !earlier && standingsBlock}
       {!data?.finished && (
         <Stack gap="xs">
           <Title order={2}>{tx('Notifications')}</Title>

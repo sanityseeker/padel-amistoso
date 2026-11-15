@@ -238,6 +238,7 @@ class GroupPlayoffTournament:
             scope_of=group_scope_of(self.groups),
             capacity=capacity,
             round_order=True,
+            ordered_rounds=self.team_mode,
         )
 
     def refill_playoff_courts(self) -> None:

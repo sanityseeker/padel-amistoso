@@ -228,6 +228,9 @@ class Match:
     slot_number: int = 0
     # True while the match holds its court (being played now); see tournaments/live_courts.py.
     on_court: bool = False
+    # True while the match waits because one of its players is still on court elsewhere
+    # (not because no court is free); set by tournaments/live_courts.py.
+    waiting_for_players: bool = False
     round_number: int = 0
     round_label: str = ""
     # Pair position within the round (0-based bracket index, including bye slots).

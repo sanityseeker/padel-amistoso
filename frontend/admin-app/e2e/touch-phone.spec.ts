@@ -206,31 +206,38 @@ async function pinch(
 const scaleOf = (img: import('@playwright/test').Locator) =>
   img.evaluate((el) => Number(/scale\(([\d.]+)\)/.exec((el as HTMLElement).style.transform)?.[1]));
 
-test('bracket pictures zoom with a pinch and a double tap, on the workspace and the TV', async ({
+test('bracket pictures zoom with the zoom bar on the workspace and a pinch on the TV', async ({
   page,
   request,
 }) => {
   const { id } = await createTournament(request, 'po', `Zoom ${stamp()}`);
   await loginAdmin(page);
   await page.goto(`/admin/t/${id}`);
-  await page.getByTestId('bracket').getByText('Diagram', { exact: true }).click();
-  const img = page.getByTestId('bracket-diagram').getByRole('img');
+  await page.getByRole('tab', { name: 'Bracket' }).click();
+  const viewer = page.getByTestId('bracket-diagram');
+  const img = viewer.getByRole('img');
   await expect(img).toBeVisible({ timeout: 30_000 });
-  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).complete)).toBe(true);
-  const box = (await img.boundingBox())!;
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.touchscreen.tap(cx, cy);
-  await page.touchscreen.tap(cx, cy);
-  await expect.poll(() => scaleOf(img)).toBe(2.5);
-  await page.touchscreen.tap(cx, cy);
-  await page.touchscreen.tap(cx, cy);
-  await expect.poll(() => scaleOf(img)).toBe(1);
-  await pinch(page, cx, cy, 60, 180);
-  await expect.poll(() => scaleOf(img)).toBeGreaterThan(2);
+  // Zoomed in, the drawing is wider than the screen and scrolls sideways; the page itself does not.
+  const fitWidth = (await img.boundingBox())!.width;
+  await viewer.getByRole('button', { name: 'Zoom in' }).click();
+  await viewer.getByRole('button', { name: 'Zoom in' }).click();
+  await expect.poll(async () => (await img.boundingBox())!.width).toBeGreaterThan(fitWidth * 1.2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await viewer.getByRole('button', { name: 'Fit to width' }).click();
+  // Fit makes the drawing exactly as wide as the viewer (a phone may open it at a readable zoom).
+  const viewerWidth = (await viewer.boundingBox())!.width;
+  await expect
+    .poll(async () => Math.abs((await img.boundingBox())!.width - viewerWidth))
+    .toBeLessThan(2);
 
   await page.goto(`/tv/${id}`);
-  await page.getByTestId('tv-bracket').getByRole('button').first().click();
+  await page
+    .getByTestId('tv-bracket')
+    .getByRole('button', { name: /Enlarge/ })
+    .first()
+    .click();
   const zoom = page.getByTestId('tv-bracket-zoom').getByRole('img');
   await expect(zoom).toBeVisible();
   const lb = (await zoom.boundingBox())!;

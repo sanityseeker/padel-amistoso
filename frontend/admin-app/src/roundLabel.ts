@@ -32,3 +32,15 @@ export function formatRoundLabel(label: string): string {
   if (match) return tx('Group {name}', { name: match[1] });
   return label;
 }
+
+/**
+ * Label of a match that has no court yet. The court queue does not follow round numbers, so a
+ * number (`Group A R3`, `Round 2`, `Winners R1`) would mislead: the group name stays, a bare
+ * number gives nothing. Names such as `Semi-Final` carry no order and stay.
+ */
+export function queueRoundLabel(label: string): string | null {
+  const group = /^Group (.+) R\d+$/.exec(label);
+  if (group) return tx('Group {name}', { name: group[1] });
+  if (/^(Round \d+|Winners R\d+|Losers R\d+)$/.test(label)) return null;
+  return formatRoundLabel(label);
+}

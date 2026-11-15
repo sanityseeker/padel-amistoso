@@ -69,6 +69,7 @@ from .club_elo import deferred_club_elo, elo_scope, get_tournament_display_elos,
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
 from .leaderboard_cache import etag_for, get_mini_card_cached
+from .routes_announcements import list_announcements
 from .routes_admin_players import (
     _purge_profile_record,
     list_ghost_profiles_for_tournament,
@@ -293,7 +294,9 @@ async def get_tv_settings(tid: str) -> dict:
         raise HTTPException(404, "Tournament not found")
     stored = _tournaments[tid].get("tv_settings")
     settings = TvSettings(**stored) if stored else TvSettings()
-    return settings.model_dump()
+    # The organizer's announcements ride along so the TV and the Player Hub event page
+    # read them in the request they already make (no extra round trip per view).
+    return {**settings.model_dump(), "announcements": [a.model_dump() for a in list_announcements(tid)]}
 
 
 @router.patch("/{tid}/tv-settings")
@@ -323,7 +326,7 @@ async def update_tv_settings(tid: str, req: TvSettingsRequest, user: User = Depe
         updated = current.model_copy(update=patch)
         _tournaments[tid]["tv_settings"] = updated.model_dump()
         await save_tournament(tid)
-    return updated.model_dump()
+    return {**updated.model_dump(), "announcements": [a.model_dump() for a in list_announcements(tid)]}
 
 
 # ────────────────────────────────────────────────────────────────────────────

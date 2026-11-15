@@ -16,6 +16,7 @@ Design:
 from __future__ import annotations
 
 import logging
+import re
 
 from ..models import Match, MatchStatus
 from .push import send_push_to_players, send_push_to_tournament
@@ -46,6 +47,34 @@ def _tv_url(tid: str, alias: str | None) -> str:
     """Build the TV page URL for a tournament."""
     slug = alias or tid
     return f"/tv/{slug}"
+
+
+def _hub_event_url(tid: str) -> str:
+    """Build the Player Hub event page URL for a tournament (the React route ``/player/matches/tournament/:id``)."""
+    return f"/player/matches/tournament/{tid}"
+
+
+_ANNOUNCEMENT_PUSH_CHARS = 140
+_MD_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_LINE_PREFIX = re.compile(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)", re.MULTILINE)
+_MD_FENCE = re.compile(r"^\s*(```|~~~).*$", re.MULTILINE)
+_MD_EMPHASIS = re.compile(r"(\*{1,3}|_{1,3}|~~|`+)")
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def markdown_to_plain(text: str, limit: int = _ANNOUNCEMENT_PUSH_CHARS) -> str:
+    """Reduce Markdown to one line of plain text for a notification body, cut at *limit* characters."""
+    plain = _MD_FENCE.sub("", text)
+    plain = _MD_IMAGE.sub(r"\1", plain)
+    plain = _MD_LINK.sub(r"\1", plain)
+    plain = _MD_LINE_PREFIX.sub("", plain)
+    plain = _MD_EMPHASIS.sub("", plain)
+    plain = _HTML_TAG.sub("", plain)
+    plain = " ".join(plain.split())
+    if len(plain) > limit:
+        plain = plain[: limit - 1].rstrip() + "…"
+    return plain
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -182,3 +211,26 @@ def notify_winners(tid: str, data: dict, winner_teams: list[list[str]] | list[st
 def notify_champion(tid: str, data: dict, champion_names: list[str]) -> None:
     """Push 'tournament finished' for a single champion (wrapper around :func:`notify_winners`)."""
     notify_winners(tid, data, [list(champion_names)] if champion_names else [])
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Event: organizer announcement
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def notify_announcement(tid: str, data: dict, announcement_id: str, text: str) -> None:
+    """Push a new organizer announcement to every subscriber of the tournament.
+
+    The notification opens the Player Hub event page, where the announcement is listed;
+    the body is the announcement as plain text, cut to about 140 characters.
+    """
+    body = markdown_to_plain(text)
+    if not body:
+        return
+    send_push_to_tournament(
+        tournament_id=tid,
+        title=data.get("name", "Tournament"),
+        body=body,
+        url=_hub_event_url(tid),
+        tag=f"{tid}-announcement-{announcement_id}",
+    )

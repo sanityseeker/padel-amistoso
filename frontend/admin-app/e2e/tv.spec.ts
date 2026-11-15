@@ -498,3 +498,36 @@ test('a spectator who is not signed in never sees the entry fee button', async (
   await expect(page.getByTestId('tv-payment-button')).toHaveCount(0);
   await expect(page.getByText(/Entry fee/)).toHaveCount(0);
 });
+
+test('the bracket picture is drawn in the page and follows the theme', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'po', `Bracket theme ${stamp()}`);
+  const textFill = () =>
+    page
+      .getByTestId('tv-bracket')
+      .locator('svg text')
+      .last()
+      .evaluate((el) => getComputedStyle(el).fill);
+  const bodyText = () => page.evaluate(() => getComputedStyle(document.body).color);
+
+  await page.addInitScript(() => localStorage.setItem('amistoso-theme', 'light'));
+  await page.goto(`/tv/${id}`);
+  await expect(page.getByTestId('tv-bracket').locator('svg text').first()).toBeVisible({
+    timeout: 30_000,
+  });
+  // The SVG is in the page: its team names use the app's text colour, in the app's font.
+  const light = await textFill();
+  expect(light).toBe(await bodyText());
+  await expect(page.getByTestId('tv-bracket').locator('svg script, svg style')).toHaveCount(0);
+
+  await page.addInitScript(() => localStorage.setItem('amistoso-theme', 'dark'));
+  await page.reload();
+  await expect(page.getByTestId('tv-bracket').locator('svg text').first()).toBeVisible({
+    timeout: 30_000,
+  });
+  const dark = await textFill();
+  expect(dark).toBe(await bodyText());
+  expect(dark).not.toBe(light);
+});

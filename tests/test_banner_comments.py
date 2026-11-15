@@ -31,6 +31,22 @@ class TestBannerAndComments:
         assert r.status_code == 200
         assert r.json()["banner_text"] == ""
 
+    def test_anonymous_tv_settings_returns_custom_info(self, client, auth_headers):
+        tid = self._create(client, auth_headers)
+        public = client.get(f"/api/tournaments/{tid}/tv-settings").json()
+        assert public["custom_info_title"] == ""
+        assert public["custom_info_text"] == ""
+        r = client.patch(
+            f"/api/tournaments/{tid}/tv-settings",
+            json={"custom_info_title": "Format", "custom_info_text": "**Short sets**"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        # No auth header: the Player Hub and the TV page read this anonymously.
+        public = client.get(f"/api/tournaments/{tid}/tv-settings").json()
+        assert public["custom_info_title"] == "Format"
+        assert public["custom_info_text"] == "**Short sets**"
+
     def test_set_banner_via_tv_settings(self, client, auth_headers):
         tid = self._create(client, auth_headers)
         r = client.patch(

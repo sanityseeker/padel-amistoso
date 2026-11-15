@@ -4,14 +4,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { t as tx, useLocale } from '../../i18n';
 import {
   bracketImages,
+  bracketLabels,
   buildReport,
+  exportParts,
   downloadHtml,
   loadExportOptions,
   printHtml,
   saveExportOptions,
   type ExportOptions,
 } from './exportReport';
-import { allMatches, type TournamentPageData } from './scoring';
+import type { TournamentPageData } from './scoring';
 import { FormActions, ResponsiveSheet } from '../../ui';
 import { Notice } from '../../ui/Notice';
 
@@ -34,7 +36,8 @@ export function ExportDialog({
   const [busy, setBusy] = useState<'html' | 'pdf' | null>(null);
   const [error, setError] = useState('');
   const page = client.getQueryData<TournamentPageData>(['admin', 'tournament', tid]);
-  const hasBracket = !!page && !page.groupStage && page.path === 'playoffs';
+  const parts = page ? exportParts(page) : { hasBracket: false, hasStandings: true };
+  const hasBracket = parts.hasBracket;
   const set = (key: keyof ExportOptions) => (checked: boolean) => {
     const next = { ...options, [key]: checked };
     setOptions(next);
@@ -48,22 +51,17 @@ export function ExportDialog({
       setError(tx('Pop-ups are blocked. Allow pop-ups to export a PDF.'));
       return;
     }
+    win?.document.write(`<p style="font-family:sans-serif">${tx('Preparing the export')}</p>`);
     setBusy(format);
     setError('');
     try {
       const images =
         options.bracket && hasBracket
-          ? await bracketImages(
-              tid,
-              prefix,
-              !!page.status.espejo || !!page.status.double_elimination,
-              page.settings,
-            )
+          ? await bracketImages(tid, prefix, bracketLabels(page), page.settings)
           : [];
       const report = buildReport({
         name,
         page,
-        matches: allMatches(page.data),
         options,
         images,
         now: new Date(),
@@ -107,11 +105,13 @@ export function ExportDialog({
           checked={options.comments}
           onChange={(e) => set('comments')(e.currentTarget.checked)}
         />
-        <Switch
-          label={tx('Include ELO in standings')}
-          checked={options.elo}
-          onChange={(e) => set('elo')(e.currentTarget.checked)}
-        />
+        {parts.hasStandings && (
+          <Switch
+            label={tx('Include ELO in standings')}
+            checked={options.elo}
+            onChange={(e) => set('elo')(e.currentTarget.checked)}
+          />
+        )}
         <FormActions onCancel={onClose}>
           <Button loading={busy === 'html'} onClick={() => void run('html')}>
             {tx('Export HTML')}

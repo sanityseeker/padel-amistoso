@@ -1,0 +1,5 @@
+/* A posted announcement: long words and links wrap inside the row instead of widening the page. */
+.text {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

@@ -15,12 +15,12 @@ import {
 } from '@mantine/core';
 import { IconChevronRight, IconInfoCircle, IconTrophy } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
-import { formatRoundLabel } from '../../roundLabel';
+import { formatRoundLabel, queueRoundLabel } from '../../roundLabel';
 import type { Match, Standing } from '../../types';
 import type { PlayerMatch } from '../../player/types';
 import type { Ctx } from '../../admin/tournament/scoring';
 import { MatchActions } from '../player/MatchActions';
-import type { ScoringData } from '../player/eventData';
+import { usesCourts, type ScoringData } from '../player/eventData';
 import {
   groupHighlight,
   hasDraws,
@@ -226,6 +226,8 @@ function TvMatch({
       testId="tv-match"
       hideScores={pending}
       showCourt={!court && live.status.assign_courts !== false}
+      courts={usesCourts(live.status)}
+      queueLabels
       yours={playing && pending && !court}
       footer={
         <>
@@ -325,19 +327,63 @@ function byRound(matches: Match[], split: boolean, insideGroup = false) {
   return groups;
 }
 
+/** Round title of a match that waits without a court: no round number, only names without order. */
+function queueTitle(m: Pick<Match, 'bracket_side' | 'round_label'>, split: boolean) {
+  const label = queueRoundLabel(m.round_label);
+  if (!label) return '';
+  const side = m.bracket_side;
+  if (!side) return label;
+  return `${label} (${
+    split
+      ? tx(side === 'losers' ? 'Silver' : 'Gold')
+      : tx(side === 'losers' ? 'Losers Bracket' : 'Winners Bracket')
+  })`;
+}
+
+/**
+ * Pending matches in court queue order (on court first, then the queue by slot, undecided matches
+ * last). A match on court keeps its round title; one still waiting has no round number.
+ */
+function byQueue(matches: Match[], split: boolean, insideGroup = false) {
+  const queue = [...matches].sort(
+    (a, b) =>
+      Number(isTbd(a)) - Number(isTbd(b)) ||
+      Number(!!b.court) - Number(!!a.court) ||
+      (a.slot_number ?? Infinity) - (b.slot_number ?? Infinity),
+  );
+  const groups = new Map<string, Match[]>();
+  for (const m of queue) {
+    const groupRound = insideGroup ? /^Group .+ R(\d+)$/.exec(m.round_label) : null;
+    const key = m.court
+      ? groupRound
+        ? tx('Round {round}', { round: groupRound[1] })
+        : roundTitle(m, m.round_label, split)
+      : insideGroup
+        ? ''
+        : queueTitle(m, split);
+    groups.set(key, [...(groups.get(key) ?? []), m]);
+  }
+  return groups;
+}
+
 function PendingList({
   matches,
   ctx,
   scope,
   grouped,
   state,
+  queue = false,
 }: {
   matches: Match[];
   ctx: Ctx;
   scope: Scope;
   grouped: Record<string, Match[]> | null;
   state: OpenState;
+  /** The event runs a court queue: order by queue and number only what is on court. */
+  queue?: boolean;
 }) {
+  const rounds = (list: Match[], inside = false) =>
+    queue ? byQueue(list, scope.split, inside) : byRound(list, scope.split, inside);
   const block = (rounds: Map<string, Match[]>) =>
     [...rounds].map(([title, list]) => (
       <Stack key={title} gap="xs">
@@ -376,11 +422,7 @@ function PendingList({
               <Collapse expanded={open}>
                 <Stack gap="md" pt="xs">
                   {block(
-                    new Map(
-                      [...byRound(list, scope.split, true)].map(
-                        ([k, v]) => [k, v] as [string, Match[]],
-                      ),
-                    ),
+                    new Map([...rounds(list, true)].map(([k, v]) => [k, v] as [string, Match[]])),
                   )}
                 </Stack>
               </Collapse>
@@ -389,7 +431,7 @@ function PendingList({
         })}
       </Stack>
     );
-  return <Stack gap="md">{block(byRound(matches, scope.split))}</Stack>;
+  return <Stack gap="md">{block(rounds(matches))}</Stack>;
 }
 
 /** Each court shows only its next match (the lowest slot number). */
@@ -433,7 +475,14 @@ function YourMatches({
   if (mine.length === 0) return null;
   return (
     <Section id="your-matches" title={tx('Your matches')} state={state}>
-      <PendingList matches={mine} ctx={ctx} scope={scope} grouped={null} state={state} />
+      <PendingList
+        matches={mine}
+        ctx={ctx}
+        scope={scope}
+        grouped={null}
+        state={state}
+        queue={usesCourts(scope.live.status)}
+      />
     </Section>
   );
 }
@@ -464,7 +513,14 @@ function Courts({
       {matches.length === 0 ? (
         <Text c="dimmed">{tx('No pending court assignments')}</Text>
       ) : (
-        <PendingList matches={matches} ctx={ctx} scope={scope} grouped={grouped} state={state} />
+        <PendingList
+          matches={matches}
+          ctx={ctx}
+          scope={scope}
+          grouped={grouped}
+          state={state}
+          queue={usesCourts(scope.live.status)}
+        />
       )}
     </Section>
   );
@@ -611,12 +667,15 @@ function GroupStandings({
   scope,
   state,
   highlight,
+  title,
 }: {
   live: TvLive;
   meta: TvMeta;
   scope: Scope;
   state: OpenState;
   highlight?: string;
+  /** Heading; "Group stage" once the play-offs have started and the table is history. */
+  title?: string;
 }) {
   useLocale();
   const status = live.status;
@@ -629,7 +688,7 @@ function GroupStandings({
   return (
     <Section
       id="standings"
-      title={tx('Group standings')}
+      title={title ?? tx('Group standings')}
       state={state}
       info={<Legend kind="standings" sets={sets} draws={hasDraws(all)} />}
     >
@@ -762,9 +821,12 @@ export function sectionKeys(live: TvLive): TvSectionInfo[] {
     !hideGroups &&
     s.show_standings &&
     live.kind !== 'playoff' &&
+    live.kind !== 'group_playoff' &&
     phase !== 'playoffs' &&
     phase !== 'finished'
   )
+    out.push({ key: 'standings', label: tx('Standings') });
+  if (!hideGroups && s.show_standings && live.kind === 'group_playoff' && phase === 'groups')
     out.push({ key: 'standings', label: tx('Standings') });
   if (
     !hidden &&
@@ -782,6 +844,14 @@ export function sectionKeys(live: TvLive): TvSectionInfo[] {
     live.playoffs.matches.length > 0
   )
     out.push({ key: 'bracket', label: tx('Play off bracket') });
+  // The group tables stay once the play-offs have started, after the bracket.
+  if (
+    !hideGroups &&
+    s.show_standings &&
+    live.kind === 'group_playoff' &&
+    (phase === 'playoffs' || phase === 'finished')
+  )
+    out.push({ key: 'standings', label: tx('Group stage') });
   if (
     (phase === 'playoffs' || phase === 'finished') &&
     s.show_standings &&
@@ -905,8 +975,15 @@ export function TvBoard({
   const standings =
     settings.show_standings &&
     !(hidden && kind === 'group_playoff') &&
-    (kind === 'group_playoff' && !playoffPhase ? (
-      <GroupStandings live={live} meta={meta} scope={scope} state={state} highlight={sid} />
+    (kind === 'group_playoff' ? (
+      <GroupStandings
+        live={live}
+        meta={meta}
+        scope={scope}
+        state={state}
+        highlight={sid}
+        title={playoffPhase ? tx('Group stage') : undefined}
+      />
     ) : kind === 'mexicano' ? (
       <Leaderboard live={live} scope={scope} state={state} highlight={sid} />
     ) : null);
@@ -941,6 +1018,7 @@ export function TvBoard({
         <>
           {show('past') && past('past-playoffs', tx('Play off matches'), playoffPast, playoffCtx)}
           {show('bracket') && bracket}
+          {show('standings') && standings}
           {show('past') &&
             past(
               'past-groups',

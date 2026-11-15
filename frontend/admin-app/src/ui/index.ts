@@ -23,3 +23,5 @@ export { MutationError } from './MutationError';
 export { Section, SectionHelp } from './Section';
 export { QrSheet } from './QrSheet';
 export { ZoomableImage, type ZoomableImageHandle } from './ZoomableImage';
+export { SchemaSvg, sanitizeSchemaSvg } from './SchemaSvg';
+export { SchemaViewer } from './SchemaViewer';

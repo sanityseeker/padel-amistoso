@@ -175,12 +175,7 @@ export function BracketSchemaTool() {
             {tx('Generate schema')}
           </Button>
         </Group>
-        <SchemaImage
-          url={url}
-          format={format}
-          filename={title.trim() || 'bracket'}
-          alt={tx('Bracket')}
-        />
+        <SchemaImage url={url} filename={title.trim() || 'bracket'} alt={tx('Bracket')} />
       </Stack>
     </Paper>
   );
