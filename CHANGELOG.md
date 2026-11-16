@@ -1,3 +1,9 @@
+## v3.11.0 (2026-11-16)
+
+### Feat
+
+- scoped player cards, rating-based starting seeding and error screen
+
 ## v3.10.1 (2026-11-16)
 
 ### Fix
