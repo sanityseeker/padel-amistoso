@@ -102,6 +102,9 @@ class CardMatch(BaseModel):
     # The card player's partners and opponents in this match, by the names they played under.
     partners: list[str] = []
     opponents: list[str] = []
+    # Their linked profiles, in the same order (``None``: not linked), so a name can open its card.
+    partner_profiles: list[str | None] = []
+    opponent_profiles: list[str | None] = []
 
 
 class ScopedPlayerCard(BaseModel):
@@ -397,6 +400,18 @@ def build_scoped_card(
             continue
         payload = entry["_payload"]
         own_key, other_key = ("team1", "team2") if side == 1 else ("team2", "team1")
+
+        def profiles_of(
+            key: str, skip_me: bool, log: dict[str, Any] = log, payload: dict = payload
+        ) -> list[str | None]:
+            return [
+                linked.get((log["tournament_id"], p.get("player_id"))) if p.get("player_id") else None
+                for p in payload.get(key) or []
+                if not (skip_me and p.get("player_id") == log["player_id"])
+            ]
+
+        entry["partner_profiles"] = profiles_of(own_key, True)
+        entry["opponent_profiles"] = profiles_of(other_key, False)
         for key, counter in ((own_key, partners), (other_key, opponents)):
             for p in payload.get(key) or []:
                 pid = p.get("player_id")

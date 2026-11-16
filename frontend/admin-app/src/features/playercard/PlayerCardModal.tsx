@@ -6,11 +6,14 @@ import { t as tx, useLocale } from '../../i18n';
 import { publicApi } from '../../events/api';
 import { Notice, PlayerName, ResponsiveSheet, StatTile } from '../../ui';
 import { deltaColor, MatchLine, signed } from './MatchLine';
-import { CardError, scopeLabel, ScopedCardBody, useScopedCard } from './ScopedCard';
+import { CardError, scopeLabel, scopeQuery, ScopedCardBody, useScopedCard } from './ScopedCard';
+import { BackButton, useTrail } from './trail';
 import type { CardSource } from './source';
 import type { CardStage, EventCard, MatchStage, ScopeOption } from './types';
 
 const AUTO_CLOSE_MS = 30_000;
+
+type Step = { kind: 'event'; id: string } | { kind: 'profile'; id: string; query: string };
 
 const STAGE_LABEL: Record<MatchStage, string> = {
   group: 'Group stage',
@@ -55,28 +58,33 @@ export function PlayerCardModal({
   const [wide, setWide] = useState(false);
   // A team's player picked in the wider scope (ratings belong to the players).
   const [member, setMember] = useState<string | null>(null);
-  // Each opening starts on its own stage and on this event again.
+  // Names tapped inside the card: another player of this event, or a profile in the wider scope.
+  const trail = useTrail<Step>(playerId);
+  const profileStep = trail.top?.kind === 'profile' ? trail.top : null;
+  const eventStep = [...trail.items].reverse().find((s) => s.kind === 'event');
+  const current = eventStep?.id ?? playerId;
+  // Each opening (and each player opened from a name) starts on its own stage and on this event.
   useEffect(() => {
     setWhole(false);
     setWide(false);
     setMember(null);
-  }, [playerId, stage]);
+  }, [current, stage]);
   // The followed tournament's live updates (TV) refresh an open card.
   useEffect(() => {
-    if (!playerId) return;
+    if (!current) return;
     const changed = () => {
-      void client.invalidateQueries({ queryKey: eventCardKey(tid, playerId) });
+      void client.invalidateQueries({ queryKey: eventCardKey(tid, current) });
       if (source) void client.invalidateQueries({ queryKey: [source.realm, 'card', 'event', tid] });
     };
     window.addEventListener(TOURNAMENT_UPDATE_EVENT, changed);
     return () => window.removeEventListener(TOURNAMENT_UPDATE_EVENT, changed);
-  }, [client, tid, playerId, source]);
+  }, [client, tid, current, source]);
   const card = useQuery({
-    queryKey: eventCardKey(tid, playerId),
-    enabled: !!playerId,
+    queryKey: eventCardKey(tid, current),
+    enabled: !!current,
     queryFn: () =>
       publicApi<EventCard>(
-        `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(playerId!)}/public-card`,
+        `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(current!)}/public-card`,
       ),
   });
   useEffect(() => {
@@ -88,17 +96,17 @@ export function PlayerCardModal({
   // Which wider scope this viewer may open is the server's answer for this session (a club only for
   // its members and organizers); the anonymous event card cannot know it.
   const scopes = useQuery({
-    queryKey: [source?.realm ?? 'public', 'card', 'scopes', tid, playerId],
-    enabled: !!source && !!playerId && !!data?.has_profile,
+    queryKey: [source?.realm ?? 'public', 'card', 'scopes', tid, current],
+    enabled: !!source && !!current && !!data?.has_profile,
     retry: false,
     queryFn: () =>
       source!.fetch<ScopeOption[]>(
-        `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(playerId!)}/card-scopes`,
+        `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(current!)}/card-scopes`,
       ),
   });
   const wider = scopes.data?.find((s) => s.kind !== 'event');
   const canWiden = !!source && !!data?.has_profile && !!wider;
-  const shownId = member ?? playerId;
+  const shownId = member ?? current;
   const scoped = useScopedCard(
     source,
     ['event', tid, shownId, wider?.kind],
@@ -106,6 +114,20 @@ export function PlayerCardModal({
       ? `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(shownId)}/card?scope=${wider!.kind}`
       : null,
   );
+  // A profile opened from the wider card: shown in that card's own scope.
+  const profile = useScopedCard(
+    source,
+    ['profile', profileStep?.id, profileStep?.query],
+    profileStep ? `/player-cards/${encodeURIComponent(profileStep.id)}${profileStep.query}` : null,
+  );
+  const openProfile = (id: string) => {
+    const from = profileStep ? profile.data : scoped.data;
+    if (from && id !== from.profile_id)
+      trail.open({ kind: 'profile', id, query: scopeQuery(from) });
+  };
+  const openEventPlayer = (id: string) => {
+    if (id !== current) trail.open({ kind: 'event', id });
+  };
   const openMember = (id: string) => {
     setMember(id);
     setWide(true);
@@ -131,13 +153,31 @@ export function PlayerCardModal({
       : data?.is_team
         ? tx('Average ELO')
         : tx('ELO');
-  const title =
-    wide && member && scoped.data ? scoped.data.name : (data?.player_name ?? tx('Loading'));
+  const title = profileStep
+    ? (profile.data?.name ?? tx('Loading'))
+    : wide && member && scoped.data
+      ? scoped.data.name
+      : (data?.player_name ?? tx('Loading'));
   return (
     <ResponsiveSheet opened={!!playerId} onClose={onClose} size="lg" title={title}>
-      {card.isPending && <Loader aria-label={tx('Loading')} />}
-      {card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
-      {data && (
+      {trail.top && <BackButton onClick={trail.back} />}
+      {profileStep && (
+        <>
+          {profile.isPending && <Loader aria-label={tx('Loading')} />}
+          {profile.error && <CardError error={profile.error} />}
+          {profile.data && (
+            <Stack gap="md" data-testid="profile-player-card">
+              <Text variant="eyebrow" data-testid="card-scope-label">
+                {scopeLabel(profile.data.scope)}
+              </Text>
+              <ScopedCardBody card={profile.data} onProfile={openProfile} />
+            </Stack>
+          )}
+        </>
+      )}
+      {!profileStep && card.isPending && <Loader aria-label={tx('Loading')} />}
+      {!profileStep && card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
+      {!profileStep && data && (
         <Stack gap="md" data-testid="tv-player-card">
           {canWiden && (
             <SegmentedControl
@@ -173,7 +213,9 @@ export function PlayerCardModal({
                 ) : (
                   <CardError error={scoped.error} />
                 ))}
-              {scoped.data && <ScopedCardBody card={scoped.data} onMember={openMember} />}
+              {scoped.data && (
+                <ScopedCardBody card={scoped.data} onMember={openMember} onProfile={openProfile} />
+              )}
             </>
           ) : (
             <>
@@ -252,7 +294,13 @@ export function PlayerCardModal({
               )}
               <Stack gap="xs">
                 {shown.map((m, i) => (
-                  <MatchLine key={i} m={m} player={data.player_name} members={memberNames} />
+                  <MatchLine
+                    key={i}
+                    m={m}
+                    player={data.player_name}
+                    members={memberNames}
+                    onPlayer={openEventPlayer}
+                  />
                 ))}
               </Stack>
             </>

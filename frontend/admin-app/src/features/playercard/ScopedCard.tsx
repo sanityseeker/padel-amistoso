@@ -33,6 +33,18 @@ export function CardError({ error }: { error: unknown }) {
   return <Notice tone="danger">{tx('Could not load player.')}</Notice>;
 }
 
+/** The `/player-cards/{profile}` query of a card's own scope: another player's card in the same scope. */
+export function scopeQuery(card: ScopedCard): string {
+  const q = new URLSearchParams();
+  const id = card.scope.id;
+  if (id && card.scope.kind === 'club') q.set('club_id', id);
+  if (id && card.scope.kind === 'season') q.set('season_id', id);
+  if (id && card.scope.kind === 'community') q.set('community_id', id);
+  if (card.sport) q.set('sport', card.sport);
+  const text = q.toString();
+  return text ? `?${text}` : '';
+}
+
 /** The name of a card's scope: the club or community, or "All events". */
 export const scopeLabel = (scope: ScopeOption) =>
   scope.kind === 'all' || !scope.label ? tx('All events') : scope.label;
@@ -77,7 +89,17 @@ function SportBlock({ s, club, single }: { s: SportStats; club: boolean; single:
   );
 }
 
-function People({ title, rows, testId }: { title: string; rows: Counterpart[]; testId: string }) {
+function People({
+  title,
+  rows,
+  testId,
+  onProfile,
+}: {
+  title: string;
+  rows: Counterpart[];
+  testId: string;
+  onProfile?: (profileId: string) => void;
+}) {
   useLocale();
   if (!rows.length) return null;
   return (
@@ -90,8 +112,11 @@ function People({ title, rows, testId }: { title: string; rows: Counterpart[]; t
           wrap="nowrap"
           gap="sm"
         >
-          <Text size="sm" fw={600} truncate>
-            {r.name}
+          <Text size="sm" fw={600} truncate component="div" miw={0}>
+            <PlayerName
+              name={r.name}
+              onOpen={onProfile && r.profile_id ? () => onProfile(r.profile_id!) : undefined}
+            />
           </Text>
           <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
             {tx('{games} games · {pct}% won', {
@@ -110,10 +135,13 @@ function People({ title, rows, testId }: { title: string; rows: Counterpart[]; t
 export function ScopedCardBody({
   card,
   onMember,
+  onProfile,
 }: {
   card: ScopedCard;
   /** A team card lists its players; a tap opens that player's card in the same scope. */
   onMember?: (playerId: string) => void;
+  /** A tap on a linked partner's or opponent's name opens their card in the same scope. */
+  onProfile?: (profileId: string) => void;
 }) {
   useLocale();
   if (card.is_team)
@@ -154,15 +182,25 @@ export function ScopedCardBody({
       ))}
       {(card.top_partners.length > 0 || card.top_opponents.length > 0) && (
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-          <People title={tx('Top partners')} rows={card.top_partners} testId="card-partners" />
-          <People title={tx('Top opponents')} rows={card.top_opponents} testId="card-opponents" />
+          <People
+            title={tx('Top partners')}
+            rows={card.top_partners}
+            testId="card-partners"
+            onProfile={onProfile}
+          />
+          <People
+            title={tx('Top opponents')}
+            rows={card.top_opponents}
+            testId="card-opponents"
+            onProfile={onProfile}
+          />
         </SimpleGrid>
       )}
       {card.recent_matches.length > 0 && (
         <Stack gap="xs">
           <Text variant="eyebrow">{tx('Recent matches')}</Text>
           {card.recent_matches.map((m, i) => (
-            <MatchLine key={i} m={m} player={card.name} />
+            <MatchLine key={i} m={m} player={card.name} onPlayer={onProfile} />
           ))}
         </Stack>
       )}

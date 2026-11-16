@@ -101,12 +101,18 @@ class _EventParticipant:
         roster: dict[str, list[str]] = getattr(tournament, "team_roster", None) or {}
         self.data: dict[str, Any] = data
         self.sport: str = data.get("sport") or "padel"
+        member_names: dict[str, list[str]] = getattr(tournament, "team_member_names", None) or {}
         self.names = {p.id: p.name for p in getattr(tournament, "players", []) or []}
+        # A composed team's members are not tournament players; each opens their own card too.
+        for team_id, ids in roster.items():
+            listed = member_names.get(team_id) or []
+            for i, mid in enumerate(ids):
+                self.names.setdefault(mid, listed[i] if i < len(listed) else mid)
         if player_id not in self.names and player_id not in roster:
             raise HTTPException(404, "Player not in this tournament")
         self.name = self.names.get(player_id, player_id)
         self.member_ids: list[str] = list(roster.get(player_id, []))
-        self.listed: list[str] = (getattr(tournament, "team_member_names", None) or {}).get(player_id) or []
+        self.listed: list[str] = member_names.get(player_id) or []
         if self.member_ids:
             self.linked = participant_profiles(tid, self.member_ids)
             self.profile_id: str | None = None

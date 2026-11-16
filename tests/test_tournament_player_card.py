@@ -275,6 +275,10 @@ class TestWalkoverAndFreshness:
             assert card["matches"] == 1 and card["stages"] == ["rounds"]
             m = card["recent_matches"][0]
             assert m["elo_delta"] is not None and m["elo_after"] is not None
+            # Event player ids line up with the names: each name opens that player's card.
+            ids = {p["player_id"]: p["player"] for p in board}
+            assert [ids[i] for i in m["team1_ids"]] == m["team1"]
+            assert [ids[i] for i in m["team2_ids"]] == m["team2"]
             assert card["elo_delta_total"] == pytest.approx(m["elo_delta"], abs=0.1)
             assert card["elo_history"] == [pytest.approx(m["elo_after"], abs=0.1)]
 

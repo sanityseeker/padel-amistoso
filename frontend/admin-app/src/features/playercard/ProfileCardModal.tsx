@@ -3,6 +3,7 @@ import { t as tx, useLocale } from '../../i18n';
 import { ResponsiveSheet } from '../../ui';
 import { CardError, scopeLabel, ScopedCardBody, useScopedCard } from './ScopedCard';
 import type { CardSource } from './source';
+import { BackButton, useTrail } from './trail';
 
 /** A profile to show and the scope query of the board it came from (`?club_id=...&sport=...`). */
 export interface ProfileCardTarget {
@@ -23,10 +24,13 @@ export function ProfileCardModal({
   onClose: () => void;
 }) {
   useLocale();
+  // A partner's or opponent's name opens their card here, in the same scope.
+  const trail = useTrail<string>(target);
+  const profileId = trail.top ?? target?.profileId;
   const card = useScopedCard(
     source,
-    ['profile', target?.profileId, target?.query],
-    target ? `/player-cards/${encodeURIComponent(target.profileId)}${target.query}` : null,
+    ['profile', profileId, target?.query],
+    target && profileId ? `/player-cards/${encodeURIComponent(profileId)}${target.query}` : null,
   );
   const data = card.data;
   return (
@@ -36,6 +40,7 @@ export function ProfileCardModal({
       size="lg"
       title={data?.name ?? tx('Loading')}
     >
+      {trail.top && <BackButton onClick={trail.back} />}
       {card.isPending && <Loader aria-label={tx('Loading')} />}
       {card.error && <CardError error={card.error} />}
       {data && (
@@ -43,7 +48,10 @@ export function ProfileCardModal({
           <Text variant="eyebrow" data-testid="card-scope-label">
             {scopeLabel(data.scope)}
           </Text>
-          <ScopedCardBody card={data} />
+          <ScopedCardBody
+            card={data}
+            onProfile={(id) => id !== data.profile_id && trail.open(id)}
+          />
         </Stack>
       )}
     </ResponsiveSheet>

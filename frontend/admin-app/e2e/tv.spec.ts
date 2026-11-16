@@ -442,6 +442,15 @@ test('a composed team row opens a card with the team matches and its members', a
   await expect(card.getByTestId('tv-card-members')).toContainText('Beto');
   // Only the group stage so far: no stage switch.
   await expect(card.getByTestId('tv-card-scope')).toHaveCount(0);
+  // An opponent's name in the history opens their card in the same sheet; Back returns.
+  await card
+    .getByTestId('tv-card-match')
+    .getByRole('button', { name: 'Open profile for Carla & Diego' })
+    .click();
+  await expect(card.getByRole('heading', { name: 'Carla & Diego' })).toBeVisible();
+  await expect(card.getByTestId('tv-card-members')).toContainText('Carla');
+  await card.getByTestId('card-back').click();
+  await expect(card.getByRole('heading', { name: 'Ana & Beto' })).toBeVisible();
 });
 
 test('a name on a match card opens that player card, with no scope switch for a spectator', async ({

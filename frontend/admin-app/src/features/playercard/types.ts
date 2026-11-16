@@ -28,6 +28,12 @@ export interface CardMatch {
   tournament_name?: string | null;
   partners?: string[];
   opponents?: string[];
+  /** Wider scopes: the linked profile of each partner / opponent (null: none). */
+  partner_profiles?: (string | null)[];
+  opponent_profiles?: (string | null)[];
+  /** The event card: this event's player ids, in the order of `team1` / `team2`. */
+  team1_ids?: string[];
+  team2_ids?: string[];
 }
 
 interface StageStats {

@@ -130,6 +130,9 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
                 "decider": getattr(decider, "value", decider) or ("full_set" if sets else None),
                 "team1": [p.name for p in m.team1],
                 "team2": [p.name for p in m.team2],
+                # This event's player ids, in the same order: a name opens that player's card.
+                "team1_ids": [p.id for p in m.team1],
+                "team2_ids": [p.id for p in m.team2],
                 # The card's own player: 1 or 2, so the card can show the match from their side.
                 "side": side,
                 "elo_before": _mean([float(r["elo_before"]) for r in rows if r["elo_before"] is not None]),

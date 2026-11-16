@@ -373,6 +373,18 @@ class TestEventCard:
         assert [m["player_id"] for m in card["members"]] == member_ids
         assert [m["has_profile"] for m in card["members"]] == [True, False]
         assert card["stats"] == [] and card["recent_matches"] == []
+        # A member opens their own card: the linked one in the wider scope, the other has none.
+        assert _scopes(client, tid, member_ids[0]) == ["event", "all"]
+        ann = client.get(
+            f"/api/tournaments/{tid}/players/{member_ids[0]}/card?scope=all", headers=_profile_headers(VIEWER)
+        )
+        assert ann.status_code == 200, ann.text
+        assert ann.json()["profile_id"] == "pp_ann"
+        assert _scopes(client, tid, member_ids[1]) == ["event"]
+        bea = client.get(
+            f"/api/tournaments/{tid}/players/{member_ids[1]}/card?scope=all", headers=_profile_headers(VIEWER)
+        )
+        assert bea.status_code == 404
 
     def test_cache_invalidated_after_a_score(self, client, auth_headers) -> None:
         tid = _create_open_event(client, auth_headers)
@@ -463,6 +475,9 @@ class TestClubBoardNumbers:
         assert m["side"] == 1 and m["outcome"] == "W"
         assert m["partners"] == ["Bob"]
         assert sorted(m["opponents"]) == ["Opp t_a_hidden", "Yan"]
+        # Each name carries its linked profile (in order), so the card can open it.
+        assert m["partner_profiles"] == ["pp_bob"]
+        assert m["opponent_profiles"] == [None, None]
 
 
 # ---------------------------------------------------------------------------
