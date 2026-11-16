@@ -1,3 +1,9 @@
+## v3.11.1 (2026-11-16)
+
+### Fix
+
+- player card ELO change follows rating order, larger names in Played rows
+
 ## v3.11.0 (2026-11-16)
 
 ### Feat
