@@ -1,3 +1,9 @@
+## v3.11.2 (2026-11-16)
+
+### Fix
+
+- team members open their own cards, names in card match history open cards
+
 ## v3.11.1 (2026-11-16)
 
 ### Fix
