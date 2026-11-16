@@ -1,3 +1,9 @@
+## v3.10.1 (2026-11-16)
+
+### Fix
+
+- score-format weighted ELO, bracket schema polish and Hub/TV layout fixes
+
 ## v3.10.0 (2026-11-16)
 
 ### Feat
