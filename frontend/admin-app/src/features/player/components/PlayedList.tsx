@@ -1,5 +1,6 @@
 import { Badge, Group, Text, Title, VisuallyHidden } from '@mantine/core';
 import { IconMessage } from '@tabler/icons-react';
+import type { ReactNode } from 'react';
 import { t as tx, useLocale } from '../../../i18n';
 import { formatRoundLabel } from '../../../roundLabel';
 import type { PathRound } from '../../../player/types';
@@ -87,6 +88,7 @@ export function PlayedList({
   testId,
   title,
   titleOrder = 2,
+  wrap,
 }: {
   items: PlayedItem[];
   /** The player's path (rounds already played), for ranks and sat-out rounds. */
@@ -95,6 +97,8 @@ export function PlayedList({
   /** Heading of the list; "Played" by default. */
   title?: string;
   titleOrder?: 2 | 3;
+  /** A screen's own section frame (the Hub folds it): heading text, the won/lost line, the list. */
+  wrap?: (title: string, summary: ReactNode, body: ReactNode) => ReactNode;
 }) {
   useLocale();
   const standings = path ? standingsOf(path) : new Map<string, Standing>();
@@ -125,117 +129,125 @@ export function PlayedList({
   ]
     .filter(Boolean)
     .join(' · ');
-  return (
-    <>
-      <Group justify="space-between" align="baseline" gap="xs">
-        <Title order={titleOrder}>{title ?? tx('Played')}</Title>
-        <Text size="sm" c="dimmed" data-testid="played-summary">
-          {summary}
-        </Text>
-      </Group>
-      <MatchListFrame testId={testId}>
-        {lines.map((line) => {
-          const standing = standings.get(line.label);
-          if (line.kind === 'sat-out')
-            return (
-              <div
-                key={line.key}
-                role="listitem"
-                className={classes.row}
-                data-kind="sat-out"
-                data-round={line.label}
-                data-testid="played-sat-out"
-              >
-                <span className={classes.chip} data-result="none" aria-hidden="true" />
-                <div className={classes.metaLine}>
-                  <Group gap={6} wrap="wrap">
-                    <Text size="xs" c="dimmed">
-                      {formatRoundLabel(line.label)}
-                    </Text>
-                    <StatusBadge size="xs">{tx('Sat out')}</StatusBadge>
-                  </Group>
-                  <StandingCell standing={standing} />
-                </div>
-              </div>
-            );
-          const { view, comment } = line;
-          const result = resultOf(view);
-          const you = Math.max(
-            0,
-            view.sides.findIndex((s) => s.isYou),
-          );
-          const sides = [view.sides[you]!, view.sides[1 - you]!] as const;
-          const flags = view.flags.filter((f) => f.key !== 'final');
-          const meta = [view.roundLabel && formatRoundLabel(view.roundLabel), view.court]
-            .filter(Boolean)
-            .join(' · ');
+  const summaryText = (
+    <Text size="sm" c="dimmed" data-testid="played-summary">
+      {summary}
+    </Text>
+  );
+  const list = (
+    <MatchListFrame testId={testId}>
+      {lines.map((line) => {
+        const standing = standings.get(line.label);
+        if (line.kind === 'sat-out')
           return (
             <div
               key={line.key}
               role="listitem"
               className={classes.row}
-              data-testid="player-match"
-              data-match-id={view.id}
-              data-status={view.rawStatus}
-              data-result={result}
+              data-kind="sat-out"
               data-round={line.label}
+              data-testid="played-sat-out"
             >
-              <span className={classes.chip} data-result={result} aria-hidden="true">
-                {LETTER[result]()}
-              </span>
-              <VisuallyHidden>{WORD[result]()}</VisuallyHidden>
-              <div className={classes.main}>
-                <div className={classes.metaLine}>
-                  <Group gap={6} wrap="wrap">
-                    {meta && (
-                      <Text size="xs" c="dimmed">
-                        {meta}
-                      </Text>
-                    )}
-                    {view.walkover && <StatusBadge size="xs">{tx('Walkover')}</StatusBadge>}
-                    {flags.map((f) => (
-                      <StatusBadge key={f.key} size="xs" tone="warning">
-                        {f.label}
-                      </StatusBadge>
-                    ))}
-                  </Group>
-                  <StandingCell standing={standing} />
-                </div>
-                {sides.map((side, i) => (
-                  <div
-                    key={i}
-                    className={classes.side}
-                    data-outcome={side.win ? 'win' : result === 'drawn' ? 'draw' : 'loss'}
-                    data-testid={i === 0 ? 'played-own' : 'played-other'}
-                  >
-                    <span className={classes.names}>
-                      {side.names.join(' & ')}
-                      {/* The same marker as every other match card: bold is taken by the winner. */}
-                      {i === 0 && (
-                        <Badge ml={6} size="xs" variant="outline" component="span">
-                          {tx('You')}
-                        </Badge>
-                      )}
-                    </span>
-                    {!view.walkover && (
-                      <span className={classes.digits}>
-                        {side.games && side.games.length > 0
-                          ? side.games.map((g, s) => <span key={s}>{g}</span>)
-                          : (side.score ?? '–')}
-                      </span>
-                    )}
-                  </div>
-                ))}
-                {comment && (
-                  <Text size="xs" c="dimmed" data-testid="match-comment">
-                    <IconMessage size={12} style={{ verticalAlign: '-2px' }} /> {comment}
+              <span className={classes.chip} data-result="none" aria-hidden="true" />
+              <div className={classes.metaLine}>
+                <Group gap={6} wrap="wrap">
+                  <Text size="xs" c="dimmed">
+                    {formatRoundLabel(line.label)}
                   </Text>
-                )}
+                  <StatusBadge size="xs">{tx('Sat out')}</StatusBadge>
+                </Group>
+                <StandingCell standing={standing} />
               </div>
             </div>
           );
-        })}
-      </MatchListFrame>
+        const { view, comment } = line;
+        const result = resultOf(view);
+        const you = Math.max(
+          0,
+          view.sides.findIndex((s) => s.isYou),
+        );
+        const sides = [view.sides[you]!, view.sides[1 - you]!] as const;
+        const flags = view.flags.filter((f) => f.key !== 'final');
+        const meta = [view.roundLabel && formatRoundLabel(view.roundLabel), view.court]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <div
+            key={line.key}
+            role="listitem"
+            className={classes.row}
+            data-testid="player-match"
+            data-match-id={view.id}
+            data-status={view.rawStatus}
+            data-result={result}
+            data-round={line.label}
+          >
+            <span className={classes.chip} data-result={result} aria-hidden="true">
+              {LETTER[result]()}
+            </span>
+            <VisuallyHidden>{WORD[result]()}</VisuallyHidden>
+            <div className={classes.main}>
+              <div className={classes.metaLine}>
+                <Group gap={6} wrap="wrap">
+                  {meta && (
+                    <Text size="xs" c="dimmed">
+                      {meta}
+                    </Text>
+                  )}
+                  {view.walkover && <StatusBadge size="xs">{tx('Walkover')}</StatusBadge>}
+                  {flags.map((f) => (
+                    <StatusBadge key={f.key} size="xs" tone="warning">
+                      {f.label}
+                    </StatusBadge>
+                  ))}
+                </Group>
+                <StandingCell standing={standing} />
+              </div>
+              {sides.map((side, i) => (
+                <div
+                  key={i}
+                  className={classes.side}
+                  data-outcome={side.win ? 'win' : result === 'drawn' ? 'draw' : 'loss'}
+                  data-testid={i === 0 ? 'played-own' : 'played-other'}
+                >
+                  <span className={classes.names}>
+                    {side.names.join(' & ')}
+                    {/* The same marker as every other match card: bold is taken by the winner. */}
+                    {i === 0 && (
+                      <Badge ml={6} size="xs" variant="outline" component="span">
+                        {tx('You')}
+                      </Badge>
+                    )}
+                  </span>
+                  {!view.walkover && (
+                    <span className={classes.digits}>
+                      {side.games && side.games.length > 0
+                        ? side.games.map((g, s) => <span key={s}>{g}</span>)
+                        : (side.score ?? '–')}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {comment && (
+                <Text size="xs" c="dimmed" data-testid="match-comment">
+                  <IconMessage size={12} style={{ verticalAlign: '-2px' }} /> {comment}
+                </Text>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </MatchListFrame>
+  );
+  const heading = title ?? tx('Played');
+  if (wrap) return <>{wrap(heading, summaryText, list)}</>;
+  return (
+    <>
+      <Group justify="space-between" align="baseline" gap="xs">
+        <Title order={titleOrder}>{heading}</Title>
+        {summaryText}
+      </Group>
+      {list}
     </>
   );
 }

@@ -875,9 +875,6 @@
   "How long the opposing team can correct a submitted score. 0 means no limit.": "Cuánto tiempo puede corregir el rival un resultado enviado. 0 significa sin límite.",
   "On the TV screen": "En la pantalla de TV",
   "Choose what spectators see.": "Elige qué ve el público.",
-  "Banner message": "Mensaje del banner",
-  "Shown across the top of the TV screen and in the Player Hub. Markdown formatting is supported.": "Se muestra en la parte superior de la pantalla de TV y en el área del jugador. Se admite el formato Markdown.",
-  "Save banner": "Guardar banner",
   "Custom section title": "Título de la sección personalizada",
   "Name this optional section on the TV screen and in the Player Hub.": "Asigne un nombre a esta sección opcional de la pantalla de TV y del área del jugador.",
   "Custom section description": "Descripción de la sección personalizada",
@@ -1561,6 +1558,8 @@
   "Select…": "Selecciona…",
   "Something went wrong. Please try again.": "Algo salió mal. Inténtalo de nuevo.",
   "Tap image to expand": "Toca la imagen para ampliar",
+  "Rounds {from}-{to} of {total}": "Rondas {from}-{to} de {total}",
+  "Full bracket": "Cuadro completo",
   "Pinch or double-tap to zoom": "Pellizca o toca dos veces para hacer zoom",
   "This is me": "Soy yo",
   "This registration has been converted to a tournament.": "Este registro se ha convertido en un torneo.",
@@ -2034,5 +2033,8 @@
   "Announcement unpinned": "Aviso desfijado",
   "Announcement deleted": "Aviso eliminado",
   "Too many announcements — try again in a minute": "Demasiados avisos: inténtalo de nuevo en un minuto",
-  "Announcement not found": "Aviso no encontrado"
+  "Announcement not found": "Aviso no encontrado",
+  "For news during play, use the Announcements tab. Posts show their time, can be pinned on top and can notify players. Use the custom section below for fixed information, such as rules or the venue.": "Para las novedades durante el juego, usa la pestaña Avisos. Cada aviso muestra su hora, se puede fijar arriba y puede notificar a los jugadores. Usa la sección personalizada de abajo para la información fija, como las reglas o el lugar.",
+  "Tap to copy the page link": "Toca para copiar el enlace de la página",
+  "Copy the page link": "Copiar el enlace de la página"
 }

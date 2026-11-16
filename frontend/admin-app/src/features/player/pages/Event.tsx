@@ -1,6 +1,6 @@
 import { Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
 import { IconExternalLink, IconInfoCircle, IconMessage } from '@tabler/icons-react';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { t as tx, useLocale } from '../../../i18n';
 import { formatType } from '../../../api';
@@ -32,10 +32,12 @@ import {
   Announcements,
   INFO_ANCHOR,
   newestAnnouncementAt,
-  OrganizerBanner,
   OrganizerInfo,
 } from '../../public/OrganizerNotes';
 import { markAnnouncementsSeen } from '../../public/announcementSeen';
+import { PlayerCardModal } from '../../tv/PlayerCardModal';
+import { useOpenState } from '../../tv/TvSection';
+import { HubSection } from '../components/HubSection';
 
 // One event, in the order a player needs it: one status banner, your next match (score, confirm,
 // correct, escalate), later and played matches, a standings snapshot, your path and notifications.
@@ -58,11 +60,22 @@ function EventView({ kind, id }: { kind: string; id: string }) {
   const { hash } = useLocation();
   const hasInfo = !!event.data?.tv.custom_info_text?.trim();
   const newest = newestAnnouncementAt(event.data?.tv);
+  // A tap on a standings row opens that player's card: their record and every match in this event.
+  const [cardId, setCardId] = useState<string | null>(null);
+  const closeCard = useCallback(() => setCardId(null), []);
+  // Every section but Up next folds away; the choice is remembered per tournament.
+  const sections = useOpenState(id, 'padel-hub-sections');
+  const { open: openSection } = sections;
   useEffect(() => {
-    if (hash === `#${INFO_ANCHOR}` && hasInfo)
+    // A link to a folded section opens it.
+    if (hash === `#${INFO_ANCHOR}` && hasInfo) {
+      openSection('info');
       document.getElementById(INFO_ANCHOR)?.scrollIntoView({ block: 'start' });
-    if (hash === `#${ANNOUNCEMENTS_ANCHOR}` && newest)
+    }
+    if (hash === `#${ANNOUNCEMENTS_ANCHOR}` && newest) {
+      openSection('announcements');
       document.getElementById(ANNOUNCEMENTS_ANCHOR)?.scrollIntoView({ block: 'start' });
+    }
   }, [hash, hasInfo, newest]);
   // Opening the event page shows every announcement: the Hub card stops calling them new.
   useEffect(() => {
@@ -208,6 +221,11 @@ function EventView({ kind, id }: { kind: string; id: string }) {
         <MatchListFrame>{matches.map((m) => card(m, actions))}</MatchListFrame>
       </Stack>
     );
+  const later = data && data.schedule.next.length > 0 && (
+    <HubSection section="later" title={tx('Later')} state={sections} testId="event-later">
+      <MatchListFrame>{data.schedule.next.map((m) => card(m, true))}</MatchListFrame>
+    </HubSection>
+  );
   // Exactly one banner, most important first.
   const readOnly = !entry.auto_login_token || !!event.tokenError;
   const banner = !data
@@ -253,13 +271,8 @@ function EventView({ kind, id }: { kind: string; id: string }) {
   );
   // Once the event is over the final table is the result, so it leads the page; while it runs, Up
   // next leads and the table sits under your own rounds, a tap away from the overview.
-  const standingsBlock = standings.length > 0 && (
-    <Stack gap="sm" data-testid="event-standings">
-      {earlier ? (
-        <Title order={3}>{earlierStandings}</Title>
-      ) : (
-        <Title order={2}>{tx(data?.finished ? 'Final standings' : 'Standings')}</Title>
-      )}
+  const standingsTables = standings.length > 0 && (
+    <Stack gap="sm">
       {standings.map((s) => (
         <Paper key={s.name} p={{ base: 'xs', sm: 'md' }}>
           {s.name && (
@@ -273,11 +286,30 @@ function EventView({ kind, id }: { kind: string; id: string }) {
             highlightId={entry.player_id}
             highlightPlaces={s.preset === 'group' ? groupHighlight(data?.tv, s.name) : undefined}
             sets={s.preset === 'group' && data?.tv.score_mode['gp-group'] === 'sets'}
+            onSelect={(row) => setCardId(row.id)}
           />
         </Paper>
       ))}
     </Stack>
   );
+  // In the play-offs the earlier stage's table sits inside that stage's (folding) section.
+  const standingsBlock =
+    standings.length > 0 &&
+    (earlier ? (
+      <Stack gap="sm" data-testid="event-standings">
+        <Title order={3}>{earlierStandings}</Title>
+        {standingsTables}
+      </Stack>
+    ) : (
+      <HubSection
+        section="standings"
+        title={tx(data?.finished ? 'Final standings' : 'Standings')}
+        state={sections}
+        testId="event-standings"
+      >
+        {standingsTables}
+      </HubSection>
+    ));
   // Bring an element into view and mark it for a moment (a row the overview points at).
   const flash = (el: HTMLElement | null) => {
     if (!el) return;
@@ -305,9 +337,23 @@ function EventView({ kind, id }: { kind: string; id: string }) {
       <Stack gap="md">
         {head}
         {banner && notice(banner, 'event-banner')}
-        {data && <OrganizerBanner notes={data.tv} testId="event-announcement" />}
       </Stack>
-      {data && <Announcements notes={data.tv} testId="event-announcements" />}
+      {data && (
+        <Announcements
+          notes={data.tv}
+          testId="event-announcements"
+          wrap={(title, body) => (
+            <HubSection
+              section="announcements"
+              id={ANNOUNCEMENTS_ANCHOR}
+              title={title}
+              state={sections}
+            >
+              {body}
+            </HubSection>
+          )}
+        />
+      )}
       <EntryPaymentBlock entry={entry} />
       {failure && <ErrorState error={failure} retry={() => void event.refetch()} />}
       {!failure && !data && <Loading />}
@@ -315,12 +361,19 @@ function EventView({ kind, id }: { kind: string; id: string }) {
         <>
           {data.finished && !earlier && standingsBlock}
           {section(tx('Up next'), upNext, true, 'event-up-next')}
-          {section(tx('Later'), data.schedule.next, true, 'event-later')}
-          <OrganizerInfo notes={data.tv} testId="event-custom-info" />
+          {later}
+          <OrganizerInfo
+            notes={data.tv}
+            testId="event-custom-info"
+            wrap={(title, body) => (
+              <HubSection section="info" id={INFO_ANCHOR} title={title} state={sections}>
+                {body}
+              </HubSection>
+            )}
+          />
           {/* Overview first: where you stand. Then each round's story in Played. */}
           {ranked && (
-            <Stack gap="sm">
-              <Title order={2}>{tx('Your tournament')}</Title>
+            <HubSection section="path" title={tx('Your tournament')} state={sections}>
               <TournamentPath
                 entry={entry}
                 inProgress={inProgress}
@@ -328,33 +381,37 @@ function EventView({ kind, id }: { kind: string; id: string }) {
                 onSelect={showRound}
                 onShowStandings={standings.length > 0 ? showStandings : undefined}
               />
-            </Stack>
+            </HubSection>
           )}
           {playedNow.length > 0 && (
-            <Stack gap="sm">
-              <PlayedList
-                testId="event-played"
-                items={playedNow}
-                title={earlier ? tx('Play-offs') : undefined}
-                path={earlier ? pathRounds?.filter((r) => r.stage === 'playoff') : pathRounds}
-              />
-            </Stack>
+            <PlayedList
+              testId="event-played"
+              items={playedNow}
+              title={earlier ? tx('Play-offs') : undefined}
+              path={earlier ? pathRounds?.filter((r) => r.stage === 'playoff') : pathRounds}
+              wrap={(title, summary, list) => (
+                <HubSection section="played" title={title} aside={summary} state={sections}>
+                  {list}
+                </HubSection>
+              )}
+            />
           )}
           {earlier && (standings.length > 0 || playedEarlier.length > 0) && (
-            <Stack gap="md" data-testid="event-earlier-stage">
-              <Title order={2}>{earlierTitle}</Title>
-              {standingsBlock}
-              {playedEarlier.length > 0 && (
-                <Stack gap="sm">
-                  <PlayedList
-                    testId="event-played-earlier"
-                    items={playedEarlier}
-                    titleOrder={3}
-                    path={pathRounds?.filter((r) => r.stage !== 'playoff')}
-                  />
-                </Stack>
-              )}
-            </Stack>
+            <HubSection section="earlier" title={earlierTitle} state={sections}>
+              <Stack gap="md" data-testid="event-earlier-stage">
+                {standingsBlock}
+                {playedEarlier.length > 0 && (
+                  <Stack gap="sm">
+                    <PlayedList
+                      testId="event-played-earlier"
+                      items={playedEarlier}
+                      titleOrder={3}
+                      path={pathRounds?.filter((r) => r.stage !== 'playoff')}
+                    />
+                  </Stack>
+                )}
+              </Stack>
+            </HubSection>
           )}
           {noMatches &&
             (data?.tv.hide_schedule ? (
@@ -368,12 +425,12 @@ function EventView({ kind, id }: { kind: string; id: string }) {
       )}
       {!data?.finished && !earlier && standingsBlock}
       {!data?.finished && (
-        <Stack gap="xs">
-          <Title order={2}>{tx('Notifications')}</Title>
+        <HubSection section="notifications" title={tx('Notifications')} state={sections}>
           <PushToggle tid={id} token={event.token} />
-        </Stack>
+        </HubSection>
       )}
       {fullView}
+      <PlayerCardModal tid={id} playerId={cardId} onClose={closeCard} autoClose={false} />
     </Stack>
   );
 }

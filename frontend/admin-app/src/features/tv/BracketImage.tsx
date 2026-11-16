@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ActionIcon, Box, Group, Loader, Modal, Stack, Text } from '@mantine/core';
+import { ActionIcon, Anchor, Box, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import {
   IconArrowUpRight,
   IconDownload,
@@ -30,21 +30,28 @@ function hash(text: string): string {
 // key made from the play-off data, so the picture is fetched again only when the bracket changes. A
 // changed bracket keeps showing the previous picture until the new one has loaded, so the page does not
 // collapse and jump while the server renders.
-interface Opened {
-  url: string;
-  svg: string;
+/** Rounds shown by a windowed picture (`rounds=window:N`), from the SVG root the server drew. */
+function shownRounds(svg: string): { from: number; to: number; total: number } | null {
+  const m = /data-rounds-from="(\d+)" data-rounds-to="(\d+)" data-rounds-total="(\d+)"/.exec(svg);
+  return m ? { from: Number(m[1]), to: Number(m[2]), total: Number(m[3]) } : null;
 }
+
+/** The inline picture shows a sliding window of this many rounds, from the earliest unfinished one. */
+const WINDOW_ROUNDS = 3;
 
 function Picture({
   url,
+  fullUrl,
   label,
   pendingNote,
   onOpen,
 }: {
   url: string;
+  /** The same bracket with every round: what the full-screen view and the download show. */
+  fullUrl: string;
   label: string;
   pendingNote?: string;
-  onOpen: (opened: Opened) => void;
+  onOpen: (url: string) => void;
 }) {
   const { svg, error } = useSchemaSvg(url);
   if (error && !svg)
@@ -53,19 +60,30 @@ function Picture({
         {pendingNote}
       </Text>
     ) : null;
+  const rounds = svg ? shownRounds(svg) : null;
   return (
     <Stack gap={4}>
       <Text variant="eyebrow">{label}</Text>
+      {rounds && (
+        <Text size="xs" c="dimmed" data-testid="bracket-window-note">
+          {tx('Rounds {from}-{to} of {total}', rounds)}
+          {' · '}
+          <Anchor component="button" type="button" size="xs" onClick={() => onOpen(fullUrl)}>
+            {tx('Full bracket')}
+          </Anchor>
+        </Text>
+      )}
       {svg ? (
         <SchemaViewer
           markup={svg}
           label={label}
-          onOpen={() => onOpen({ url, svg })}
+          minText="var(--fs-tv-sm)"
+          onOpen={() => onOpen(fullUrl)}
           actions={
             <ActionIcon
               variant="default"
               aria-label={`${label}: ${tx('Enlarge')}`}
-              onClick={() => onOpen({ url, svg })}
+              onClick={() => onOpen(fullUrl)}
             >
               <IconMaximize size={16} aria-hidden />
             </ActionIcon>
@@ -96,38 +114,39 @@ export function BracketImage({
   split: boolean;
 }) {
   useLocale();
-  const [open, setOpen] = useState<Opened | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const full = useSchemaSvg(open);
   const theme = useSchemaTheme();
   // Opening or saving the picture gives a file in the colours the app shows now.
-  const file = open ? withQuery(open.url, { theme }) : undefined;
+  const file = open ? withQuery(open, { theme }) : undefined;
   const [zoom, setZoom] = useState(1);
   const zoomer = useRef<ZoomableImageHandle>(null);
   const query = schemaQuery(settings, { _k: hash(JSON.stringify(playoffs)) });
   const base = `/api/tournaments/${tid}/${prefixFor(kind)}/playoffs-schema?${query}`;
+  const windowed = `${base}&rounds=window:${WINDOW_ROUNDS}`;
   const sided = espejo || doubleElimination;
   const close = () => setOpen(null);
   return (
     <Box className={classes.bracket} data-testid="tv-bracket">
       {sided ? (
-        <Group align="flex-start" gap="lg" grow preventGrowOverflow={false}>
+        <Stack gap="lg">
           <Picture
-            url={`${base}&side=winners`}
+            url={`${windowed}&side=winners`}
+            fullUrl={`${base}&side=winners`}
             label={tx(split ? 'Gold bracket' : 'Winners Bracket')}
             onOpen={setOpen}
           />
           <Picture
-            url={`${base}&side=losers`}
+            url={`${windowed}&side=losers`}
+            fullUrl={`${base}&side=losers`}
             label={tx(split ? 'Silver bracket' : 'Losers Bracket')}
             pendingNote={espejo ? tx('Losers Bracket seeded after Round 1 completes') : undefined}
             onOpen={setOpen}
           />
-        </Group>
+        </Stack>
       ) : (
-        <Picture url={base} label={tx('Play off bracket')} onOpen={setOpen} />
+        <Picture url={windowed} fullUrl={base} label={tx('Play off bracket')} onOpen={setOpen} />
       )}
-      <Text size="xs" c="dimmed" mt="xs">
-        {tx('Tap image to expand')}
-      </Text>
       <Modal
         opened={!!open}
         onClose={close}
@@ -181,10 +200,11 @@ export function BracketImage({
           </Group>
         }
       >
-        {open && (
+        {open && !full.svg && <Loader size="sm" aria-label={tx('Loading')} />}
+        {open && full.svg && (
           <ZoomableImage
             ref={zoomer}
-            svg={open.svg}
+            svg={full.svg}
             alt={tx('Bracket')}
             className={classes.lightbox}
             maxHeight="calc(100dvh - 9rem)"

@@ -341,7 +341,6 @@ class TvSettingsRequest(BaseModel):
     score_mode: dict[str, str] | None = None
     # Tournament-wide third-set decider for set scores (per-match overrides win).
     set_decider: Literal["full_set", "match_tiebreak"] | None = None
-    banner_text: str | None = Field(default=None, max_length=5000)
     custom_info_title: str | None = Field(default=None, max_length=120)
     custom_info_text: str | None = Field(default=None, max_length=5000)
     score_confirmation: ScoreConfirmation | None = None
@@ -350,7 +349,8 @@ class TvSettingsRequest(BaseModel):
     correction_window_seconds: int | None = Field(default=None, ge=0, le=3600)
 
 
-ANNOUNCEMENT_MAX_LENGTH = 1000
+# Same limit as the custom information text (and as the old banner, which became a pinned post).
+ANNOUNCEMENT_MAX_LENGTH = 5000
 ANNOUNCEMENTS_MAX_ITEMS = 20
 
 
@@ -417,7 +417,6 @@ class TvSettings(BaseModel):
     # How a deciding third set is played by default: a full set, or a match
     # tie-break (to 10, win by 2) that counts as one game in standings / ELO.
     set_decider: Literal["full_set", "match_tiebreak"] = "full_set"
-    banner_text: str = ""
     custom_info_title: str = ""
     custom_info_text: str = ""
     # "immediate": score counts on submit (good for fast Mexicano rounds).

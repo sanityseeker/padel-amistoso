@@ -13,7 +13,13 @@ from collections.abc import Collection
 from typing import Any
 
 from backend.models import Match, MatchStatus, Player, TournamentType
-from backend.tournaments.elo import DEFAULT_RATING, compute_match_elo_updates, get_k_factor
+from backend.tournaments.elo import (
+    DEFAULT_RATING,
+    SCORE_FORMAT_WEIGHTS,
+    EloScoreFormat,
+    classify_score_format,
+    compute_match_elo_updates,
+)
 
 from .elo_store import (
     _match_timestamp,
@@ -60,7 +66,7 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
         ratings = get_tournament_elos(tid, sport)
         counts = get_tournament_match_counts(tid, sport)
         k_overrides = get_k_factor_overrides(tid)
-        mex_k_multiplier = _mexicano_k_multiplier(data, match)
+        weight = elo_match_weight(data, match)
 
         # A match that already has log rows is being re-recorded (score
         # correction): replay the whole tournament so later matches pick up the
@@ -70,8 +76,7 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
             elo_recalculate_tournament(tid)
             return
 
-        effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
-        updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
+        updates = compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides, weight=weight)
         # One timestamp for both rows, so a later recalculation (which restores the
         # log's timestamp onto both) reproduces exactly what was written here.
         match_ts = _match_timestamp(match)
@@ -161,9 +166,8 @@ def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection
         for idx, match in enumerate(all_matches, start=1):
             ratings = get_tournament_elos(tournament_id, sport)
             counts = get_tournament_match_counts(tournament_id, sport)
-            mex_k_multiplier = _mexicano_k_multiplier(data, match)
-            effective_k_overrides = _build_effective_k_overrides(match, counts, k_overrides, mex_k_multiplier)
-            updates = compute_match_elo_updates(match, ratings, counts, team_mode, effective_k_overrides)
+            weight = elo_match_weight(data, match)
+            updates = compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides, weight=weight)
             match_ts = log_ts.get(getattr(match, "id", "")) or _match_timestamp(match)
             upsert_tournament_elo(tournament_id, updates, sport, updated_at=match_ts)
             upsert_tournament_elo_log(tournament_id, match, updates, sport, match_order=idx, updated_at=match_ts)
@@ -340,13 +344,12 @@ def _extract_player_ids(tournament: object, ttype: str) -> list[str]:
     return list(ids)
 
 
-def _mexicano_k_multiplier(data: dict[str, Any], match: Match | None = None) -> float:
-    """Return a Mexicano-only K multiplier based on match length.
+def _mexicano_length_factor(data: dict[str, Any], match: Match | None = None) -> float:
+    """Return the Mexicano match-length factor ``min(1, points target / 32)``.
 
-    Smaller Mexicano matches (fewer total points) should move ELO less.
-    Uses ``points / 32`` capped to ``[0, 1]``, where ``points`` is the match's
-    organiser-set ``format_override.points_target`` when present, otherwise the
-    tournament's ``total_points_per_match``.
+    ``points target`` is the match's organiser-set ``format_override.points_target``
+    when present, otherwise the tournament's ``total_points_per_match``.  It is the
+    configured target, not the points actually played.  Non-Mexicano data gives 1.0.
     """
     if data.get("type") != TournamentType.MEXICANO:
         return 1.0
@@ -362,19 +365,15 @@ def _mexicano_k_multiplier(data: dict[str, Any], match: Match | None = None) -> 
     return min(1.0, max(0.0, total_points / _MEX_ELO_POINTS_BASELINE))
 
 
-def _build_effective_k_overrides(
-    match: Match,
-    match_counts: dict[str, int],
-    k_overrides: dict[str, int],
-    multiplier: float,
-) -> dict[str, int]:
-    """Build per-player K overrides with optional multiplier scaling."""
-    if multiplier >= 1.0:
-        return k_overrides
+def elo_match_weight(data: dict[str, Any], match: Match) -> float:
+    """Return the ELO delta weight of *match*: score-format weight, then length factor.
 
-    effective: dict[str, int] = {}
-    for player in match.team1 + match.team2:
-        count = match_counts.get(player.id, 0)
-        base_k = k_overrides.get(player.id, get_k_factor(count))
-        effective[player.id] = max(1, int(round(base_k * multiplier)))
-    return effective
+    Used by the community/global chain and the club chain so both give the same
+    delta for the same match.  The Mexicano length factor only scales matches
+    scored in points; a Mexicano match scored in sets is not length-scaled.
+    """
+    score_format = classify_score_format(match)
+    weight = SCORE_FORMAT_WEIGHTS[score_format]
+    if score_format == EloScoreFormat.POINTS:
+        weight *= _mexicano_length_factor(data, match)
+    return weight

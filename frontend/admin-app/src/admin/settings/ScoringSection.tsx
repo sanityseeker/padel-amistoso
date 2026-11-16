@@ -169,7 +169,6 @@ export function TvSection({
 }) {
   useLocale();
   const patch = useTvPatch(tid);
-  const [banner, setBanner] = useState(settings.banner_text ?? '');
   const [customInfoTitle, setCustomInfoTitle] = useState(settings.custom_info_title ?? '');
   const [customInfoText, setCustomInfoText] = useState(settings.custom_info_text ?? '');
   const toggle = (key: keyof TvSettings, label: string, fallback: boolean, disabled = false) => (
@@ -224,27 +223,11 @@ export function TvSection({
             }}
           />
         )}
-        <Textarea
-          label={tx('Banner message')}
-          description={tx(
-            'Shown across the top of the TV screen and in the Player Hub. Markdown formatting is supported.',
+        <Text size="sm" c="dimmed" data-testid="settings-announcements-hint">
+          {tx(
+            'For news during play, use the Announcements tab. Posts show their time, can be pinned on top and can notify players. Use the custom section below for fixed information, such as rules or the venue.',
           )}
-          maxLength={5000}
-          autosize
-          minRows={2}
-          value={banner}
-          onChange={(e) => setBanner(e.currentTarget.value)}
-        />
-        <FormActions>
-          <Button
-            variant="default"
-            disabled={banner === (settings.banner_text ?? '')}
-            loading={patch.isPending}
-            onClick={() => patch.mutate({ banner_text: banner })}
-          >
-            {tx('Save banner')}
-          </Button>
-        </FormActions>
+        </Text>
         <TextInput
           label={tx('Custom section title')}
           description={tx('Name this optional section on the TV screen and in the Player Hub.')}

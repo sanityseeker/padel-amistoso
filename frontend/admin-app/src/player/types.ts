@@ -151,8 +151,7 @@ export interface TvPlayerSettings {
   score_confirmation?: 'immediate' | 'required';
   /** Seconds the submitter may still correct a score nobody has confirmed yet (0 = no window). */
   correction_window_seconds?: number;
-  /** The organizer's banner (Markdown) and custom information section (title + Markdown). */
-  banner_text?: string;
+  /** The organizer's custom information section (title + Markdown). */
   custom_info_title?: string;
   custom_info_text?: string;
   /** The organizer's announcements, pinned first then newest first. */

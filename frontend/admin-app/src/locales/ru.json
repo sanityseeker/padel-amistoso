@@ -876,9 +876,6 @@
   "How long the opposing team can correct a submitted score. 0 means no limit.": "Сколько времени соперники могут исправить отправленный счёт. 0: без ограничения.",
   "On the TV screen": "На экране ТВ",
   "Choose what spectators see.": "Выберите, что видят зрители.",
-  "Banner message": "Текст баннера",
-  "Shown across the top of the TV screen and in the Player Hub. Markdown formatting is supported.": "Показывается вверху экрана ТВ и в личном кабинете. Поддерживается Markdown.",
-  "Save banner": "Сохранить баннер",
   "Custom section title": "Название доп. блока",
   "Name this optional section on the TV screen and in the Player Hub.": "Укажите название доп. блока на экране ТВ и в личном кабинете.",
   "Custom section description": "Содержание доп. блока",
@@ -1562,6 +1559,8 @@
   "Select…": "Выберите…",
   "Something went wrong. Please try again.": "Произошла ошибка. Повторите попытку.",
   "Tap image to expand": "Нажмите на изображение, чтобы развернуть",
+  "Rounds {from}-{to} of {total}": "Раунды {from}-{to} из {total}",
+  "Full bracket": "Вся сетка",
   "Pinch or double-tap to zoom": "Масштаб: двумя пальцами или двойным нажатием",
   "This is me": "Это я",
   "This registration has been converted to a tournament.": "Эта регистрация преобразована в турнир.",
@@ -2046,5 +2045,8 @@
   "Announcement unpinned": "Объявление откреплено",
   "Announcement deleted": "Объявление удалено",
   "Too many announcements — try again in a minute": "Слишком много объявлений. Попробуйте через минуту.",
-  "Announcement not found": "Объявление не найдено"
+  "Announcement not found": "Объявление не найдено",
+  "For news during play, use the Announcements tab. Posts show their time, can be pinned on top and can notify players. Use the custom section below for fixed information, such as rules or the venue.": "Для новостей во время игры используйте вкладку «Объявления». У каждой записи видно время, её можно закрепить вверху и отправить игрокам уведомление. Раздел ниже нужен для постоянной информации, например правил или адреса площадки.",
+  "Tap to copy the page link": "Нажмите, чтобы скопировать ссылку на страницу",
+  "Copy the page link": "Скопировать ссылку на страницу"
 }

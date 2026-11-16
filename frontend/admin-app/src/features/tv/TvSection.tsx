@@ -13,23 +13,28 @@ const readOpen = (key: string): Record<string, boolean> => {
   }
 };
 
-export function useOpenState(tid: string) {
-  const key = `padel-tv-sections-${tid}`;
+/** `prefix` names the screen: the TV page keeps `padel-tv-sections`, the Hub event page its own. */
+export function useOpenState(tid: string, prefix = 'padel-tv-sections') {
+  const key = `${prefix}-${tid}`;
   const [held, setHeld] = useState(() => ({ key, map: readOpen(key) }));
   // The tournament id arrives after the first render: read its stored choices once it is known.
   const state = held.key === key ? held.map : readOpen(key);
   return {
     isOpen: (id: string, fallback = true) => (id in state ? state[id] : fallback),
-    toggle: (id: string, fallback = true) => {
-      const next = { ...state, [id]: !(id in state ? state[id] : fallback) };
-      try {
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        /* The choice still applies to this visit. */
-      }
-      setHeld({ key, map: next });
+    toggle: (id: string, fallback = true) =>
+      store({ ...state, [id]: !(id in state ? state[id] : fallback) }),
+    open: (id: string) => {
+      if (state[id] === false) store({ ...state, [id]: true });
     },
   };
+  function store(next: Record<string, boolean>) {
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      /* The choice still applies to this visit. */
+    }
+    setHeld({ key, map: next });
+  }
 }
 export type OpenState = ReturnType<typeof useOpenState>;
 

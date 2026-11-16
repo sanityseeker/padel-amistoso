@@ -77,7 +77,7 @@ class TestRead:
         tv = client.get(f"/api/tournaments/{tid}/tv-settings").json()
         assert [a["text"] for a in tv["announcements"]] == ["Second", "First"]
         # PATCH tv-settings keeps the list in its response and in storage.
-        r = client.patch(f"/api/tournaments/{tid}/tv-settings", json={"banner_text": "Hi"}, headers=auth_headers)
+        r = client.patch(f"/api/tournaments/{tid}/tv-settings", json={"custom_info_title": "Hi"}, headers=auth_headers)
         assert [a["text"] for a in r.json()["announcements"]] == ["Second", "First"]
         assert len(client.get(_url(tid)).json()) == 2
 

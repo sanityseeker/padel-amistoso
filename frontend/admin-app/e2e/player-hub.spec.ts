@@ -203,6 +203,20 @@ test('the tournament path and notifications show on the event page', async ({ pa
     page.getByTestId('tournament-path').or(page.getByText(/Your path appears|not available/)),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+  // Every section but Up next folds from its heading, and stays folded after a reload.
+  const toggle = page.getByRole('button', { name: 'Your tournament' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Your tournament' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  await expect(page.getByRole('button', { name: 'Notifications' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
 });
 
 test('recover by participation is offered next to passphrase recovery', async ({ page }) => {

@@ -174,3 +174,19 @@ export async function openMatchTool(
   await row.getByRole('button', { name: /^Match options/ }).click();
   await page.getByRole('menuitem', { name, exact: true }).click();
 }
+
+/**
+ * On-screen size (px) of the names in a bracket drawing: the largest text in the SVG, as the user
+ * units of its viewBox scaled to the width the SVG is drawn at.
+ */
+export async function nameTextPx(svg: import('@playwright/test').Locator): Promise<number> {
+  return svg.evaluate((el) => {
+    const root = el as unknown as SVGSVGElement;
+    const scale = root.getBoundingClientRect().width / root.viewBox.baseVal.width;
+    let max = 0;
+    root.querySelectorAll('text').forEach((t) => {
+      max = Math.max(max, parseFloat(getComputedStyle(t).fontSize));
+    });
+    return max * scale;
+  });
+}

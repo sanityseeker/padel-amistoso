@@ -1286,7 +1286,7 @@ def test_settings_help_toggle_is_icon_only_and_hides_explanations():
     assert "sessionStorage.getItem(_SETTINGS_HELP_STORAGE_KEY)" in js
     assert "_renderSettingsHelpBlock" not in js
     tv_email = _read_frontend("admin-tv-email.js")
-    assert tv_email.count("settings-help--explain") == 14
+    assert tv_email.count("settings-help--explain") == 13
     # Empty states stay visible on phones.
     assert "<p class=\"settings-help\">${t('txt_comm_no_communities')}</p>" in tv_email
     for name in ("admin-payments.js", "admin-collaborators.js", "admin-player-codes.js"):
@@ -1798,11 +1798,8 @@ def test_action_rows_share_one_pattern():
     assert ".action-row--stack { flex-direction: column; align-items: stretch; }" in css
     assert ".courts-editor-input { flex: 1 1 auto; width: auto; min-width: 6rem; }" in css
     tv = _read_frontend("admin-tv-email.js")
-    assert tv.count("action-row action-row--end") == 4
+    assert tv.count("action-row action-row--end") == 3
     assert tv.count("action-row action-row--stack") == 2
-    # Banner: secondary (Remove) first, primary (Save) last.
-    banner = tv[tv.index("mt-1-5 action-row action-row--end") :]
-    assert banner.index("_clearTournamentBanner()") < banner.index("_setTournamentBanner()")
     mex = _read_frontend("admin-mex.js")
     assert '<div class="advanced-save-row action-row action-row--end">' in mex
     courts = mex[mex.index('<div class="courts-editor-actions action-row action-row--split">') :]

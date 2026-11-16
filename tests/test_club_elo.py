@@ -497,3 +497,31 @@ class TestEloScopePayloads:
         )
         tid = r.json()["id"]
         assert client.get(f"/api/tournaments/{tid}/gp/status").json()["elo_scope"] == "community"
+
+
+class TestClubChainMatchesCommunityChain:
+    def test_first_club_match_delta_equals_community_delta_for_points(self, client, auth_headers):
+        _make_club("kw")
+        alice = _insert_profile("Alice")
+        tid, ids = _play(client, auth_headers, "kw", "Alice", {"Alice": alice})
+        row = _log(tid, ids["Alice"])[0]
+        assert row["club_elo_after"] - row["club_elo_before"] == pytest.approx(row["elo_after"] - row["elo_before"])
+
+    def test_rate_gives_the_same_deltas_as_the_community_weight_for_sets(self):
+        from backend.api.elo_integration import elo_match_weight
+        from backend.models import Match, MatchStatus, Player, TournamentType
+        from backend.tournaments.elo import compute_match_elo_updates
+
+        class _T:
+            total_points_per_match = 16
+
+        data = {"type": TournamentType.MEXICANO, "tournament": _T()}
+        p1, p2 = Player(name="A"), Player(name="B")
+        for score, sets in (((2, 0), [(6, 4), (6, 3)]), ((13, 11), None)):
+            m = Match(team1=[p1], team2=[p2], score=score, sets=sets)
+            m.status = MatchStatus.COMPLETED
+            ratings = {p1.id: 1000.0, p2.id: 1000.0}
+            counts = {p1.id: 0, p2.id: 0}
+            club = club_elo._rate(m, ratings, counts, False, data, {})
+            community = compute_match_elo_updates(m, ratings, counts, False, {}, weight=elo_match_weight(data, m))
+            assert [u.elo_after for u in club] == [u.elo_after for u in community]

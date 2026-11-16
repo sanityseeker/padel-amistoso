@@ -1,5 +1,5 @@
 import { sportProps } from '../../../theme';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Group,
@@ -714,12 +714,20 @@ function Workspace({ id }: { id: string }) {
     earlierGroups && earlierGroup !== 'all' && earlierGroups[earlierGroup]
       ? earlierGroups[earlierGroup]
       : earlierAll;
-  const earlierPane = (
-    <Stack gap="sm" data-testid="earlier-stage-matches">
-      <Group justify="space-between">
-        <Title order={3}>{earlierName}</Title>
+  // Both stages share one header shape, so the stage switch keeps its place and size at the right.
+  const paneHeader = (title: string, controls?: ReactNode) => (
+    <Group justify="space-between">
+      <Title order={3}>{title}</Title>
+      {/* Wrapped controls stay at the right edge, at their own size. */}
+      <Group gap="xs" justify="flex-end" ml="auto">
+        {controls}
         {stageSwitch}
       </Group>
+    </Group>
+  );
+  const earlierPane = (
+    <Stack gap="sm" data-testid="earlier-stage-matches">
+      {paneHeader(earlierName)}
       {earlierNames.length > 1 && (
         <ScrollArea type="never" scrollbars="x">
           <SegmentedControl
@@ -745,126 +753,123 @@ function Workspace({ id }: { id: string }) {
     </Stack>
   );
 
-  const matchesPane =
-    hasEarlier && stage === 'earlier' ? (
-      earlierPane
-    ) : (
-      <Stack gap="sm">
-        {stageSwitch}
-        <Group justify="space-between">
-          <Title order={3}>{tx('Match centre')}</Title>
-          <Group gap="xs">
-            <SegmentedControl
-              ref={filterRef}
-              value={filter}
-              onChange={setFilter}
-              data={[
-                { value: 'pending', label: tx('To play') },
-                { value: 'completed', label: tx('Completed') },
-                { value: 'all', label: tx('All matches') },
-              ]}
-            />
-            {twoPane && (
-              <Button
-                size="compact-sm"
-                variant="subtle"
-                color="gray"
-                leftSection={
-                  showStandingsPane ? (
-                    <IconLayoutSidebarRightCollapse size={16} />
-                  ) : (
-                    <IconLayoutSidebarRightExpand size={16} />
-                  )
-                }
-                aria-expanded={showStandingsPane}
-                aria-controls="standings-pane"
-                data-testid="standings-toggle"
-                onClick={() => {
-                  if (showStandingsPane && tab === 'standings') setTab(firstView);
-                  setStandingsHidden(showStandingsPane);
-                }}
-              >
-                {showStandingsPane ? tx('Hide standings') : tx('Show standings')}
-              </Button>
-            )}
-          </Group>
-        </Group>
-        {loaded?.groupStage && groupNames.length > 1 && (
-          <ScrollArea type="never" scrollbars="x">
-            <SegmentedControl
-              size="xs"
-              value={group ?? 'all'}
-              onChange={(value) =>
-                view.patch({ group: value === 'all' ? undefined : value }, { replace: true })
-              }
-              aria-label={tx('Group (matches left)')}
-              data={[
-                { value: 'all', label: tx('All groups') },
-                ...groupNames.map((name) => {
-                  const left = pendingIn(matches.filter((m) => groupOf.get(m.id) === name));
-                  return { value: name, label: left ? `${name} (${left})` : name };
-                }),
-              ]}
-            />
-          </ScrollArea>
-        )}
-        {playoffCtx && !phone && roundValues.length > 1 && (
-          <ScrollArea type="never" scrollbars="x">
-            <SegmentedControl
-              size="xs"
-              value={round ?? 'all'}
-              onChange={(value) =>
-                view.patch(value === 'all' ? { round: undefined } : { round: value, filter: 'all' })
-              }
-              aria-label={tx('Round', { context: 'knockout' })}
-              data={[
-                { value: 'all', label: tx('All') },
-                ...roundValues.map((label) => ({ value: label, label: formatRoundLabel(label) })),
-              ]}
-            />
-          </ScrollArea>
-        )}
-        {!!sitOuts?.length && (
-          <Text size="sm" c="dimmed">
-            {tx('Sitting out: {names}', { names: sitOuts.join(', ') })}
-          </Text>
-        )}
-        {!visible.length ? (
-          <EmptyState title={emptyTitle.title}>{emptyTitle.text}</EmptyState>
-        ) : (
-          <MatchList
-            matches={visible}
-            ctx={ctx}
-            courts={status.assign_courts !== false}
-            settings={settings}
-            canEdit={scoreable}
-            selectedId={selectedId}
-            editingId={editing && !phone && editing.from === 'list' ? editing.id : null}
-            onScore={scoreFromList}
-            quick={quick}
-            renderMenu={renderMenu}
-            renderEditor={(m) => (
-              <AdminScoreEntry
-                key={`${m.id}-record`}
-                surface="inline"
-                tid={id}
-                match={m}
-                ctx={ctx}
-                settings={settings}
-                totalPoints={status.total_points_per_match ?? 0}
-                purpose="record"
-                canClear={canClear}
-                onClose={() => closeEditor(m.id)}
-                onSubmit={(payload) => {
-                  saved.current = true;
-                  void record.mutate({ match: m, payload });
-                }}
-              />
-            )}
+  const nowPane = (
+    <Stack gap="sm">
+      {paneHeader(
+        tx('Match centre'),
+        <>
+          <SegmentedControl
+            ref={filterRef}
+            value={filter}
+            onChange={setFilter}
+            data={[
+              { value: 'pending', label: tx('To play') },
+              { value: 'completed', label: tx('Completed') },
+              { value: 'all', label: tx('All matches') },
+            ]}
           />
-        )}
-      </Stack>
-    );
+          {twoPane && (
+            <Button
+              size="compact-sm"
+              variant="subtle"
+              color="gray"
+              leftSection={
+                showStandingsPane ? (
+                  <IconLayoutSidebarRightCollapse size={16} />
+                ) : (
+                  <IconLayoutSidebarRightExpand size={16} />
+                )
+              }
+              aria-expanded={showStandingsPane}
+              aria-controls="standings-pane"
+              data-testid="standings-toggle"
+              onClick={() => {
+                if (showStandingsPane && tab === 'standings') setTab(firstView);
+                setStandingsHidden(showStandingsPane);
+              }}
+            >
+              {showStandingsPane ? tx('Hide standings') : tx('Show standings')}
+            </Button>
+          )}
+        </>,
+      )}
+      {loaded?.groupStage && groupNames.length > 1 && (
+        <ScrollArea type="never" scrollbars="x">
+          <SegmentedControl
+            size="xs"
+            value={group ?? 'all'}
+            onChange={(value) =>
+              view.patch({ group: value === 'all' ? undefined : value }, { replace: true })
+            }
+            aria-label={tx('Group (matches left)')}
+            data={[
+              { value: 'all', label: tx('All groups') },
+              ...groupNames.map((name) => {
+                const left = pendingIn(matches.filter((m) => groupOf.get(m.id) === name));
+                return { value: name, label: left ? `${name} (${left})` : name };
+              }),
+            ]}
+          />
+        </ScrollArea>
+      )}
+      {playoffCtx && !phone && roundValues.length > 1 && (
+        <ScrollArea type="never" scrollbars="x">
+          <SegmentedControl
+            size="xs"
+            value={round ?? 'all'}
+            onChange={(value) =>
+              view.patch(value === 'all' ? { round: undefined } : { round: value, filter: 'all' })
+            }
+            aria-label={tx('Round', { context: 'knockout' })}
+            data={[
+              { value: 'all', label: tx('All') },
+              ...roundValues.map((label) => ({ value: label, label: formatRoundLabel(label) })),
+            ]}
+          />
+        </ScrollArea>
+      )}
+      {!!sitOuts?.length && (
+        <Text size="sm" c="dimmed">
+          {tx('Sitting out: {names}', { names: sitOuts.join(', ') })}
+        </Text>
+      )}
+      {!visible.length ? (
+        <EmptyState title={emptyTitle.title}>{emptyTitle.text}</EmptyState>
+      ) : (
+        <MatchList
+          matches={visible}
+          ctx={ctx}
+          courts={status.assign_courts !== false}
+          settings={settings}
+          canEdit={scoreable}
+          selectedId={selectedId}
+          editingId={editing && !phone && editing.from === 'list' ? editing.id : null}
+          onScore={scoreFromList}
+          quick={quick}
+          renderMenu={renderMenu}
+          renderEditor={(m) => (
+            <AdminScoreEntry
+              key={`${m.id}-record`}
+              surface="inline"
+              tid={id}
+              match={m}
+              ctx={ctx}
+              settings={settings}
+              totalPoints={status.total_points_per_match ?? 0}
+              purpose="record"
+              canClear={canClear}
+              onClose={() => closeEditor(m.id)}
+              onSubmit={(payload) => {
+                saved.current = true;
+                void record.mutate({ match: m, payload });
+              }}
+            />
+          )}
+        />
+      )}
+    </Stack>
+  );
+  const matchesPane = hasEarlier && stage === 'earlier' ? earlierPane : nowPane;
 
   const standingsGroup = groupNames.includes(view.state.group ?? '')
     ? view.state.group!

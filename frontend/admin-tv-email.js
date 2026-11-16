@@ -5,7 +5,7 @@
 // a unified Settings card with a sub-tab navigator.
 
 /**
- * TV display & sharing body: alias, banner, TV section toggles, refresh
+ * TV display & sharing body: alias, TV section toggles, refresh
  * interval, schema sliders, "Open TV" launcher.
  */
 function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlayoffs = false) {
@@ -74,27 +74,6 @@ function _renderTvSharingBody(tvSettings, hasCourts, isMexicano = false, hasPlay
   // ── Group: On-screen content ───────────────────────────────────
   html += `<div class="settings-group">`;
   html += `<h4 class="settings-group-title">${_ic('monitor')} ${t('txt_admin_settings_group_onscreen')}</h4>`;
-
-  // Banner
-  const currentBanner = def('banner_text', '');
-  html += `<div class="settings-block">`;
-  html += `<label class="settings-label">${t('txt_banner_label')}</label>`;
-  html += `<p class="settings-help settings-help--explain">${t('txt_banner_help')}</p>`;
-  // Auto-growing textarea (same class / limits as the registration description);
-  // newlines are kept and rendered on the TV (white-space: pre-line).
-  html += `<textarea id="tournament-banner-input" class="reg-desc-textarea w-full" rows="3" maxlength="5000" placeholder="${escAttr(t('txt_banner_placeholder'))}" oninput="_autoResizeTextarea(this)" onfocus="_autoResizeTextarea(this)">${esc(currentBanner)}</textarea>`;
-  html += `<div class="settings-inline-row mt-1-5 action-row action-row--end">`;
-  if (currentBanner) {
-    html += `<button type="button" class="btn btn-sm btn-danger" onclick="_clearTournamentBanner()">${_ic('megaphone')} ${t('txt_txt_remove')}</button>`;
-  }
-  html += `<button type="button" class="btn btn-sm btn-primary" onclick="_setTournamentBanner()">${t('txt_txt_save')}</button>`;
-  html += `</div>`;
-  html += `</div>`;
-  // Saved multi-line text should open at full height; only measurable once the node is visible.
-  setTimeout(() => {
-    const bannerEl = document.getElementById('tournament-banner-input');
-    if (bannerEl && bannerEl.offsetParent !== null) _autoResizeTextarea(bannerEl);
-  }, 0);
 
   // TV section toggles
   html += `<div class="settings-block">`;
@@ -580,31 +559,6 @@ async function _clearMatchComment(matchId) {
     await _rerenderCurrentViewPreserveDrafts();
   } catch (e) {
     console.error('Clear match comment failed:', e.message);
-  }
-}
-
-/** Set the tournament announcement banner text. */
-async function _setTournamentBanner() {
-  if (!currentTid) return;
-  const input = document.getElementById('tournament-banner-input');
-  if (!input) return;
-  const text = input.value.trim();
-  try {
-    await _updateTvSetting('banner_text', text);
-    await _rerenderCurrentViewPreserveDrafts();
-  } catch (e) {
-    console.error('Set banner failed:', e.message);
-  }
-}
-
-/** Clear the tournament announcement banner. */
-async function _clearTournamentBanner() {
-  if (!currentTid) return;
-  try {
-    await _updateTvSetting('banner_text', '');
-    await _rerenderCurrentViewPreserveDrafts();
-  } catch (e) {
-    console.error('Clear banner failed:', e.message);
   }
 }
 

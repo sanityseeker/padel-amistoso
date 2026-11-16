@@ -49,19 +49,20 @@ export const sharedTokens: Record<string, string> = {
   '--button-fz-touch': '1rem',
   '--ai-size-touch': '44px',
   '--ai-size-score': 'max(48px, 3.125rem)',
-  // The spectator screen ("tv" size): type that reads from across a room. Each step grows with the
-  // viewport, from a phone up to a 4K display, and stops at a ceiling so a 4K TV is not comically large.
-  '--fs-tv-sm': 'clamp(0.875rem, 0.55vw + 0.45rem, 1.75rem)',
-  '--fs-tv-md': 'clamp(1rem, 0.75vw + 0.55rem, 2.25rem)',
-  '--fs-tv-lg': 'clamp(1.25rem, 1.1vw + 0.6rem, 3rem)',
-  '--fs-tv-xl': 'clamp(1.5rem, 1.7vw + 0.6rem, 4.25rem)',
-  '--fs-tv-display': 'clamp(2rem, 2.8vw + 0.6rem, 6.5rem)',
-  '--button-height-tv': 'clamp(44px, 3vw, 88px)',
-  '--button-padding-x-tv': 'clamp(1rem, 1.2vw, 2.5rem)',
+  // The spectator screen ("tv" size): close to the Player Hub's type on a laptop (body 1rem, section
+  // titles like an h2, the event name like an h1), growing gently with the viewport so a hall TV
+  // stays readable, and stopping at a ceiling so a 4K display is not oversized.
+  '--fs-tv-sm': 'clamp(0.8125rem, 0.2vw + 0.6rem, 1.25rem)',
+  '--fs-tv-md': 'clamp(1rem, 0.3vw + 0.7rem, 1.5rem)',
+  '--fs-tv-lg': 'clamp(1.125rem, 0.4vw + 0.8rem, 1.875rem)',
+  '--fs-tv-xl': 'clamp(1.25rem, 0.6vw + 0.85rem, 2.5rem)',
+  '--fs-tv-display': 'clamp(1.75rem, 1vw + 1.1rem, 3.5rem)',
+  '--button-height-tv': 'clamp(44px, 2.2vw, 64px)',
+  '--button-padding-x-tv': 'clamp(1rem, 0.8vw, 1.75rem)',
   '--button-fz-tv': 'var(--fs-tv-md)',
   // Mantine reads a component's font size from this name, whatever the size key.
   '--mantine-font-size-tv': 'var(--fs-tv-md)',
-  '--ai-size-tv': 'clamp(44px, 2.8vw, 80px)',
+  '--ai-size-tv': 'clamp(44px, 2vw, 60px)',
   // Motion: three durations, one easing.
   '--motion-fast': '120ms',
   '--motion-base': '180ms',

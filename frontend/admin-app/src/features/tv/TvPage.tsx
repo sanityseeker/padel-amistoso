@@ -30,8 +30,8 @@ import { BrandLogo } from '../../BrandLogo';
 import { DisplayButton } from '../../shell/DisplayMenu';
 import { followTournament, TOURNAMENT_UPDATE_EVENT } from '../../shell/followTournament';
 import { sportProps } from '../../theme';
-import { StatusBadge } from '../../ui';
-import { Announcements, OrganizerBanner, OrganizerInfo } from '../public/OrganizerNotes';
+import { copyText, StatusBadge } from '../../ui';
+import { Announcements, OrganizerInfo } from '../public/OrganizerNotes';
 import { PlayerCardModal } from './PlayerCardModal';
 import { Champions, sectionKeys, TvBoard } from './TvBoard';
 import { Section, useOpenState } from './TvSection';
@@ -272,9 +272,18 @@ function Tv({ slug }: { slug: string }) {
             {meta.club_logo_url && (
               <Image src={meta.club_logo_url} alt="" className={classes.logo} fit="contain" />
             )}
-            <Title order={1} className={classes.title}>
-              {meta.name}
-            </Title>
+            <Tooltip label={tx('Tap to copy the page link')}>
+              <UnstyledButton
+                className={classes.chip}
+                onClick={() => void copyText(window.location.href, tx('Link copied'))}
+                aria-label={tx('Copy the page link')}
+                miw={0}
+              >
+                <Title order={1} className={classes.title}>
+                  {meta.name}
+                </Title>
+              </UnstyledButton>
+            </Tooltip>
           </Group>
           {identity && (
             <Text c="dimmed" fw={600} className={classes.text}>
@@ -318,7 +327,6 @@ function Tv({ slug }: { slug: string }) {
 
         {data && tid && <HubInvite tid={tid} player={player} />}
         {data && tid && <TvPaymentButton tid={tid} session={player.session} />}
-        {data && <OrganizerBanner notes={data.settings} size="tv" testId="tv-banner" />}
         {data && (
           <Announcements
             notes={data.settings}

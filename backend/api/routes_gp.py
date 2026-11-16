@@ -31,6 +31,8 @@ from .helpers import (
     _serialize_match,
     _prepare_set_score,
     _build_match_labels,
+    _window_rounds,
+    ROUNDS_PARAM_PATTERN,
     _espejo_schema_target,
     _serialize_playoff_matches,
     _schema_cache_get,
@@ -498,6 +500,9 @@ async def gp_playoffs_schema(
     arrow_scale: float = Query(1.0, ge=0.3, le=5.0),
     title_font_scale: float = Query(1.0, ge=0.3, le=5.0),
     output_scale: float = Query(1.0, ge=0.5, le=3.0),
+    rounds: str | None = Query(
+        None, pattern=ROUNDS_PARAM_PATTERN, description="window:N draws only N consecutive rounds, sliding with play"
+    ),
     theme: SchemaTheme = Query("light", description="light, dark, or css (an SVG coloured by CSS variables)"),
     side: Literal["winners", "losers"] | None = Query(None),
     user: User | None = Depends(get_current_user_optional),
@@ -542,6 +547,7 @@ async def gp_playoffs_schema(
         output_scale,
         num_winners,
         third_place,
+        rounds,
     )
     cached = _schema_cache_get(key)
     if cached:
@@ -564,6 +570,7 @@ async def gp_playoffs_schema(
         output_scale=output_scale,
         num_winners=num_winners,
         third_place=third_place,
+        window_rounds=_window_rounds(rounds),
     )
     fmt_out = "svg" if theme == "css" else fmt
     _schema_cache_put(key, img, fmt_out)

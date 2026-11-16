@@ -4,7 +4,8 @@
 }
 .open {
   display: block;
-  width: 100%;
+  margin-inline: auto;
+  touch-action: pan-x pan-y;
   padding: 0;
   border: 0;
   background: none;

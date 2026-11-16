@@ -1301,15 +1301,16 @@ def _render_with_strikes(t, monkeypatch):
     from backend.viz import bracket_schema as bs
 
     seen: list = []
-    real = bs._draw_strikes
+    real = bs._draw_rows
 
-    def spy(fig, ax, jobs):
-        seen.extend(jobs)
+    def spy(fig, ax, jobs, *args):
+        # A job is (x, y, w, h, rows, colour); rows["styles"] has one style per name line.
         n_before = len(ax.lines)
-        real(fig, ax, jobs)
+        seen.extend((j[4], [st for side in j[4]["styles"] for st in side]) for j in jobs)
+        real(fig, ax, jobs, *args)
         seen.append(("drawn", len(ax.lines) - n_before))
 
-    monkeypatch.setattr(bs, "_draw_strikes", spy)
+    monkeypatch.setattr(bs, "_draw_rows", spy)
     br = t.bracket
     img = bs.render_playoff_schema(
         [" & ".join(p.name for p in team) for team in br.original_teams],
@@ -1330,10 +1331,13 @@ class TestBracketImageStrike:
         img, seen = _render_with_strikes(t, monkeypatch)
         assert img[:8] == b"\x89PNG\r\n\x1a\n"
         jobs = [j for j in seen if j[0] != "drawn"]
-        assert len(jobs) >= 1
-        # Exactly one line (the loser's name) per struck node.
-        assert all(len(j[1]) == 1 for j in jobs)
-        assert [x for x in seen if x[0] == "drawn"][0][1] == len(jobs)
+        struck = [j for j in jobs if "walkover_loser" in j[1]]
+        assert len(struck) >= 1
+        # Exactly one name line (the loser's) per walkover node; the other drawn lines are dividers.
+        assert all(j[1].count("walkover_loser") == 1 for j in struck)
+        strikes = [x for x in seen if x[0] == "drawn"][0][1]
+        dividers = len(jobs)
+        assert strikes - dividers == len(struck)
 
     def test_double_elimination_and_both_sides_withdrawn(self, monkeypatch) -> None:
         t = _po(4, double_elimination=True)
@@ -1343,7 +1347,8 @@ class TestBracketImageStrike:
         img, seen = _render_with_strikes(t, monkeypatch)
         assert img[:4] == b"\x89PNG"
         jobs = [j for j in seen if j[0] != "drawn"]
-        assert jobs and all(len(j[1]) == 1 for j in jobs)
+        struck = [j for j in jobs if "walkover_loser" in j[1]]
+        assert struck and all(j[1].count("walkover_loser") == 1 for j in struck)
 
     def test_label_data_names_the_loser_side_only(self) -> None:
         from backend.api.helpers import _build_match_labels
@@ -1354,8 +1359,8 @@ class TestBracketImageStrike:
         t.withdraw(m.team2[0].id)
         entry = next(v for v in _build_match_labels(t.bracket).values() if v["score"] == "W/O")
         assert entry["walkover_loser"] == "team2"
-        assert _strike_lines(entry) == [2]  # team1 / score / team2
+        assert _strike_lines(entry) == [1]  # team1 / team2 name lines
         assert _strike_lines({**entry, "walkover_loser": "team1"}) == [0]
         assert _strike_lines({"team1": "A", "team2": "B", "score": "6-2"}) == []
         # A two-line name shifts the second side's line index.
-        assert _strike_lines({"team1": "A\nB", "team2": "C", "walkover_loser": "team2"}) == [3]
+        assert _strike_lines({"team1": "A\nB", "team2": "C", "walkover_loser": "team2"}) == [2]

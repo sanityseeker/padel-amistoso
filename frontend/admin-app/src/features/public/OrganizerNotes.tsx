@@ -1,16 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Box, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
-import { IconPinFilled, IconSpeakerphone } from '@tabler/icons-react';
+import { IconPinFilled } from '@tabler/icons-react';
 import { localeTag, t as tx, useLocale } from '../../i18n';
 import type { Announcement } from '../../types';
-import { Notice } from '../../ui/Notice';
 import { StatusBadge } from '../../ui/StatusBadge';
 import { Markdown } from './Markdown';
 import classes from './OrganizerNotes.module.css';
 
 /** The organizer's free text from the tournament's TV settings (anonymous GET .../tv-settings). */
 export interface OrganizerNotes {
-  banner_text?: string | null;
   custom_info_title?: string | null;
   custom_info_text?: string | null;
   /** Pinned first, then newest first, as the server sends them. */
@@ -22,7 +20,6 @@ export type NotesSize = 'tv' | 'app';
 /** Anchor id of the custom information block (the Hub card links to `#info`). */
 export const INFO_ANCHOR = 'info';
 
-export const bannerOf = (notes?: OrganizerNotes | null) => notes?.banner_text?.trim() ?? '';
 export const infoTextOf = (notes?: OrganizerNotes | null) => notes?.custom_info_text?.trim() ?? '';
 export const infoTitleOf = (notes?: OrganizerNotes | null) =>
   notes?.custom_info_title?.trim() || tx('Information');
@@ -41,9 +38,9 @@ export function newestAnnouncementAt(notes?: OrganizerNotes | null): string | nu
 /** Anchor id of the announcements block (the Hub card's badge links to `#announcements`). */
 export const ANNOUNCEMENTS_ANCHOR = 'announcements';
 
-/** The organizer wrote a banner, an announcement or a custom information section. */
+/** The organizer posted an announcement or wrote a custom information section. */
 export const hasOrganizerNotes = (notes?: OrganizerNotes | null) =>
-  !!bannerOf(notes) || !!infoTextOf(notes) || announcementsOf(notes).length > 0;
+  !!infoTextOf(notes) || announcementsOf(notes).length > 0;
 
 /** "5 minutes ago", "yesterday" in the interface language; a date after a week. */
 export function relativeTime(iso: string, now = Date.now()): string {
@@ -158,27 +155,6 @@ export function Announcements({
       </Title>
       {body}
     </Paper>
-  );
-}
-
-/** The banner as a notice (Markdown). Renders nothing when it is empty. */
-export function OrganizerBanner({
-  notes,
-  size = 'app',
-  testId,
-}: {
-  notes?: OrganizerNotes | null;
-  size?: NotesSize;
-  testId?: string;
-}) {
-  const text = bannerOf(notes);
-  if (!text) return null;
-  return (
-    <Notice icon={<IconSpeakerphone size={size === 'tv' ? 28 : 18} />} data-testid={testId}>
-      <Box className={`${classes.banner} ${size === 'tv' ? classes.tvBanner : ''}`}>
-        <Markdown source={text} />
-      </Box>
-    </Notice>
   );
 }
 

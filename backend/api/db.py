@@ -27,8 +27,10 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 from ..config import DATA_DIR
 from ..models import QuestionType
@@ -486,6 +488,50 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
     conn.execute(f"PRAGMA synchronous = {_normalized_synchronous_level(SQLITE_SYNCHRONOUS)}")
 
 
+def _utc_stamp(value: str | None) -> str:
+    """An ISO UTC timestamp from a stored ``created_at`` (now when it is missing or unreadable)."""
+    try:
+        moment = datetime.fromisoformat(value or "")
+    except ValueError:
+        moment = datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _migrate_banners_to_announcements(conn: sqlite3.Connection) -> None:
+    """Turn each tournament's old TV banner (``tv_settings.banner_text``) into a pinned announcement.
+
+    The banner and the announcements both showed organizer Markdown at the top of the TV screen
+    and the Player Hub event page, so the banner was folded into the announcements. Idempotent:
+    the banner key is removed from ``tv_settings`` once it is moved.
+    """
+    rows = conn.execute(
+        "SELECT id, tv_settings, announcements, created_at FROM tournaments WHERE tv_settings LIKE '%banner_text%'"
+    ).fetchall()
+    for tid, raw_settings, raw_items, created_at in rows:
+        try:
+            settings = json.loads(raw_settings)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(settings, dict) or "banner_text" not in settings:
+            continue
+        text = str(settings.pop("banner_text") or "").strip()
+        try:
+            items = json.loads(raw_items) if raw_items else []
+        except (TypeError, ValueError):
+            items = []
+        if not isinstance(items, list):
+            items = []
+        if text:
+            stamp = _utc_stamp(created_at)
+            items.insert(0, {"id": uuid.uuid4().hex[:12], "text": text, "created_at": stamp, "pinned": True})
+        conn.execute(
+            "UPDATE tournaments SET tv_settings = ?, announcements = ? WHERE id = ?",
+            (json.dumps(settings), json.dumps(items) if items else None, tid),
+        )
+
+
 def init_db() -> None:
     """Create tables and enable WAL mode.
 
@@ -757,6 +803,7 @@ def init_db() -> None:
         # Migrate: organizer announcements (JSON list), written by the save_tournament upsert.
         if "announcements" not in cols:
             conn.execute("ALTER TABLE tournaments ADD COLUMN announcements TEXT")
+        _migrate_banners_to_announcements(conn)
         # Migrate: add season_id to registrations if missing
         reg_cols = {r[1] for r in conn.execute("PRAGMA table_info(registrations)").fetchall()}
         if reg_cols and "season_id" not in reg_cols:

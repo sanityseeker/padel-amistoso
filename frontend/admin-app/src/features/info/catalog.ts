@@ -556,6 +556,16 @@ export const SECTIONS: InfoSection[] = [
         ],
       },
       {
+        title: 'txt_txt_info_elo_format_title',
+        paras: [
+          {
+            key: 'txt_txt_info_elo_format_desc',
+            html: false,
+            list: false,
+          },
+        ],
+      },
+      {
         title: 'txt_txt_info_elo_reliability_title',
         paras: [
           {
@@ -694,6 +704,9 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
     txt_txt_info_elo_doubles_desc:
       'The expected score uses the <em>average rating of each team</em>. A partner-strength multiplier corrects for pairs with different ratings. If a strong player has a weaker partner, wins give more points and losses cost fewer points. The opposite applies to a weaker player with a stronger partner. The multiplier is between 0.5× and 1.5×.',
     txt_txt_info_elo_doubles_title: 'Doubles (2v2) adjustment',
+    txt_txt_info_elo_format_desc:
+      'The rating change depends on how the match was scored. A match with two or more sets counts fully (×1.0). A one-set match counts ×0.8. A match scored in points counts ×0.6. In a Mexicano round scored in points, the weight is also reduced when the points target is below 32 (target ÷ 32). For a match with two or more sets, the margin uses the sets and the games in equal parts, so 6-0 6-0 moves the rating more than 6-4 6-3, and 6-4 6-3 more than 7-6 7-6.',
+    txt_txt_info_elo_format_title: 'Score format weight',
     txt_txt_info_elo_formula_desc:
       'The actual score is not only a win or a loss. It combines a result value <em>W</em> with a margin ratio <em>R</em>. Thus a close win and a large win give different rating changes.',
     txt_txt_info_elo_formula_legend:
@@ -895,6 +908,9 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
     txt_txt_info_elo_doubles_desc:
       'El resultado esperado usa ratings <em>promedio de equipo</em>. Un multiplicador de fuerza del compañero compensa parejas desiguales: un jugador fuerte emparejado con uno más débil obtiene ganancias amplificadas y pérdidas suavizadas, y viceversa. El multiplicador va de 0,5× a 1,5×.',
     txt_txt_info_elo_doubles_title: 'Ajuste de dobles (2v2)',
+    txt_txt_info_elo_format_desc:
+      'El cambio de rating depende de cómo se puntuó el partido. Un partido de dos sets o más cuenta por completo (×1,0). Un partido de un set cuenta ×0,8. Un partido puntuado en puntos cuenta ×0,6. En una ronda de Mexicano puntuada en puntos, el peso baja también si el objetivo de puntos es menor que 32 (objetivo ÷ 32). En un partido de dos sets o más, el margen usa sets y juegos a partes iguales, así que 6-0 6-0 mueve el rating más que 6-4 6-3, y este más que 7-6 7-6.',
+    txt_txt_info_elo_format_title: 'Peso según el formato del marcador',
     txt_txt_info_elo_formula_desc:
       'En lugar de un simple victoria|derrota, el resultado combina un componente binario <em>W</em> con un ratio continuo de margen <em>R</em>. Las victorias ajustadas y los resultados abultados producen cambios de rating diferentes.',
     txt_txt_info_elo_formula_legend:
@@ -1096,6 +1112,9 @@ export const CATALOG: Record<'en' | 'es' | 'ru', Record<string, string>> = {
     txt_txt_info_elo_doubles_desc:
       'Ожидаемый итог использует <em>средний рейтинг каждой команды</em>. Множитель силы партнёра учитывает разницу рейтингов в паре. Если у сильного игрока более слабый партнёр, победа приносит больше очков, а поражение отнимает меньше. Для слабого игрока с более сильным партнёром всё наоборот. Множитель находится в диапазоне от 0,5× до 1,5×.',
     txt_txt_info_elo_doubles_title: 'Поправка для пар (2 на 2)',
+    txt_txt_info_elo_format_desc:
+      'Изменение рейтинга зависит от формата счёта матча. Матч из двух и более сетов считается полностью (×1,0). Матч из одного сета считается ×0,8. Матч со счётом в очках считается ×0,6. В раунде Mexicano со счётом в очках вес также уменьшается, если цель по очкам меньше 32 (цель ÷ 32). В матче из двух и более сетов разница считается поровну по сетам и по геймам. Поэтому 6-0 6-0 меняет рейтинг больше, чем 6-4 6-3, а 6-4 6-3 больше, чем 7-6 7-6.',
+    txt_txt_info_elo_format_title: 'Вес по формату счёта',
     txt_txt_info_elo_formula_desc:
       'Фактический итог — это не только победа или поражение. Он объединяет значение исхода <em>W</em> и долю разницы <em>R</em>. Поэтому упорная победа и крупная победа меняют рейтинг по-разному.',
     txt_txt_info_elo_formula_legend:

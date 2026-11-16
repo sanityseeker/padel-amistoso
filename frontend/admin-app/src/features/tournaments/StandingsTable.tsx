@@ -438,6 +438,15 @@ export function StandingsTable({
                               aria-hidden
                             />
                           </UnstyledButton>
+                        ) : onSelect && !r.removed ? (
+                          // Where the name does not expand the row, it opens the player's card too.
+                          <UnstyledButton
+                            className={classes.toggle}
+                            title={r.name}
+                            onClick={() => onSelect(r)}
+                          >
+                            <NameText name={r.name} withdrawn={r.withdrawn} />
+                          </UnstyledButton>
                         ) : (
                           <NameText name={r.name} withdrawn={r.withdrawn} />
                         )}

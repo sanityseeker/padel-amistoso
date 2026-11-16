@@ -7,6 +7,8 @@ dependencies — all functions are pure.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel
 
 from backend.models import Match, MatchStatus, SetDecider
@@ -54,6 +56,12 @@ Ensures that winning is always rewarded and losing always costs something,
 even when the margin-based outcome is close to the expected score.
 """
 
+SET_SHARE_WEIGHT: float = 0.5
+"""Share of the sets margin in the score margin of a multi-set match.
+
+``margin = SET_SHARE_WEIGHT·set_share + (1 - SET_SHARE_WEIGHT)·game_share``.
+"""
+
 RELIABILITY_BASELINE: float = 0.3
 """Minimum reliability factor for a player with zero matches.
 
@@ -68,6 +76,51 @@ delta so their ratings converge quickly.  Ramps linearly from
 
 RELIABILITY_THRESHOLD: int = 20
 """Number of matches at which a player's rating is fully reliable."""
+
+# ---------------------------------------------------------------------------
+# Score format weighting
+# ---------------------------------------------------------------------------
+
+
+class EloScoreFormat(StrEnum):
+    """How a match was scored, which decides how strong a rating signal it is."""
+
+    POINTS = "points"
+    ONE_SET = "one_set"
+    SETS = "sets"
+
+
+SCORE_FORMAT_WEIGHTS: dict[EloScoreFormat, float] = {
+    EloScoreFormat.SETS: 1.0,
+    EloScoreFormat.ONE_SET: 0.8,
+    EloScoreFormat.POINTS: 0.6,
+}
+"""Multiplier on the ELO delta per score format (real sets count most)."""
+
+
+def classify_score_format(match: Match) -> EloScoreFormat:
+    """Classify a scored match by its stored set results.
+
+    Two or more sets (a match tie-break counts as a set) -> ``SETS``; one set
+    -> ``ONE_SET``; no sets -> ``POINTS``, in every tournament type.  Point
+    scores are never read as sets.
+    """
+    n_sets = len(match.sets or [])
+    if n_sets >= 2:
+        return EloScoreFormat.SETS
+    if n_sets == 1:
+        return EloScoreFormat.ONE_SET
+    return EloScoreFormat.POINTS
+
+
+def _sets_won(match: Match) -> tuple[int, int] | None:
+    """Sets won by each side, or None unless the match has two or more sets."""
+    if len(match.sets or []) < 2:
+        return None
+    won_a = sum(1 for s in match.sets if s[0] > s[1])
+    won_b = sum(1 for s in match.sets if s[1] > s[0])
+    return won_a, won_b
+
 
 # ---------------------------------------------------------------------------
 # Pydantic model
@@ -126,6 +179,7 @@ def compute_blended_outcome(
     score_b: int,
     alpha: float = OUTCOME_BLEND_WEIGHT,
     match_result: tuple[int, int] | None = None,
+    sets_won: tuple[int, int] | None = None,
 ) -> float:
     """Compute the blended outcome S for the player who scored *score_a*.
 
@@ -148,6 +202,8 @@ def compute_blended_outcome(
             disagree with who actually won the match (e.g. winning 2 sets
             to 1 while losing the total game count). When omitted, the
             outcome is inferred from *score_a*/*score_b* directly.
+        sets_won: Optional ``(sets_a, sets_b)`` for a multi-set match. The
+            margin then mixes the sets share and the games share equally.
 
     Returns:
         Blended outcome in [0, 1].
@@ -166,7 +222,11 @@ def compute_blended_outcome(
         w = 0.5
 
     # Continuous ratio component
-    r = 0.5 + (score_a - score_b) / (2.0 * total)
+    margin = (score_a - score_b) / total
+    if sets_won is not None and sum(sets_won) > 0:
+        set_share = (sets_won[0] - sets_won[1]) / sum(sets_won)
+        margin = SET_SHARE_WEIGHT * set_share + (1.0 - SET_SHARE_WEIGHT) * margin
+    r = 0.5 + margin / 2.0
 
     return alpha * w + (1.0 - alpha) * r
 
@@ -222,6 +282,8 @@ def compute_1v1_update(
     k_factor_override: int | None = None,
     opponent_matches_played: int | None = None,
     match_result: tuple[int, int] | None = None,
+    weight: float = 1.0,
+    sets_won: tuple[int, int] | None = None,
 ) -> float:
     """Compute the new ELO rating for a 1v1 match.
 
@@ -247,15 +309,18 @@ def compute_1v1_update(
             outcome (tennis total games vs. sets won), pass this so the
             match winner is never treated as a loser. Defaults to *score*
             when omitted.
+        weight: Score-format weight applied to the raw delta (before
+            reliability dampening and the winner/loser clamp).
+        sets_won: ``(player_sets, opponent_sets)`` for multi-set matches.
 
     Returns:
         Updated rating.
     """
     result = match_result if match_result is not None else score
     expected = compute_expected_score(player_rating, opponent_rating)
-    actual = compute_blended_outcome(score[0], score[1], match_result=result)
+    actual = compute_blended_outcome(score[0], score[1], match_result=result, sets_won=sets_won)
     k = k_factor_override if k_factor_override is not None else get_k_factor(matches_played)
-    delta = k * (actual - expected)
+    delta = k * (actual - expected) * weight
     # Dampen delta only for established players facing provisional opponents.
     # Provisional players always get the full delta so their ratings converge
     # quickly during calibration.
@@ -291,6 +356,8 @@ def compute_2v2_update(
     k_factor_override: int | None = None,
     opponent_matches: tuple[int, int] | None = None,
     match_result: tuple[int, int] | None = None,
+    weight: float = 1.0,
+    sets_won: tuple[int, int] | None = None,
 ) -> float:
     """Compute the new ELO rating for one player in a 2v2 match.
 
@@ -319,6 +386,9 @@ def compute_2v2_update(
             (e.g. sets won) identifying who actually won the match. Needed
             when *score* is a margin proxy that can disagree with the real
             outcome. Defaults to *score* when omitted.
+        weight: Score-format weight applied to the raw delta (before
+            reliability dampening and the winner/loser clamp).
+        sets_won: ``(team_sets, opponent_sets)`` for multi-set matches.
 
     Returns:
         Updated rating.
@@ -327,10 +397,10 @@ def compute_2v2_update(
     team_avg = (player_rating + partner_rating) / 2.0
     opp_avg = (opp1_rating + opp2_rating) / 2.0
     expected = compute_expected_score(team_avg, opp_avg)
-    actual = compute_blended_outcome(score[0], score[1], match_result=result)
+    actual = compute_blended_outcome(score[0], score[1], match_result=result, sets_won=sets_won)
     k = k_factor_override if k_factor_override is not None else get_k_factor(matches_played)
     adj = _partner_adjustment(player_rating, partner_rating)
-    delta = k * adj * (actual - expected)
+    delta = k * adj * (actual - expected) * weight
     # Dampen delta only for established players facing provisional opponents
     if opponent_matches is not None and matches_played >= RELIABILITY_THRESHOLD:
         opp_rel = min(reliability(opponent_matches[0]), reliability(opponent_matches[1]))
@@ -349,6 +419,7 @@ def compute_match_elo_updates(
     match_counts: dict[str, int],
     team_mode: bool,
     k_factor_overrides: dict[str, int] | None = None,
+    weight: float = 1.0,
 ) -> list[EloUpdate]:
     """Process a completed match and return ELO updates for every participant.
 
@@ -359,6 +430,8 @@ def compute_match_elo_updates(
         team_mode: Whether teams are fixed pairs (2v2) or individuals (1v1).
         k_factor_overrides: Optional mapping of ``player_id -> K-factor``
             for players with a custom K-factor override.
+        weight: Score-format weight for this match (see
+            ``SCORE_FORMAT_WEIGHTS``); callers add any length factor.
 
     Returns:
         List of ``EloUpdate`` -- one per player in the match.
@@ -379,6 +452,8 @@ def compute_match_elo_updates(
     # `result` (not `score`) is what decides win/loss downstream.
     if match.sets:
         score = tennis_sets_to_score(match.sets, match_decider(match))
+    sets_won = _sets_won(match)
+    sets_won_rev = (sets_won[1], sets_won[0]) if sets_won else None
 
     updates: list[EloUpdate] = []
 
@@ -402,6 +477,8 @@ def compute_match_elo_updates(
                 k_factor_override=overrides.get(player.id),
                 opponent_matches=opp_counts,
                 match_result=result,
+                weight=weight,
+                sets_won=sets_won,
             )
             updates.append(
                 EloUpdate(
@@ -433,6 +510,8 @@ def compute_match_elo_updates(
                 k_factor_override=overrides.get(player.id),
                 opponent_matches=opp_counts,
                 match_result=reversed_result,
+                weight=weight,
+                sets_won=sets_won_rev,
             )
             updates.append(
                 EloUpdate(
@@ -460,6 +539,8 @@ def compute_match_elo_updates(
             k_factor_override=overrides.get(p1.id),
             opponent_matches_played=count2,
             match_result=result,
+            weight=weight,
+            sets_won=sets_won,
         )
         new_elo2 = compute_1v1_update(
             elo2,
@@ -469,6 +550,8 @@ def compute_match_elo_updates(
             k_factor_override=overrides.get(p2.id),
             opponent_matches_played=count1,
             match_result=(result[1], result[0]),
+            weight=weight,
+            sets_won=sets_won_rev,
         )
 
         updates.append(

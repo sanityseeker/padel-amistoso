@@ -452,7 +452,7 @@ class TestGroupPlayoffAPIMultiWinner:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# History, push, mexicano regression, banner
+# History, push, mexicano regression
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -505,25 +505,6 @@ def test_tournament_winners_helper_mexicano_fallback():
     assert tournament_winners(SimpleNamespace(champion=lambda: None)) is None
 
 
-class TestBannerTextarea:
-    def _tid(self, client, auth_headers):
-        return client.post("/api/tournaments/playoff", json=_po_body(4), headers=auth_headers).json()["id"]
-
-    def test_multiline_round_trip(self, client, auth_headers):
-        tid = self._tid(client, auth_headers)
-        text = "Line one\nLine two\n\nLine four"
-        r = client.patch(f"/api/tournaments/{tid}/tv-settings", json={"banner_text": text}, headers=auth_headers)
-        assert r.status_code == 200, r.text
-        assert client.get(f"/api/tournaments/{tid}/tv-settings").json()["banner_text"] == text
-
-    def test_over_length_rejected(self, client, auth_headers):
-        tid = self._tid(client, auth_headers)
-        r = client.patch(f"/api/tournaments/{tid}/tv-settings", json={"banner_text": "x" * 5001}, headers=auth_headers)
-        assert r.status_code == 422
-        r = client.patch(f"/api/tournaments/{tid}/tv-settings", json={"banner_text": "x" * 5000}, headers=auth_headers)
-        assert r.status_code == 200
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Static frontend assertions
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -533,22 +514,6 @@ def _frontend(name: str) -> str:
     from pathlib import Path
 
     return (Path(__file__).resolve().parent.parent / "frontend" / name).read_text(encoding="utf-8")
-
-
-def test_banner_is_autogrowing_textarea_with_buttons_below():
-    js = _frontend("admin-tv-email.js")
-    assert '<input type="text" id="tournament-banner-input"' not in js
-    assert '<textarea id="tournament-banner-input" class="reg-desc-textarea' in js
-    assert 'maxlength="5000"' in js
-    assert "_autoResizeTextarea" in js
-    area = js.index('<textarea id="tournament-banner-input"')
-    assert area < js.index("_setTournamentBanner()") and area < js.index("_clearTournamentBanner()")
-
-
-def test_tv_banner_keeps_newlines():
-    css = _frontend("tv.css")
-    block = css[css.index(".admin-banner {") :].split("}")[0]
-    assert "white-space: pre-line" in block
 
 
 def test_multi_winner_frontend_wiring():

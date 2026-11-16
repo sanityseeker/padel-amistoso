@@ -25,7 +25,6 @@ import { MatchContacts, useMatchContacts } from '../MatchContacts';
 import {
   ANNOUNCEMENTS_ANCHOR,
   announcementsOf,
-  bannerOf,
   INFO_ANCHOR,
   infoTextOf,
   newestAnnouncementAt,
@@ -83,8 +82,7 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
             : null
       : null;
   // The organizer's notes: the card only points at them, the event page shows the text.
-  const posts = announcementsOf(data?.tv).length > 0;
-  const announcement = !!bannerOf(data?.tv) || posts;
+  const announcement = announcementsOf(data?.tv).length > 0;
   const hasInfo = !!infoTextOf(data?.tv);
   // "New": an announcement posted after the player last opened this event page (this browser only).
   const seen = useAnnouncementSeen(entry.entity_id, newestAnnouncementAt(data?.tv));
@@ -138,7 +136,7 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
           {announcement && (
             <UnstyledButton
               component={Link}
-              to={posts ? `${entryPath(entry)}#${ANNOUNCEMENTS_ANCHOR}` : entryPath(entry)}
+              to={`${entryPath(entry)}#${ANNOUNCEMENTS_ANCHOR}`}
               data-testid="active-tournament-announcement"
               data-new={seen.isNew || undefined}
             >

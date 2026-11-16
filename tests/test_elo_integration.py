@@ -149,8 +149,8 @@ class TestMexicanoPerMatchTargetElo:
         "num_rounds": 2,
     }
 
-    def test_k_multiplier_uses_match_target(self):
-        from backend.api.elo_integration import _mexicano_k_multiplier
+    def test_match_weight_uses_match_target(self):
+        from backend.api.elo_integration import elo_match_weight
         from backend.models import Match, MatchFormatOverride, Player, TournamentType
 
         class _T:
@@ -158,10 +158,47 @@ class TestMexicanoPerMatchTargetElo:
 
         data = {"type": TournamentType.MEXICANO, "tournament": _T()}
         m = Match(team1=[Player(name="A")], team2=[Player(name="B")])
-        assert _mexicano_k_multiplier(data, m) == 1.0
+        assert elo_match_weight(data, m) == pytest.approx(0.6)
         m.format_override = MatchFormatOverride(points_target=16)
-        assert _mexicano_k_multiplier(data, m) == 0.5
-        assert _mexicano_k_multiplier(data) == 1.0
+        assert elo_match_weight(data, m) == pytest.approx(0.3)
+
+    def test_mexicano_sets_match_is_not_length_scaled(self):
+        from backend.api.elo_integration import elo_match_weight
+        from backend.models import Match, Player, TournamentType
+
+        class _T:
+            total_points_per_match = 16
+
+        data = {"type": TournamentType.MEXICANO, "tournament": _T()}
+        m = Match(team1=[Player(name="A")], team2=[Player(name="B")], sets=[(6, 4), (6, 3)])
+        assert elo_match_weight(data, m) == 1.0
+        m.sets = [(6, 4)]
+        assert elo_match_weight(data, m) == pytest.approx(0.8)
+
+    def test_group_playoff_points_are_not_length_scaled(self):
+        from backend.api.elo_integration import elo_match_weight
+        from backend.models import Match, Player, TournamentType
+
+        data = {"type": TournamentType.GROUP_PLAYOFF, "tournament": object()}
+        m = Match(team1=[Player(name="A")], team2=[Player(name="B")])
+        assert elo_match_weight(data, m) == pytest.approx(0.6)
+
+    def test_float_weight_is_not_rounded(self):
+        from backend.models import Match, MatchStatus, Player
+        from backend.tournaments.elo import compute_match_elo_updates
+
+        p1, p2 = Player(name="A"), Player(name="B")
+        m = Match(team1=[p1], team2=[p2], score=(13, 11))
+        m.status = MatchStatus.COMPLETED
+        ratings = {p1.id: 1000.0, p2.id: 1000.0}
+        counts = {p1.id: 25, p2.id: 25}
+        up = compute_match_elo_updates(m, ratings, counts, False, {p1.id: 10, p2.id: 10}, weight=0.45)
+        gain = next(u for u in up if u.player_id == p1.id).elo_after - 1000
+        # K=10: raw 10 * (S - 0.5) * 0.45 is below the +1 floor... use K=40 to see the float.
+        assert gain >= 1.0
+        up = compute_match_elo_updates(m, ratings, counts, False, {p1.id: 80, p2.id: 80}, weight=0.45)
+        gain = next(u for u in up if u.player_id == p1.id).elo_after - 1000
+        assert gain == pytest.approx(80 * (0.5 * 1 + 0.5 * (0.5 + 2 / 48) - 0.5) * 0.45)
 
     def test_overridden_match_moves_elo_less(self, client, auth_headers):
         r = client.post("/api/tournaments/mexicano", json=self.BODY, headers=auth_headers)

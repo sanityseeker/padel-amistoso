@@ -39,10 +39,9 @@ from backend.tournaments.elo import DEFAULT_RATING, EloUpdate, compute_match_elo
 
 from .db import get_db
 from .elo_integration import (
-    _build_effective_k_overrides,
     _extract_completed_matches,
     _is_team_mode,
-    _mexicano_k_multiplier,
+    elo_match_weight,
 )
 from .elo_store import (
     _get_linked_profiles,
@@ -418,9 +417,8 @@ def _rate(
     k_overrides: dict[str, int],
 ) -> list[EloUpdate]:
     """Rate one match exactly as the main chain does, from club ratings."""
-    multiplier = _mexicano_k_multiplier(data, match)
-    effective_k = _build_effective_k_overrides(match, counts, k_overrides, multiplier)
-    return compute_match_elo_updates(match, ratings, counts, team_mode, effective_k)
+    weight = elo_match_weight(data, match)
+    return compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides, weight=weight)
 
 
 # ---------------------------------------------------------------------------

@@ -216,7 +216,7 @@ function championBox(status: TournamentStatus) {
 }
 
 // The report loads no stylesheet: light-mode colours are inlined.
-const STYLE = `body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:24px;color:#1f2937}h1{margin:0 0 8px}h2{margin:24px 0 8px;color:#1a5fa3}h3{margin:16px 0 6px}.muted{color:#6b7280;font-size:.92rem;margin-bottom:16px}.champ{margin:12px 0 18px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px}table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:.9rem}th{background:#f3f4f6}table.standings{table-layout:fixed}table.standings th:first-child{width:28%}.wo{margin-left:6px;padding:0 4px;border:1px solid #b45309;border-radius:4px;color:#92400e;font-size:.75em;font-weight:600;white-space:nowrap}img{max-width:100%;height:auto}h2,h3{break-after:avoid}tr,img{break-inside:avoid}`;
+const STYLE = `body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:24px;color:#1f2937}h1{margin:0 0 8px}h2{margin:24px 0 8px;color:#1a5fa3}h3{margin:16px 0 6px}.muted{color:#6b7280;font-size:.92rem;margin-bottom:16px}.champ{margin:12px 0 18px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px}table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:.9rem}th{background:#f3f4f6}table.standings{table-layout:fixed}table.standings th:first-child{width:28%}.wo{margin-left:6px;padding:0 4px;border:1px solid #b45309;border-radius:4px;color:#92400e;font-size:.75em;font-weight:600;white-space:nowrap}@page{size:A4 landscape}img{width:100%;height:auto}h2,h3{break-after:avoid}tr{break-inside:avoid}`;
 
 export interface BracketImage {
   label: string;
@@ -258,22 +258,28 @@ export async function bracketImages(
   labels: [string, string] | null,
   settings?: Partial<TvSettings> | null,
 ): Promise<BracketImage[]> {
-  // Reports use PNG whatever the TV page draws, as the legacy export did, in the app's light colours:
-  // the report itself is a light page meant for printing.
-  const base: Partial<TvSettings> = { ...(settings ?? {}), schema_format: 'png' };
+  // Reports draw the bracket as an SVG in the app's light colours (the report is a light page meant
+  // for printing): sharp at any print size, with the glyphs as paths so no font is needed. A very large
+  // drawing falls back to a PNG.
+  const MAX_SVG_URI = 2_000_000;
+  const fetchUri = async (format: 'svg' | 'png', extra: Record<string, string>) => {
+    const res = await fetch(
+      `/api/tournaments/${tid}/${prefix}/playoffs-schema?${schemaQuery({ ...(settings ?? {}), schema_format: format }, { ...extra, theme: 'light' })}`,
+    );
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
   const read = async (extra: Record<string, string>): Promise<string | null> => {
     try {
-      const res = await fetch(
-        `/api/tournaments/${tid}/${prefix}/playoffs-schema?${schemaQuery(base, { ...extra, theme: 'light' })}`,
-      );
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      const svg = await fetchUri('svg', extra);
+      if (svg && svg.length <= MAX_SVG_URI) return svg;
+      return await fetchUri('png', extra);
     } catch {
       /* A missing diagram never blocks the export. */
       return null;

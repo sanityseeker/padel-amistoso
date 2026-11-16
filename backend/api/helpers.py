@@ -17,7 +17,13 @@ from ..auth.models import User, UserRole
 from ..models import InputFormat, Match, MatchStatus, SetDecider
 from ..tournaments import live_courts
 from ..tournaments.playoff import THIRD_PLACE_LABEL, EspejoParallelBracket
-from ..tournaments.set_format import format_sets, match_decider, totals_from_sets, validate_decider_sets
+from ..tournaments.set_format import (
+    format_sets,
+    is_match_tiebreak_set,
+    match_decider,
+    totals_from_sets,
+    validate_decider_sets,
+)
 from .db import get_co_editors
 from .state import _tournaments, _save_tournament
 
@@ -109,6 +115,14 @@ _SCHEMA_MEDIA_TYPES: dict[str, str] = {
 # request when nothing has changed.  Max 64 entries (~few MB of images).
 _SCHEMA_CACHE_MAX = 64
 _schema_cache: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+
+
+ROUNDS_PARAM_PATTERN = r"^window:[1-9][0-9]?$"
+
+
+def _window_rounds(rounds: str | None) -> int | None:
+    """Number N from a validated ``rounds=window:N`` query value (``None`` when absent)."""
+    return int(rounds.split(":", 1)[1]) if rounds else None
 
 
 def _schema_cache_key(*parts: object) -> str:
@@ -661,7 +675,9 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
         bracket: A ``SingleEliminationBracket`` or ``DoubleEliminationBracket`` instance.
 
     Returns:
-        Dict mapping node IDs to ``{team1, team2, score, round}`` dicts.
+        Dict mapping node IDs to ``{team1, team2, score, score_sides, round,
+        walkover_loser, loser_side}`` dicts (``loser`` is added when a loser is known).
+        ``loser_side`` is ``"team1"`` / ``"team2"`` once a decisive score exists, else ``None``.
     """
 
     def _fmt_team(team: list) -> str:
@@ -674,9 +690,37 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
             return format_sets(m.sets, match_decider(m), sep="  ")
         return f"{m.score[0]}–{m.score[1]}" if m.score else None
 
+    def _score_sides(m: object) -> list[list[str]] | None:
+        """Per-side score parts for the bracket's row layout: ``[[team1 parts], [team2 parts]]``.
+
+        Sets give each side's games per set (a match tie-break in brackets); a single score
+        gives one number per side; a walkover puts ``W/O`` on the side that withdrew.
+        """
+        if getattr(m, "walkover", False) and m.score:
+            wo = _wo_loser(m)
+            return [["W/O"] if wo == "team1" else [], ["W/O"] if wo == "team2" else []]
+        if m.sets:
+            decider = match_decider(m)
+            sides: list[list[str]] = [[], []]
+            for i, pair in enumerate(m.sets):
+                tiebreak = is_match_tiebreak_set(m.sets, i, decider)
+                for side in (0, 1):
+                    games = str(int(pair[side]))
+                    sides[side].append(f"[{games}]" if tiebreak else games)
+            return sides
+        if m.score:
+            return [[str(m.score[0])], [str(m.score[1])]]
+        return None
+
     def _wo_loser(m: object) -> str | None:
         """Side (``team1`` / ``team2``) that lost a walkover; ``None`` for played matches."""
         if not getattr(m, "walkover", False) or not m.score:
+            return None
+        return "team2" if m.score[0] > m.score[1] else "team1"
+
+    def _loser_side(m: object) -> Literal["team1", "team2"] | None:
+        """Side that lost a scored match (same rule as ``Match.loser_team``); ``None`` for no score or a tie."""
+        if m.score is None or m.score[0] == m.score[1]:
             return None
         return "team2" if m.score[0] > m.score[1] else "team1"
 
@@ -697,8 +741,10 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                     "team1": _fmt_team(m.team1),
                     "team2": _fmt_team(m.team2),
                     "score": _fmt_score(m),
+                    "score_sides": _score_sides(m),
                     "round": m.round_label,
                     "walkover_loser": _wo_loser(m),
+                    "loser_side": _loser_side(m),
                 }
                 # Include loser info so the viz can draw data-driven loss edges.
                 loser = m.loser_team
@@ -721,8 +767,10 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                 "team1": _fmt_team(m.team1),
                 "team2": _fmt_team(m.team2),
                 "score": _fmt_score(m),
+                "score_sides": _score_sides(m),
                 "round": m.round_label,
                 "walkover_loser": _wo_loser(m),
+                "loser_side": _loser_side(m),
             }
             loser = m.loser_team
             if loser:
@@ -735,8 +783,10 @@ def _build_match_labels(bracket: object) -> dict[str, dict]:
                 "team1": _fmt_team(gf.team1),
                 "team2": _fmt_team(gf.team2),
                 "score": _fmt_score(gf),
+                "score_sides": _score_sides(gf),
                 "round": "Grand Final",
                 "walkover_loser": _wo_loser(gf),
+                "loser_side": _loser_side(gf),
             }
     else:
         _label_round_matches(bracket.matches, "match")

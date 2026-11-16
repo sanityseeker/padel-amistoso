@@ -475,9 +475,23 @@ The K-factor sets how fast a rating changes. The ratings of new players change f
 | ≤ 40 | 20 |
 | > 40 | 10 |
 
+#### Score format weight
+
+Real set and game scores are stronger signals than points rounds. The app multiplies each rating change by a weight $F$ from the score format:
+
+| Score format | $F$ |
+| --- | --- |
+| Two or more sets (a match tie-break counts as a set) | 1.0 |
+| One set | 0.8 |
+| Points (every tournament type) | 0.6 |
+
+The app never reads a points score as a set score. In a **Mexicano** round scored in points, $F$ is also multiplied by $\min(1,\ \text{points target} / 32)$. The points target is the configured target of the match, not the points played. A Mexicano match scored in sets (for example a play-off) has no length factor. The club rating chain uses the same weight.
+
+For a match with two or more sets, the margin mixes the sets and the games in equal parts: $\text{margin} = 0.5 \cdot \text{set share} + 0.5 \cdot \text{game share}$, where each share is $(a - b) / (a + b)$, and $R = 0.5 + \text{margin} / 2$. A match tie-break counts as one game. One-set and points matches use the plain ratio $R$ above. At equal ratings, a first match with $K = 40$ moves the rating by these shares of $K$ (weight included): 6-0 6-0 about 0.50, 6-4 6-3 about 0.41, 7-6 7-6 about 0.39, one set 6-4 about 0.24, a Mexicano round 13-11 with a 24-point target about 0.12.
+
 #### 1v1 update
 
-$$R'_{player} = R_{player} + K \cdot (S - E)$$
+$$R'_{player} = R_{player} + F \cdot K \cdot (S - E)$$
 
 #### 2v2 update (partner-adjusted)
 
@@ -487,12 +501,16 @@ $$E = E\!\left(\frac{R_{player} + R_{partner}}{2},\; \frac{R_{opp1} + R_{opp2}}{
 
 A **partner-strength adjustment** corrects for partners with different ratings:
 
-$$\text{adj} = \text{clamp}\!\left(1.0 - 0.25 \cdot \frac{R_{partner} - R_{player}}{400},\;\; 0.5,\;\; 1.5\right)$$
+$$\text{adj} = \text{clamp}\!\left(1.0 - 0.50 \cdot \frac{R_{partner} - R_{player}}{400},\;\; 0.5,\;\; 1.5\right)$$
 
 - Weaker partner: adj > 1. Wins give more points, and losses cost fewer points.
 - Stronger partner: adj < 1.
 
-$$\Delta = K \cdot \text{adj} \cdot (S - E)$$
+$$\Delta = F \cdot K \cdot \text{adj} \cdot (S - E)$$
+
+#### Reliability dampening
+
+When a player has 20 or more matches and an opponent has fewer, the player's change is multiplied by the opponent's reliability. Reliability goes from 0.3 at 0 matches to 1.0 at 20 matches. In doubles the lower of the two opponents is used. Players with fewer than 20 matches always get the full change.
 
 #### Minimum delta clamping
 
@@ -500,7 +518,7 @@ A winner always gets at least **+1** ELO. A loser always loses at least **−1**
 
 #### Tennis matches
 
-For tennis (scoring by sets), the app adds the games of all sets into one score pair. Then it calculates the ELO change.
+For tennis (scoring by sets), the app adds the games of all sets into one score pair and also counts the sets won. See the score format weight above. The match winner is always the side that won the match, also when it won fewer games.
 
 #### Where the displayed numbers come from
 

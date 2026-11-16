@@ -18,12 +18,12 @@
   font-size: var(--fs-tv-sm);
 }
 .logo {
-  height: clamp(2.5rem, 5vw, 7rem);
+  height: clamp(2.25rem, 3vw, 4.5rem);
   width: auto;
   max-width: 40vw;
   object-fit: contain;
 }
-/* One card per court; on a wide screen the cards are large enough to read from the other side of a hall. */
+/* One card per court; on a wide screen the cards grow a little with the screen. */
 .courts {
   display: grid;
   gap: var(--mantine-spacing-md);
@@ -31,12 +31,12 @@
 }
 @media (min-width: 1400px) {
   .courts {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 32rem), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
   }
 }
 @media (min-width: 2400px) {
   .courts {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 48rem), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 34rem), 1fr));
   }
 }
 .court[data-yours] {

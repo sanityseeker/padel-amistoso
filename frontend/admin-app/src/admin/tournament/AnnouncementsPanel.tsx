@@ -11,7 +11,7 @@ import { AnnouncementTime } from '../../features/public/OrganizerNotes';
 import classes from './AnnouncementsPanel.module.css';
 
 /** Server limit of one announcement (backend/api/schemas.py ANNOUNCEMENT_MAX_LENGTH). */
-const MAX_LENGTH = 1000;
+const MAX_LENGTH = 5000;
 
 // The workspace's Announcements tab (editors only): post during play, optionally with a push to the
 // players who turned notifications on, then pin or delete. Players read the posts on their Hub

@@ -274,7 +274,6 @@ export interface TvSettings {
   schema_title_font_scale?: number;
   schema_output_scale?: number;
   schema_format?: 'svg' | 'png';
-  banner_text?: string;
   custom_info_title?: string;
   custom_info_text?: string;
   correction_window_seconds?: number;

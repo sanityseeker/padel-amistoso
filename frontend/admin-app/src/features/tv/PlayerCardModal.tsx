@@ -108,15 +108,18 @@ function MatchLine({ m, player }: { m: CardMatch; player: string }) {
 const AUTO_CLOSE_MS = 30_000;
 
 // A player's card within one tournament (GET /tournaments/{tid}/players/{pid}/public-card). It is the same
-// public data as the legacy card; on a TV nobody is there to close it, so it closes itself after a while.
+// public data as the legacy card; on a TV nobody is there to close it, so it closes itself after a while
+// (the Player Hub passes `autoClose={false}`: a player on a phone closes it themselves).
 export function PlayerCardModal({
   tid,
   playerId,
   onClose,
+  autoClose = true,
 }: {
   tid: string;
   playerId: string | null;
   onClose: () => void;
+  autoClose?: boolean;
 }) {
   useLocale();
   const card = useQuery({
@@ -128,10 +131,10 @@ export function PlayerCardModal({
       ),
   });
   useEffect(() => {
-    if (!playerId) return;
+    if (!playerId || !autoClose) return;
     const timer = window.setTimeout(onClose, AUTO_CLOSE_MS);
     return () => window.clearTimeout(timer);
-  }, [playerId, onClose]);
+  }, [playerId, onClose, autoClose]);
   const data = card.data;
   const delta = data?.elo_delta_total;
   const draws = data?.draws ?? 0;

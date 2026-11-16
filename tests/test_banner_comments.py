@@ -1,12 +1,12 @@
 """
-Tests for the tournament announcement banner and match comment features.
+Tests for the organizer custom information, the old-banner migration and match comments.
 """
 
 from __future__ import annotations
 
 
 class TestBannerAndComments:
-    """Tests for the banner (via TV settings) and match comment API endpoints."""
+    """Tests for TV-settings organizer text and match comment API endpoints."""
 
     GP_BODY = {
         "name": "Banner Test",
@@ -23,13 +23,7 @@ class TestBannerAndComments:
         assert r.status_code == 200
         return r.json()["id"]
 
-    # ── Banner ─────────────────────────────────────────────
-
-    def test_banner_default_empty(self, client, auth_headers):
-        tid = self._create(client, auth_headers)
-        r = client.get(f"/api/tournaments/{tid}/tv-settings")
-        assert r.status_code == 200
-        assert r.json()["banner_text"] == ""
+    # ── Organizer text ─────────────────────────────────────
 
     def test_anonymous_tv_settings_returns_custom_info(self, client, auth_headers):
         tid = self._create(client, auth_headers)
@@ -46,35 +40,6 @@ class TestBannerAndComments:
         public = client.get(f"/api/tournaments/{tid}/tv-settings").json()
         assert public["custom_info_title"] == "Format"
         assert public["custom_info_text"] == "**Short sets**"
-
-    def test_set_banner_via_tv_settings(self, client, auth_headers):
-        tid = self._create(client, auth_headers)
-        r = client.patch(
-            f"/api/tournaments/{tid}/tv-settings",
-            json={"banner_text": "Next round at 3pm!"},
-            headers=auth_headers,
-        )
-        assert r.status_code == 200
-        assert r.json()["banner_text"] == "Next round at 3pm!"
-
-        # Verify it persists on re-read
-        r = client.get(f"/api/tournaments/{tid}/tv-settings")
-        assert r.json()["banner_text"] == "Next round at 3pm!"
-
-    def test_clear_banner(self, client, auth_headers):
-        tid = self._create(client, auth_headers)
-        client.patch(
-            f"/api/tournaments/{tid}/tv-settings",
-            json={"banner_text": "Hello"},
-            headers=auth_headers,
-        )
-        r = client.patch(
-            f"/api/tournaments/{tid}/tv-settings",
-            json={"banner_text": ""},
-            headers=auth_headers,
-        )
-        assert r.status_code == 200
-        assert r.json()["banner_text"] == ""
 
     def test_custom_tv_info_defaults_and_partial_update(self, client, auth_headers):
         tid = self._create(client, auth_headers)
@@ -93,19 +58,19 @@ class TestBannerAndComments:
 
         updated = client.patch(
             f"/api/tournaments/{tid}/tv-settings",
-            json={"banner_text": "Unchanged"},
+            json={"show_courts": False},
             headers=auth_headers,
         )
         assert updated.json()["custom_info_title"] == "Tournament format"
         assert updated.json()["custom_info_text"] == "Short sets\nNo-ad scoring"
 
-    def test_banner_requires_auth(self, client, auth_headers):
+    def test_banner_text_is_no_longer_a_setting(self, client, auth_headers):
+        """The banner became pinned announcements; tv-settings ignores the old key."""
         tid = self._create(client, auth_headers)
-        r = client.patch(
-            f"/api/tournaments/{tid}/tv-settings",
-            json={"banner_text": "Nope"},
-        )
-        assert r.status_code in (401, 403)
+        r = client.patch(f"/api/tournaments/{tid}/tv-settings", json={"banner_text": "Old"}, headers=auth_headers)
+        assert r.status_code == 200
+        assert "banner_text" not in r.json()
+        assert r.json()["announcements"] == []
 
     # ── Match comments ─────────────────────────────────────
 
@@ -250,3 +215,40 @@ class TestBannerAndComments:
         )
         assert r.status_code == 200
         assert r.json()["comment"] == "Semi-final!"
+
+
+def test_init_db_moves_old_banners_into_pinned_announcements(tmp_path, monkeypatch):
+    """A stored ``tv_settings.banner_text`` becomes a pinned announcement, once."""
+    import json
+    import sqlite3
+
+    from backend.api import db as db_mod
+
+    monkeypatch.setattr(db_mod, "DB_PATH", tmp_path / "padel.db")
+    db_mod.init_db()
+    older = json.dumps(
+        [{"id": "a1", "text": "Earlier post", "created_at": "2026-01-02T10:00:00+00:00", "pinned": False}]
+    )
+    with sqlite3.connect(tmp_path / "padel.db") as conn:
+        conn.execute(
+            "INSERT INTO tournaments (id, name, type, owner, tv_settings, tournament_blob, created_at, announcements)"
+            " VALUES ('t1', 'Cup', 'mexicano', 'admin', ?, x'', '2026-01-01 09:30:00', ?)",
+            (json.dumps({"banner_text": "  Doors close at **nine**  ", "show_courts": False}), older),
+        )
+        conn.execute(
+            "INSERT INTO tournaments (id, name, type, owner, tv_settings, tournament_blob) VALUES ('t2', 'Empty', 'mexicano', 'admin', ?, x'')",
+            (json.dumps({"banner_text": ""}),),
+        )
+    db_mod.init_db()
+    db_mod.init_db()  # idempotent
+    with sqlite3.connect(tmp_path / "padel.db") as conn:
+        rows = {
+            r[0]: (json.loads(r[1]), r[2])
+            for r in conn.execute("SELECT id, tv_settings, announcements FROM tournaments")
+        }
+    settings, raw = rows["t1"]
+    assert settings == {"show_courts": False}
+    items = json.loads(raw)
+    assert [(a["text"], a["pinned"]) for a in items] == [("Doors close at **nine**", True), ("Earlier post", False)]
+    assert items[0]["created_at"] == "2026-01-01T09:30:00+00:00"
+    assert rows["t2"] == ({}, None)

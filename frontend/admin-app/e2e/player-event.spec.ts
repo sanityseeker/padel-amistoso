@@ -543,6 +543,34 @@ test('active and past tournaments are separate sections and a past one opens rea
   await expect(page.getByTestId('event-played')).toBeVisible();
 });
 
+test("a tap on another player's name in the standings opens their card with their matches", async ({
+  page,
+  request,
+}) => {
+  const { id, headers } = await createTournament(request, 'mex', `Card ${Date.now()}`);
+  const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+  for (const m of matches.current_matches as Match[])
+    await request.post(`/api/tournaments/${id}/mex/record`, {
+      headers,
+      data: { match_id: m.id, score1: 14, score2: 10 },
+    });
+  const { session } = await profileFor(request, id, 'Ana', 'card');
+  await page.setViewportSize(DESKTOP);
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  const standings = page.getByTestId('event-standings');
+  await standings.getByRole('button', { name: 'Beto', exact: true }).click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-player-card')).toBeVisible();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(1);
+  // On a phone the name expands the row; the card button next to it opens the card.
+  await page.keyboard.press('Escape');
+  await expect(card).toBeHidden();
+  await page.setViewportSize(PHONE);
+  await standings.getByRole('button', { name: 'Open profile for Carla' }).click();
+  await expect(page.getByRole('dialog').getByTestId('tv-player-card')).toBeVisible();
+});
+
 test('a finished event leads with its final standings', async ({ page, request }) => {
   const { id, headers } = await createTournament(request, 'mex', `Final ${Date.now()}`);
   const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
@@ -590,11 +618,11 @@ test('a picked community scope narrows the active tournaments but keeps deep lin
   await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
 });
 
-test('the organizer banner and custom information show on the event page and as a badge on the card', async ({
+test('a pinned announcement and the custom information show on the event page and as a badge on the card', async ({
   page,
   request,
 }) => {
-  const { id } = await createTournament(request, 'mex', `Notes ${Date.now()}`);
+  const { id, headers } = await createTournament(request, 'mex', `Notes ${Date.now()}`);
   const { session } = await profileFor(request, id, 'Ana', 'notes');
   await page.setViewportSize({ width: 375, height: 800 });
   await openHub(page, session.access_token);
@@ -605,17 +633,28 @@ test('the organizer banner and custom information show on the event page and as 
   await expect(card.getByTestId('active-tournament-info')).toHaveCount(0);
   await page.goto(`/player/matches/tournament/${id}`);
   await expect(page.getByTestId('event-up-next')).toBeVisible();
-  await expect(page.getByTestId('event-announcement')).toHaveCount(0);
+  await expect(page.getByTestId('event-announcements')).toHaveCount(0);
   await expect(page.getByTestId('event-custom-info')).toHaveCount(0);
 
+  const posted = await request.post(`/api/tournaments/${id}/announcements`, {
+    headers,
+    data: { text: 'Doors close at **nine**', notify: false },
+  });
+  expect(posted.ok()).toBeTruthy();
+  const { id: aid } = await posted.json();
+  const pinned = await request.patch(`/api/tournaments/${id}/announcements/${aid}`, {
+    headers,
+    data: { pinned: true },
+  });
+  expect(pinned.ok()).toBeTruthy();
   await patchTvSettings(request, id, {
-    banner_text: 'Doors close at **nine**',
     custom_info_title: 'Tournament format',
     custom_info_text: '**Short sets**\nNo-ad scoring',
   });
   await page.reload();
-  const banner = page.getByTestId('event-announcement');
+  const banner = page.getByTestId('event-announcements');
   await expect(banner).toContainText('Doors close at nine');
+  await expect(banner.getByText('Pinned post')).toBeVisible();
   await expect(banner.getByText('nine', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
   const info = page.getByTestId('event-custom-info');
   await expect(info.getByText('Short sets', { exact: true })).toHaveJSProperty('tagName', 'STRONG');
@@ -634,13 +673,16 @@ test('the organizer banner and custom information show on the event page and as 
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await badge.click();
-  await expect(page).toHaveURL(new RegExp(`/player/matches/tournament/${id}$`));
-  await expect(page.getByTestId('event-announcement')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/player/matches/tournament/${id}#announcements$`));
+  await expect(page.getByTestId('event-announcements')).toBeVisible();
 
   // Cleared again: both disappear.
-  await patchTvSettings(request, id, { banner_text: '', custom_info_text: '' });
+  expect(
+    (await request.delete(`/api/tournaments/${id}/announcements/${aid}`, { headers })).ok(),
+  ).toBeTruthy();
+  await patchTvSettings(request, id, { custom_info_text: '' });
   await page.reload();
   await expect(page.getByTestId('event-up-next')).toBeVisible();
-  await expect(page.getByTestId('event-announcement')).toHaveCount(0);
+  await expect(page.getByTestId('event-announcements')).toHaveCount(0);
   await expect(page.getByTestId('event-custom-info')).toHaveCount(0);
 });

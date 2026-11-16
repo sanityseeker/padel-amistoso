@@ -10,6 +10,9 @@ from backend.tournaments.elo import (
     MIN_DELTA_WIN,
     RELIABILITY_BASELINE,
     RELIABILITY_THRESHOLD,
+    SCORE_FORMAT_WEIGHTS,
+    EloScoreFormat,
+    classify_score_format,
     compute_1v1_update,
     compute_2v2_update,
     compute_blended_outcome,
@@ -400,19 +403,21 @@ class TestComputeMatchEloUpdates:
         assert by_id[p2.id].matches_after == 6
 
     def test_uses_sets_for_tennis(self) -> None:
-        """When sets are provided, games are used as the score proxy."""
+        """Sets give a games margin plus a sets margin, at full (sets) weight."""
         p1, p2 = Player(name="A"), Player(name="B")
-        # 7-6, 7-6 → tight match (14, 12) vs score (2, 0)
+        # 7-6, 7-6 -> games (14, 12), sets (2, 0)
         m_sets = _make_match([p1], [p2], (2, 0), sets=[(7, 6), (7, 6)])
         m_plain = _make_match([p1], [p2], (14, 12))
         ratings = {p1.id: 1000.0, p2.id: 1000.0}
         counts = {p1.id: 0, p2.id: 0}
         u_sets = compute_match_elo_updates(m_sets, ratings, counts, team_mode=False)
         u_plain = compute_match_elo_updates(m_plain, ratings, counts, team_mode=False)
-        # Both should produce very similar results since sets → (14,12)
         w_sets = next(u for u in u_sets if u.player_id == p1.id)
         w_plain = next(u for u in u_plain if u.player_id == p1.id)
-        assert w_sets.elo_after == pytest.approx(w_plain.elo_after)
+        margin = 0.5 * 1.0 + 0.5 * (2 / 26)
+        s_a = 0.5 * 1.0 + 0.5 * (0.5 + margin / 2)
+        assert w_sets.elo_after - 1000 == pytest.approx(40 * (s_a - 0.5))
+        assert w_sets.elo_after > w_plain.elo_after
 
     def test_raises_on_incomplete_match(self) -> None:
         p1, p2 = Player(name="A"), Player(name="B")
@@ -487,3 +492,82 @@ class TestMatchTiebreakDeciderMargin:
         assert gain(tb).elo_after > 1000
         # 10-8 as a full set would add a much bigger margin.
         assert gain(full).elo_after > gain(tb).elo_after
+
+
+# ---------------------------------------------------------------------------
+# Score format weighting
+# ---------------------------------------------------------------------------
+
+
+def _delta(sets: list[tuple[int, int]] | None, score: tuple[int, int], weight: float | None = None, **kw) -> float:
+    """Equal-rating, new-player (K=40) delta of team 1 in a 1v1 match, as a fraction of K."""
+    p1, p2 = Player(name="A"), Player(name="B")
+    m = _make_match([p1], [p2], score, sets=sets, **kw)
+    w = SCORE_FORMAT_WEIGHTS[classify_score_format(m)] if weight is None else weight
+    ratings = {p1.id: 1000.0, p2.id: 1000.0}
+    counts = {p1.id: 0, p2.id: 0}
+    up = compute_match_elo_updates(m, ratings, counts, team_mode=False, weight=w)
+    return (next(u for u in up if u.player_id == p1.id).elo_after - 1000) / 40
+
+
+class TestScoreFormat:
+    @pytest.mark.parametrize(
+        ("sets", "expected"),
+        [
+            (None, EloScoreFormat.POINTS),
+            ([], EloScoreFormat.POINTS),
+            ([(6, 4)], EloScoreFormat.ONE_SET),
+            ([(6, 4), (6, 3)], EloScoreFormat.SETS),
+            ([(6, 4), (3, 6), (7, 5)], EloScoreFormat.SETS),
+        ],
+    )
+    def test_classify(self, sets, expected) -> None:
+        p1, p2 = Player(name="A"), Player(name="B")
+        assert classify_score_format(_make_match([p1], [p2], (1, 0), sets=sets)) == expected
+
+    def test_match_tiebreak_counts_as_a_set(self) -> None:
+        p1, p2 = Player(name="A"), Player(name="B")
+        m = _make_match([p1], [p2], (2, 1), sets=[(6, 4), (3, 6), (10, 8)])
+        m.decider = SetDecider.MATCH_TIEBREAK
+        assert classify_score_format(m) == EloScoreFormat.SETS
+
+    def test_set_shaped_points_are_still_points(self) -> None:
+        p1, p2 = Player(name="A"), Player(name="B")
+        assert classify_score_format(_make_match([p1], [p2], (6, 4))) == EloScoreFormat.POINTS
+        assert classify_score_format(_make_match([p1], [p2], (13, 11))) == EloScoreFormat.POINTS
+
+    def test_expected_deltas_at_equal_ratings(self) -> None:
+        assert _delta([(6, 0), (6, 0)], (2, 0)) == pytest.approx(0.50)
+        assert _delta([(6, 4), (6, 3)], (2, 0)) == pytest.approx(0.408, abs=0.002)
+        assert _delta([(7, 6), (7, 6)], (2, 0)) == pytest.approx(0.385, abs=0.005)
+        assert _delta([(6, 0), (6, 7), (6, 0)], (2, 1)) == pytest.approx(0.35, abs=0.01)
+        assert _delta([(7, 6), (6, 7), (7, 6)], (2, 1)) == pytest.approx(0.30, abs=0.01)
+        assert _delta([(6, 4)], (1, 0)) == pytest.approx(0.24, abs=0.005)
+        assert _delta(None, (13, 11), weight=0.6 * 0.75) == pytest.approx(0.12, abs=0.005)
+
+    def test_ordering(self) -> None:
+        points = _delta(None, (13, 11), weight=0.6 * 0.75)  # close Mexicano round, 24-point target
+        one_set = _delta([(6, 4)], (1, 0))
+        close_three = _delta([(7, 6), (6, 7), (7, 6)], (2, 1))
+        straight = _delta([(6, 4), (6, 3)], (2, 0))
+        assert points < one_set < close_three < straight
+        assert _delta([(6, 0), (6, 0)], (2, 0)) > _delta([(6, 4), (6, 3)], (2, 0)) > _delta([(7, 6), (7, 6)], (2, 0))
+
+    def test_sets_outcome_is_zero_sum(self) -> None:
+        sets = (2, 0)
+        a = compute_blended_outcome(12, 7, match_result=(2, 0), sets_won=sets)
+        b = compute_blended_outcome(7, 12, match_result=(0, 2), sets_won=(0, 2))
+        assert a + b == pytest.approx(1.0)
+
+    def test_weight_one_leaves_points_path_unchanged(self) -> None:
+        assert compute_1v1_update(1000, 1000, (18, 7), 0, weight=1.0) == compute_1v1_update(1000, 1000, (18, 7), 0)
+        assert compute_2v2_update(1000, 1000, 1000, 1000, (18, 7), 0, weight=1.0) == compute_2v2_update(
+            1000, 1000, 1000, 1000, (18, 7), 0
+        )
+
+    def test_winner_keeps_minimum_gain_at_low_weight(self) -> None:
+        # A tiny weighted delta is still floored for the winner and the loser.
+        new = compute_1v1_update(1400, 1000, (13, 12), 50, weight=0.1)
+        assert new - 1400 == pytest.approx(MIN_DELTA_WIN)
+        lost = compute_1v1_update(1000, 1400, (12, 13), 50, weight=0.1)
+        assert lost - 1000 == pytest.approx(-MIN_DELTA_WIN)

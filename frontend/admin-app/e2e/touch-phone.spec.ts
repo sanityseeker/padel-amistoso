@@ -1,5 +1,5 @@
 import { test, expect, devices, type APIRequestContext } from '@playwright/test';
-import { adminHeaders, createTournament, loginAdmin } from './helpers';
+import { adminHeaders, createTournament, loginAdmin, nameTextPx } from './helpers';
 
 // A real phone (mobile viewport, touch), not a narrow desktop window: there a page that overflows for
 // a single frame is zoomed out to fit, so the layout grows instead of scrolling.
@@ -245,4 +245,59 @@ test('bracket pictures zoom with the zoom bar on the workspace and a pinch on th
   await expect.poll(() => scaleOf(zoom)).toBeGreaterThan(2);
   await page.getByRole('button', { name: 'Reset zoom' }).click();
   await expect.poll(() => scaleOf(zoom)).toBe(1);
+});
+
+const sixteen = Array.from({ length: 16 }, (_, i) => `Team ${i + 1}`);
+
+test('a big bracket opens at a readable zoom and scrolls sideways', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { id } = await createTournament(request, 'po', `Readable ${stamp()}`, {
+    participant_names: sixteen,
+  });
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  await page.getByRole('tab', { name: 'Bracket' }).click();
+  const viewer = page.getByTestId('bracket-diagram');
+  await expect(viewer.getByRole('img')).toBeVisible({ timeout: 30_000 });
+  await expect(viewer.getByRole('button', { name: 'Fit to width' })).toHaveText('75%');
+  const svg = viewer.locator('svg[data-text-pt]').first();
+  expect(await nameTextPx(svg)).toBeGreaterThanOrEqual(11);
+  expect((await svg.boundingBox())!.width).toBeGreaterThan(390);
+  // No picture button and no hint on the workspace: it has no full-screen view.
+  await expect(viewer.getByText('Tap image to expand')).toHaveCount(0);
+});
+
+test('tapping the zoomed TV bracket opens the full view; a sideways swipe does not', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { id } = await createTournament(request, 'po', `Tap ${stamp()}`, {
+    participant_names: sixteen,
+  });
+  await page.goto(`/tv/${id}`);
+  const bracket = page.getByTestId('tv-bracket');
+  await expect(bracket.getByRole('button', { name: 'Fit to width' }).first()).toHaveText('75%', {
+    timeout: 30_000,
+  });
+  await expect(bracket.getByText('Tap image to expand')).toBeVisible();
+  const open = bracket.getByRole('button', { name: /Play off bracket: Enlarge/ }).first();
+  await open.scrollIntoViewIfNeeded();
+  const box = (await open.boundingBox())!;
+  const x = box.x + Math.min(box.width, 390) / 2;
+  const y = box.y + Math.min(box.height, 300) / 2;
+
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', px?: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: px === undefined ? [] : [{ x: px, y }],
+    });
+  await touch('touchStart', x + 120);
+  for (let i = 1; i <= 10; i++) await touch('touchMove', x + 120 - i * 12);
+  await touch('touchEnd');
+  await expect(page.getByTestId('tv-bracket-zoom')).toHaveCount(0);
+
+  await page.touchscreen.tap(x, y);
+  await expect(page.getByTestId('tv-bracket-zoom').getByRole('img')).toBeVisible();
 });

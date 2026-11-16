@@ -4,6 +4,7 @@ import {
   chooseLanguage,
   createTournament,
   expectFooter,
+  nameTextPx,
   patchTvSettings,
   PLAYERS,
 } from './helpers';
@@ -130,10 +131,9 @@ test('the spectator screen shows the courts and the leaderboard, in both languag
   const name = `TV Cup ${stamp()}`;
   const { id, headers } = await mexicano(request, name);
   await request.put(`/api/tournaments/${id}/alias`, { headers, data: { alias: `tv-${stamp()}` } });
-  await patchTvSettings(request, id, { banner_text: 'Doors close at nine', refresh_interval: 0 });
+  await patchTvSettings(request, id, { refresh_interval: 0 });
   await page.goto(`/tv/${id}`);
   await expect(page.getByTestId('tv-page').getByRole('heading', { level: 1, name })).toBeVisible();
-  await expect(page.getByTestId('tv-banner')).toContainText('Doors close at nine');
   await expect(page.getByTestId('tv-court')).toHaveCount(2);
   const board = page.locator('[data-section="standings"]');
   await expect(board.getByRole('heading', { name: 'Leaderboard' })).toBeVisible();
@@ -530,4 +530,51 @@ test('the bracket picture is drawn in the page and follows the theme', async ({
   const dark = await textFill();
   expect(dark).toBe(await bodyText());
   expect(dark).not.toBe(light);
+});
+
+const sixteen = Array.from({ length: 16 }, (_, i) => `Team ${i + 1}`);
+
+test('the TV bracket stacks the sides of a double elimination and keeps names readable', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const { id } = await createTournament(request, 'po', `TV double ${stamp()}`, {
+    participant_names: sixteen,
+    double_elimination: true,
+  });
+  await page.goto(`/tv/${id}`);
+  const bracket = page.getByTestId('tv-bracket');
+  const pictures = bracket.getByRole('img');
+  await expect(pictures).toHaveCount(2, { timeout: 30_000 });
+  const [winners, losers] = [
+    await pictures.nth(0).boundingBox(),
+    await pictures.nth(1).boundingBox(),
+  ];
+  // Stacked, not side by side.
+  expect(losers!.y).toBeGreaterThan(winners!.y + winners!.height - 2);
+  for (const svg of await bracket.locator('svg[data-text-pt]').all())
+    expect(await nameTextPx(svg)).toBeGreaterThanOrEqual(18);
+});
+
+test('the TV bracket shows a window of rounds while the full view has them all', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const { id } = await createTournament(request, 'po', `TV window ${stamp()}`, {
+    participant_names: sixteen,
+  });
+  await page.goto(`/tv/${id}`);
+  const bracket = page.getByTestId('tv-bracket');
+  // Round 1 is not finished: the window is round 1 to the semi-final, and says so.
+  await expect(bracket.getByTestId('bracket-window-note')).toContainText('Rounds 1-3 of 4', {
+    timeout: 30_000,
+  });
+  await expect(bracket.locator('svg').getByText('Final', { exact: true })).toHaveCount(0);
+  await bracket.getByRole('button', { name: 'Full bracket' }).click();
+  const zoom = page.getByTestId('tv-bracket-zoom');
+  await expect(zoom.getByRole('img')).toBeVisible();
+  await expect(zoom.locator('svg').getByText('Final', { exact: true }).first()).toBeVisible();
+  await expect(zoom.locator('svg').getByText('Round of 16').first()).toBeVisible();
 });
