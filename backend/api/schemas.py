@@ -93,6 +93,9 @@ def _with_default_name(data: Any, noun: str) -> Any:
     return {**data, "name": f"My {label} {noun}"}
 
 
+SeedingMode = Literal["elo", "manual", "none"]
+
+
 class CreateGroupPlayoffRequest(BaseModel):
     @model_validator(mode="before")
     @classmethod
@@ -117,6 +120,9 @@ class CreateGroupPlayoffRequest(BaseModel):
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    # "elo": manual strengths, then each linked player's rating; "manual": only
+    # the strengths given; "none": no seeding (random draw).
+    seeding: SeedingMode = "elo"
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
     player_profile_ids: dict[str, str] = Field(default_factory=dict)
@@ -190,6 +196,9 @@ class CreateMexicanoRequest(BaseModel):
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    # "elo": manual strengths, then each linked player's rating; "manual": only
+    # the strengths given; "none": no seeding (random draw).
+    seeding: SeedingMode = "elo"
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
     player_profile_ids: dict[str, str] = Field(default_factory=dict)
@@ -262,6 +271,9 @@ class CreatePlayoffRequest(BaseModel):
     public: bool = True
     assign_courts: bool = True
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    # "elo": manual strengths, then each linked player's rating; "manual": only
+    # the strengths given; "none": no seeding (random draw).
+    seeding: SeedingMode = "elo"
     player_emails: dict[str, str] = Field(default_factory=dict)
     player_contacts: dict[str, str] = Field(default_factory=dict)
     player_profile_ids: dict[str, str] = Field(default_factory=dict)
@@ -1134,6 +1146,9 @@ class ConvertRegistrationRequest(BaseModel):
     team_names: list[str | None] = Field(default_factory=list)
     # Per-player initial strength for seeding
     player_strengths: dict[str, float] = Field(default_factory=dict)
+    # "elo": manual strengths, then each linked player's rating; "manual": only
+    # the strengths given; "none": no seeding (random draw).
+    seeding: SeedingMode = "elo"
 
     @field_validator("team_names", mode="before")
     @classmethod

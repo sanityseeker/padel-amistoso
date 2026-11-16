@@ -53,6 +53,7 @@ from .routes_schema import router as schema_router
 from .routes_score_actions import router as score_actions_router
 from .routes_share import router as share_router
 from .routes_share import registration_share_router
+from .routes_player_cards import router as player_cards_router
 from .routes_push import router as push_router
 from .sse import router as sse_router
 from .routes_withdrawals import router as withdrawals_router
@@ -298,6 +299,13 @@ def _apex_host(host: str) -> str:
     return h.split(".", 1)[1]
 
 
+def _is_page_path(path: str) -> bool:
+    """True for an address a browser navigates to (an app page), not an API call or a static file."""
+    if path.startswith(("/api/", "/admin-assets/")) or path == "/api":
+        return False
+    return "." not in path.rsplit("/", 1)[-1]
+
+
 def _home_url_for(request: Request) -> str:
     """Where "go home" should send a visitor who hit an error page on this host.
 
@@ -380,12 +388,19 @@ async def subdomain_router(request: Request, call_next):
     # catch-all in particular) can pick the right "home" for this visitor.
     request.state.club_subdomain = label if row is not None else None
     if row is None:
-        # Only the root path is intercepted: every other path (assets, /api/*,
-        # /tv, /register, …) falls through to the apex routes, so the 404 page
-        # can load its assets and shared links keep working from any hostname.
-        if request.url.path != "/" or request.method != "GET":
-            return await call_next(request)
-        return _serve_404_page(request)
+        # An unknown subdomain never serves a page of its own: the root is the
+        # 404 page (pointing at the apex) and every other page address goes to
+        # the same path on the apex, so a made-up club never looks like a club.
+        # Static files and /api/* still answer, so the 404 page can load.
+        path = request.url.path
+        if request.method in ("GET", "HEAD") and path == "/":
+            return _serve_404_page(request)
+        if request.method in ("GET", "HEAD") and _is_page_path(path):
+            target = f"{_request_scheme(request)}://{_apex_host(host)}{path}"
+            if request.url.query:
+                target += f"?{request.url.query}"
+            return RedirectResponse(url=target, status_code=302)
+        return await call_next(request)
     # Known club: the club page already is that club's event directory, so the
     # generic directories (/events and the legacy bare /tv, /register) go to
     # the root. Serve club.html only on the root GET; let everything else
@@ -420,6 +435,7 @@ app.include_router(crud_router)
 app.include_router(gp_router)
 app.include_router(mex_router)
 app.include_router(player_auth_router)
+app.include_router(player_cards_router)
 app.include_router(player_space_router)
 app.include_router(playoff_router)
 app.include_router(payments_router)

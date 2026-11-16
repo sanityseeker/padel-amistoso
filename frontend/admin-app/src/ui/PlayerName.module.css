@@ -1,0 +1,23 @@
+/* A player's name that opens their card: the whole name is the target, at least 24px tall. */
+.name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  border-radius: var(--mantine-radius-xs);
+}
+.name:hover {
+  text-decoration-style: solid;
+}
+.name:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}

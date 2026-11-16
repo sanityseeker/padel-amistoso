@@ -21,6 +21,13 @@ def _member_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {create_profile_token('member-viewer')}"}
 
 
+def _club_organizer_headers() -> dict[str, str]:
+    """Auth headers of an organizer who may edit every club (the admin)."""
+    from backend.auth.security import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token('admin')}"}
+
+
 @pytest.fixture()
 def client():
     return TestClient(app)
@@ -2206,12 +2213,12 @@ class TestPublicLeaderboard:
     def test_empty_club(self, client, auth_headers) -> None:
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
-        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard?sport=padel", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard?sport=padel", headers=_club_organizer_headers())
         assert res.status_code == 200
         assert res.json() == []
 
     def test_unknown_club(self, client) -> None:
-        res = client.get("/api/clubs/cl_unknown/public-leaderboard", headers=_member_headers())
+        res = client.get("/api/clubs/cl_unknown/public-leaderboard", headers=_club_organizer_headers())
         assert res.status_code == 404
 
     def test_players_without_a_match_in_the_sport_are_left_out(self, client, auth_headers, monkeypatch) -> None:
@@ -2238,7 +2245,7 @@ class TestPublicLeaderboard:
         monkeypatch.setattr(routes_clubs, "ensure_club_roster_synced", lambda club_id: None)
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
-        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard", headers=_club_organizer_headers())
         assert res.status_code == 200
         padel = res.json()["padel"]
         # The unplayed 1000 would have outranked both; it is gone and the ranks close up.
@@ -2279,7 +2286,7 @@ class TestPublicLeaderboard:
                 " VALUES (?, ?, 'padel', 1000, 1100, 100, 'm1', '{}', 1, ?, 0)",
                 ("t_lb1", "pl1", now),
             )
-        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard?sport=padel", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/public-leaderboard?sport=padel", headers=_club_organizer_headers())
         assert res.status_code == 200
         rows = res.json()
         assert len(rows) == 1
@@ -2292,7 +2299,11 @@ class TestPublicLeaderboard:
 
 
 class TestPublicPlayerCard:
-    """GET /api/clubs/{id}/players/{profile_id}/public-card — members only, no email."""
+    """GET /api/clubs/{id}/players/{profile_id}/public-card — members and organizers only, no email.
+
+    The data tests read as an organizer (the admin); the access rule itself is
+    covered in ``test_scoped_player_card.py``.
+    """
 
     def test_anonymous_gets_401(self, client, auth_headers) -> None:
         comm = _create_community(client, auth_headers)
@@ -2336,18 +2347,18 @@ class TestPublicPlayerCard:
         return club
 
     def test_unknown_club(self, client) -> None:
-        res = client.get("/api/clubs/cl_missing/players/pp_x/public-card", headers=_member_headers())
+        res = client.get("/api/clubs/cl_missing/players/pp_x/public-card", headers=_club_organizer_headers())
         assert res.status_code == 404
 
     def test_unknown_profile(self, client, auth_headers) -> None:
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
-        res = client.get(f"/api/clubs/{club['id']}/players/pp_missing/public-card", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_missing/public-card", headers=_club_organizer_headers())
         assert res.status_code == 404
 
     def test_returns_stats_recent_and_no_email(self, client, auth_headers) -> None:
         club = self._seed_player_with_match(client, auth_headers)
-        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card", headers=_club_organizer_headers())
         assert res.status_code == 200
         body = res.json()
         assert body["name"] == "Card Player"
@@ -2410,7 +2421,7 @@ class TestPublicPlayerCard:
                 " VALUES (?, ?, 'tennis', 1000, 1050, 50, 'mt1', ?, 1, ?, 0)",
                 ("t_tennis1", "plt1", mp, now),
             )
-        res = client.get(f"/api/clubs/{club['id']}/players/pp_tennis1/public-card", headers=_member_headers())
+        res = client.get(f"/api/clubs/{club['id']}/players/pp_tennis1/public-card", headers=_club_organizer_headers())
         assert res.status_code == 200
         body = res.json()
         assert len(body["recent_matches"]) == 1
@@ -2423,9 +2434,13 @@ class TestPublicPlayerCard:
         # The hidden sport is never exposed: asking for it is a 404, and the
         # all-sports card carries none of its numbers or matches.
         club = self._seed_player_with_match(client, auth_headers, hidden=True)
-        res = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card?sport=padel", headers=_member_headers())
+        res = client.get(
+            f"/api/clubs/{club['id']}/players/pp_card1/public-card?sport=padel", headers=_club_organizer_headers()
+        )
         assert res.status_code == 404
-        body = client.get(f"/api/clubs/{club['id']}/players/pp_card1/public-card", headers=_member_headers()).json()
+        body = client.get(
+            f"/api/clubs/{club['id']}/players/pp_card1/public-card", headers=_club_organizer_headers()
+        ).json()
         assert body["elo_padel"] is None
         assert body["matches_padel"] == 0
         assert body["recent_matches"] == []
@@ -2520,7 +2535,7 @@ class TestPublicEndpointETags:
         comm = _create_community(client, auth_headers)
         club = _create_club(client, auth_headers, comm["id"])
         url = f"/api/clubs/{club['id']}/public-leaderboard"
-        first = client.get(url, headers=_member_headers())
+        first = client.get(url, headers=_club_organizer_headers())
         assert first.status_code == 200
         tag = first.headers.get("etag")
         assert tag and tag.startswith('"') and tag.endswith('"')
@@ -2528,7 +2543,7 @@ class TestPublicEndpointETags:
         assert "max-age" in cache_control
         # Auth-gated response must not be stored by shared proxies.
         assert "private" in cache_control
-        second = client.get(url, headers={**_member_headers(), "If-None-Match": tag})
+        second = client.get(url, headers={**_club_organizer_headers(), "If-None-Match": tag})
         assert second.status_code == 304
         assert second.headers.get("etag") == tag
 
@@ -2940,3 +2955,68 @@ class TestClubFilingAccess:
         assert res.status_code == 200, res.text
         res = client.patch(f"/api/tournaments/{tid}/club", json={"club_id": None}, headers=bob_headers)
         assert res.status_code == 200, res.text
+
+
+class TestClubRosterAccess:
+    """GET /api/clubs/{id}/players carries emails: the club's editors only."""
+
+    @staticmethod
+    def _headers(username: str) -> dict[str, str]:
+        from backend.auth.security import create_access_token
+
+        return {"Authorization": f"Bearer {create_access_token(username)}"}
+
+    @staticmethod
+    def _add_user(username: str) -> None:
+        from backend.auth.models import User, UserRole
+        from backend.auth.store import user_store
+
+        user_store._users[username] = User(username=username, password_hash="x", role=UserRole.USER)
+
+    def _setup(self, client, auth_headers) -> dict[str, str]:
+        from backend.api import db as db_mod
+
+        comm = _create_community(client, auth_headers, "Roster community")
+        club_a = _create_club(client, auth_headers, comm["id"], "Roster A")
+        club_b = _create_club(client, auth_headers, comm["id"], "Roster B")
+        for name in ("carol", "dave"):
+            self._add_user(name)
+        with get_db() as conn:
+            conn.execute("UPDATE clubs SET created_by = 'alice' WHERE id = ?", (club_a["id"],))
+            conn.execute("UPDATE clubs SET created_by = 'carol' WHERE id = ?", (club_b["id"],))
+            conn.execute("UPDATE communities SET created_by = 'dave' WHERE id = ?", (comm["id"],))
+            conn.execute("INSERT INTO club_shares (club_id, username) VALUES (?, 'bob')", (club_a["id"],))
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO player_profiles (id, passphrase, name, email, contact, created_at, is_ghost)"
+                " VALUES ('pp_roster', ?, 'Roster Player', 'roster@example.com', '', ?, 0)",
+                (_secrets.token_hex(8), now),
+            )
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+                " VALUES ('pp_roster', ?, 'padel', 1000, 0, 0)",
+                (club_a["id"],),
+            )
+        db_mod._club_co_editor_cache.clear()
+        return {"a": club_a["id"]}
+
+    @pytest.mark.parametrize(
+        ("who", "expect"),
+        [
+            ("alice", 200),  # the club's creator
+            ("bob", 200),  # a co-editor
+            ("admin", 200),  # the superadmin
+            ("carol", 403),  # the organizer of another club
+            ("dave", 403),  # the community's creator, not a club editor
+        ],
+    )
+    def test_only_club_editors_read_the_roster(self, client, auth_headers, who, expect) -> None:
+        clubs = self._setup(client, auth_headers)
+        res = client.get(f"/api/clubs/{clubs['a']}/players", headers=self._headers(who))
+        assert res.status_code == expect, res.text
+        if expect == 200:
+            assert [p["email"] for p in res.json()] == ["roster@example.com"]
+
+    def test_anonymous_gets_401(self, client, auth_headers) -> None:
+        clubs = self._setup(client, auth_headers)
+        assert client.get(f"/api/clubs/{clubs['a']}/players").status_code == 401

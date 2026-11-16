@@ -14,14 +14,16 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from ..auth.deps import get_current_user, require_profile_or_user
 from ..auth.models import User
 from .db import get_db
+from .leaderboard_cache import invalidate_cards_after_scope_change
 from .rating_scope import RatingScope, scoped_log_cte
 from .helpers import _require_club_join_access
-from .routes_clubs import _get_club, _require_club_admin
+from .routes_clubs import _get_club, _require_club_admin, require_club_card_access
 from .state import _tournaments
 
 router = APIRouter(tags=["seasons"])
@@ -266,6 +268,7 @@ async def set_tournament_season(tid: str, req: SetSeasonRequest, user: User = De
         from .state import save_tournament  # noqa: PLC0415
 
         await save_tournament(tid)
+    invalidate_cards_after_scope_change()
     return {"ok": True, "season_id": req.season_id, "club_id": new_club_id}
 
 
@@ -350,6 +353,7 @@ async def set_tournament_club(tid: str, req: SetClubRequest, user: User = Depend
         from .state import save_tournament  # noqa: PLC0415
 
         await save_tournament(tid)
+    invalidate_cards_after_scope_change()
     return {"ok": True, "club_id": req.club_id, "season_id": _tournaments[tid].get("season_id")}
 
 
@@ -391,15 +395,23 @@ async def set_registration_club(rid: str, req: SetClubRequest, user: User = Depe
 # ---------------------------------------------------------------------------
 
 
+_standings_bearer = HTTPBearer(auto_error=False)
+
+
 @router.get(
     "/api/seasons/{season_id}/standings",
     response_model=SeasonStandingsResponse,
     dependencies=[Depends(require_profile_or_user)],
 )
-def get_season_standings(season_id: str) -> SeasonStandingsResponse:
+def get_season_standings(
+    season_id: str,
+    creds: HTTPAuthorizationCredentials | None = Depends(_standings_bearer),
+) -> SeasonStandingsResponse:
     """Cumulative standings for a season, split by sport.
 
-    Requires a signed-in Player Hub profile or an organizer/admin account.
+    Members only, like the club board: 401 anonymous, 403 for a signed-in
+    profile that is not a visible member of the season's club and for an
+    organizer who cannot edit it (``routes_clubs.require_club_card_access``).
 
     For archived seasons returns the frozen snapshot taken at archive time.
     For active seasons aggregates ELO progression (from ``player_elo_log``)
@@ -407,6 +419,7 @@ def get_season_standings(season_id: str) -> SeasonStandingsResponse:
     assigned to the season.  Returns separate lists for padel and tennis.
     """
     season = _get_season(season_id)
+    require_club_card_access(_get_club(season["club_id"]), creds)
     if season.get("frozen_standings"):
         try:
             return SeasonStandingsResponse.model_validate_json(season["frozen_standings"])

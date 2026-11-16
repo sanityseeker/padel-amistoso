@@ -1,0 +1,48 @@
+/* A centered error page: artwork, headline, one line of explanation, actions. */
+.screen {
+  min-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--mantine-spacing-sm);
+  padding-block: var(--mantine-spacing-xl);
+}
+/* The 404 artwork is a round badge on a white square: crop it to the badge. */
+.art {
+  width: min(240px, 62vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: var(--mantine-spacing-md);
+  box-shadow: 0 0 0 6px var(--app-surface-2);
+}
+.badge {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--mantine-spacing-sm);
+  color: var(--mantine-color-red-7);
+  background: color-mix(in srgb, var(--mantine-color-red-6) 12%, var(--app-surface));
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--mantine-color-red-6) 6%, transparent);
+}
+[data-mantine-color-scheme='dark'] .badge {
+  color: var(--mantine-color-red-3);
+}
+.text {
+  max-width: 34ch;
+}
+.detail {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 6px 10px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--app-surface-2);
+}
+.actions {
+  margin-top: var(--mantine-spacing-md);
+  justify-content: center;
+}

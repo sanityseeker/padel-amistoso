@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import {
   Group,
   Paper,
@@ -18,6 +18,7 @@ import { Leaderboard } from '../components/Leaderboard';
 import { ResultRow, scoreOf } from '../components/ResultRow';
 import { usePlayerSpace } from '../context';
 import { formOf, historyOf, opponentsOf } from '../stats';
+import { PlayerCardModal, playerCardSource } from '../../playercard';
 
 const EloChart = lazy(() => import('../charts/EloChart'));
 
@@ -32,6 +33,9 @@ export default function Ratings() {
   const now = history.length ? history[history.length - 1].elo_after : 0;
   const change = history.length ? Math.round(now - history[0].elo_before) : 0;
   const visible = recent.slice(0, shown);
+  // A tap on a name in a result opens that player's card from that event (it can widen to its scope).
+  const [card, setCard] = useState<{ tid: string; playerId: string } | null>(null);
+  const closeCard = useCallback(() => setCard(null), []);
   return (
     <Stack gap={gap}>
       <PageHeader
@@ -114,7 +118,12 @@ export default function Ratings() {
             </Group>
             <Stack gap="sm">
               {visible.map((m, i) => (
-                <ResultRow key={`${m.match_id}:${i}`} m={m} locale={locale} />
+                <ResultRow
+                  key={`${m.match_id}:${i}`}
+                  m={m}
+                  locale={locale}
+                  onPlayer={(tid, playerId) => setCard({ tid, playerId })}
+                />
               ))}
             </Stack>
             {shown < recent.length && (
@@ -125,6 +134,15 @@ export default function Ratings() {
           </Paper>
         )}
       </SimpleGrid>
+      {card && (
+        <PlayerCardModal
+          tid={card.tid}
+          playerId={card.playerId}
+          onClose={closeCard}
+          autoClose={false}
+          source={playerCardSource}
+        />
+      )}
     </Stack>
   );
 }

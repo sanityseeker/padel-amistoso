@@ -1,26 +1,23 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Button, Stack, Text, Title } from '@mantine/core';
+import { Button, Text } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 import { t as tx } from '../i18n';
-import { PageContainer } from '../ui/PageContainer';
+import { ErrorScreen, errorScreenClasses } from './ErrorScreen';
 
 function Fallback({ message }: { message: string }) {
   return (
-    <PageContainer size="sm">
-      <Stack align="flex-start" gap="xs">
-        <Title order={2}>{tx('Something went wrong')}</Title>
-        <Text c="dimmed" size="sm">
-          {tx('The page could not be loaded. Reloading usually fixes it.')}
+    <ErrorScreen
+      icon={<IconAlertTriangle size={34} stroke={1.6} />}
+      title={tx('Something went wrong')}
+      actions={<Button onClick={() => window.location.reload()}>{tx('Reload')}</Button>}
+    >
+      <Text c="dimmed">{tx('The page could not be loaded. Reloading usually fixes it.')}</Text>
+      {message && (
+        <Text size="xs" c="dimmed" ff="monospace" className={errorScreenClasses.detail}>
+          {message}
         </Text>
-        {message && (
-          <Text size="xs" c="dimmed" ff="monospace">
-            {message}
-          </Text>
-        )}
-        <Button mt="sm" onClick={() => window.location.reload()}>
-          {tx('Reload')}
-        </Button>
-      </Stack>
-    </PageContainer>
+      )}
+    </ErrorScreen>
   );
 }
 

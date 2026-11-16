@@ -188,6 +188,17 @@ def test_unknown_club_subdomain_is_the_404_shell_pointing_at_the_apex(client, re
     assert home and home.group(1) == "http://example.com/"
 
 
+def test_unknown_club_subdomain_sends_pages_to_the_apex(client, react_build):
+    host = {"host": "nosuchclub.example.com"}
+    for path in ("/player", "/admin/clubs", "/tv/some-alias", "/events"):
+        response = client.get(f"{path}?x=1", headers=host, follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == f"http://example.com{path}?x=1"
+    # Static files and the API still answer, so the 404 page can load.
+    assert client.get("/manifest.json", headers=host, follow_redirects=False).status_code == 200
+    assert client.get("/api/public-events", headers=host, follow_redirects=False).status_code == 200
+
+
 def test_other_paths_on_a_club_subdomain_still_reach_the_spa_routes(client, react_build, auth_headers):
     _club(client, auth_headers, "myclub")
     for path in ("/tv/some-alias", "/register/some-alias"):

@@ -144,3 +144,61 @@
 .mono {
   font-family: var(--font-mono);
 }
+
+/* ---- Notices (Alert) ------------------------------------------------------------------------ */
+/* A tinted surface, a tone hairline and an accent edge; the title and icon take the tone, the text
+   stays ink. Notice sets data-tone; Mantine's own dark "light-color" is near white, so the shades
+   are picked here per scheme. */
+.alert {
+  --notice: var(--alert-color);
+  --alert-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  background: color-mix(in srgb, var(--notice) 9%, var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--notice) 30%, var(--app-border));
+  box-shadow: inset 3px 0 0 var(--notice);
+}
+.alert[data-tone='danger'] {
+  --notice: var(--mantine-color-red-7);
+}
+.alert[data-tone='warning'] {
+  --notice: var(--mantine-color-orange-7);
+}
+.alert[data-tone='success'] {
+  --notice: var(--mantine-color-green-7);
+}
+.alert[data-tone='info'] {
+  --notice: var(--mantine-color-court-6);
+}
+.alert[data-tone='neutral'] {
+  --notice: var(--mantine-color-gray-6);
+}
+[data-mantine-color-scheme='dark'] .alert[data-tone='danger'] {
+  --notice: var(--mantine-color-red-3);
+}
+[data-mantine-color-scheme='dark'] .alert[data-tone='warning'] {
+  --notice: var(--mantine-color-orange-3);
+}
+[data-mantine-color-scheme='dark'] .alert[data-tone='success'] {
+  --notice: var(--mantine-color-green-3);
+}
+[data-mantine-color-scheme='dark'] .alert[data-tone='info'] {
+  --notice: var(--mantine-color-court-3);
+}
+[data-mantine-color-scheme='dark'] .alert[data-tone='neutral'] {
+  --notice: var(--mantine-color-gray-4);
+}
+.alertIcon,
+.alertTitle {
+  color: var(--notice);
+}
+.alertIcon {
+  margin-inline-end: var(--mantine-spacing-sm);
+}
+.alertMessage {
+  color: var(--app-text);
+  line-height: 1.45;
+}
+.alertBody {
+  gap: 2px;
+  justify-content: center;
+}

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Button, Group, Image, Stack, Text, Title } from '@mantine/core';
+import { Button, Text } from '@mantine/core';
 import { Link, useSearchParams } from 'react-router-dom';
 import { t as tx, useLocale } from '../i18n';
 import { readMeta } from '../features/public/meta';
-import { PageContainer } from '../ui/PageContainer';
+import { ErrorScreen } from './ErrorScreen';
 
 const SECONDS = 5;
 
@@ -36,33 +36,27 @@ export function NotFound() {
     if (leaves && target && left <= 0) window.location.replace(target);
   }, [left, leaves, target]);
   return (
-    <PageContainer size="sm">
-      <Stack align="flex-start" gap="sm">
-        <Image
-          src="/404.png"
-          alt={tx('404: page not found')}
-          maw={320}
-          w="100%"
-          fit="contain"
-          fallbackSrc="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="
-        />
-        <Title order={1}>{tx('Page not found')}</Title>
-        <Text c="dimmed">{tx('This address does not exist.')}</Text>
-        {message && <Text data-testid="not-found-reason">{message}</Text>}
-        {leaves && (
-          <Text c="dimmed" size="sm" role="status">
-            {tx('Redirecting in {seconds} seconds...', { seconds: Math.max(left, 0) })}
-          </Text>
-        )}
-        <Group mt="xs">
+    <ErrorScreen
+      art={{ src: '/404.png', alt: tx('404: page not found') }}
+      title={tx('Page not found')}
+      actions={
+        <>
           <Button component="a" href={target ?? '/events'}>
             {tx('Go home now')}
           </Button>
           <Button component={Link} to="/events" variant="default">
             {tx('Events')}
           </Button>
-        </Group>
-      </Stack>
-    </PageContainer>
+        </>
+      }
+    >
+      <Text c="dimmed">{tx('This address does not exist.')}</Text>
+      {message && <Text data-testid="not-found-reason">{message}</Text>}
+      {leaves && (
+        <Text c="dimmed" size="sm" role="status">
+          {tx('Redirecting in {seconds} seconds...', { seconds: Math.max(left, 0) })}
+        </Text>
+      )}
+    </ErrorScreen>
   );
 }

@@ -32,7 +32,11 @@ import {
 } from '@tabler/icons-react';
 import { Button } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
-import { ApiError, formatType, write } from '../../../api';
+import { api, ApiError, formatType, write } from '../../../api';
+import { PlayerCardModal, type CardSource, type CardStage } from '../../playercard';
+
+// The organizer's own session opens a player's wider card (query keys under ['admin', ...]).
+const adminCardSource: CardSource = { realm: 'admin', fetch: <T,>(path: string) => api<T>(path) };
 import { ErrorState, Loading } from '../../../components';
 import { GhostPurgeField, purgeQuery, useGhostPurge } from '../GhostPurge';
 import { closeItem, useOpenItems } from '../../switcher';
@@ -185,6 +189,9 @@ function Workspace({ id }: { id: string }) {
   // rounds), which is read-only.
   const [stage, setStage] = useState<'now' | 'earlier'>('now');
   const [earlierGroup, setEarlierGroup] = useState<string>('all');
+  // A tap on a standings row opens that player's card (organizer session for the wider scope).
+  const [cardFor, setCardFor] = useState<{ id: string; stage: CardStage } | null>(null);
+  const closeCard = useCallback(() => setCardFor(null), []);
   const hasReview = !!page && canEdit && (pageReviews.length > 0 || keepReview);
   const firstView = 'matches';
   const allowed = [
@@ -886,6 +893,7 @@ function Workspace({ id }: { id: string }) {
       rows={toStandingRows(status.leaderboard)}
       preset="mexicano"
       nameLabel={nameLabel}
+      onSelect={(row) => setCardFor({ id: row.id, stage: 'rounds' })}
     />
   ) : standingGroups ? (
     <Stack gap="md">
@@ -909,6 +917,7 @@ function Workspace({ id }: { id: string }) {
             nameLabel={nameLabel}
             highlightPlaces={groupHighlight(settings, standingsGroup)}
             sets={settings.score_mode['gp-group'] === 'sets'}
+            onSelect={(row) => setCardFor({ id: row.id, stage: 'group' })}
           />
           {canEdit && (
             <GroupHighlightInput
@@ -1083,6 +1092,14 @@ function Workspace({ id }: { id: string }) {
           )}
         </div>
       )}
+      <PlayerCardModal
+        tid={id}
+        playerId={cardFor?.id ?? null}
+        stage={cardFor?.stage}
+        onClose={closeCard}
+        autoClose={false}
+        source={adminCardSource}
+      />
       {phone && next && (
         <>
           <ActionBarSpacer />

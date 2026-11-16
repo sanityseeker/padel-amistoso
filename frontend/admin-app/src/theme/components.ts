@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Card,
@@ -32,6 +33,16 @@ const variantClass = (prefix: string, variant: string | undefined) =>
 export const components: MantineThemeComponents = {
   Button: Button.extend({ defaultProps: { fw: 600 } }),
   ActionIcon: ActionIcon.extend({ defaultProps: { variant: 'subtle', color: 'gray' } }),
+  Alert: Alert.extend({
+    defaultProps: { radius: 'md' },
+    classNames: {
+      root: classes.alert,
+      icon: classes.alertIcon,
+      message: classes.alertMessage,
+      body: classes.alertBody,
+      title: classes.alertTitle,
+    },
+  }),
   Badge: Badge.extend({ defaultProps: { size: 'sm', tt: 'none', radius: 'xl', fw: 600 } }),
   // Surfaces are bordered but flat; only floating layers cast a shadow.
   Paper: Paper.extend({

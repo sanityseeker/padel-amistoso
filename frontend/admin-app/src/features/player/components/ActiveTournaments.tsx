@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActionIcon,
   Anchor,
@@ -32,6 +32,7 @@ import {
 import { useAnnouncementSeen } from '../../public/announcementSeen';
 import { PaymentBadge, useOpenPayment } from '../payments';
 import { sportProps } from '../../../theme';
+import { PlayerCardModal, playerCardSource } from '../../playercard';
 import classes from '../Player.module.css';
 
 /** "Round 3 of 6", "Group stage", "Play-offs": where the event is, for the card eyebrow. */
@@ -58,6 +59,9 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
   const pending = data?.pending ?? null;
   const state = pending && data ? lifecycleIn(pending, data, entry.player_id) : null;
   const client = useQueryClient();
+  // A tap on a name in the match opens that player's card (scouting the next opponents).
+  const [cardId, setCardId] = useState<string | null>(null);
+  const closeCard = useCallback(() => setCardId(null), []);
   const contacts = useMatchContacts(entry.entity_id, event.token, pending ? [pending.id] : []);
   const payment = useOpenPayment(entry);
   const finished = !!data?.finished;
@@ -187,6 +191,7 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
             testId="player-match"
             courts={usesCourts(data.status)}
             queueLabels
+            onPlayer={setCardId}
             match={toPlayerMatchView(pending, {
               decider: pending.effective_decider || data.tv.set_decider || 'full_set',
               expand: data.expand,
@@ -211,6 +216,13 @@ export function TournamentNavCard({ entry }: { entry: Entry }) {
           </MatchCard>
         </div>
       )}
+      <PlayerCardModal
+        tid={entry.entity_id}
+        playerId={cardId}
+        onClose={closeCard}
+        autoClose={false}
+        source={playerCardSource}
+      />
     </Card>
   );
 }

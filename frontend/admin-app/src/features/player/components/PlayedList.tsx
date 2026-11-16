@@ -8,6 +8,7 @@ import { MatchListFrame, type MatchView } from '../../tournaments';
 import { isRanked, Movement, type RoundResult } from './TournamentPath';
 import classes from './PlayedList.module.css';
 import { StatusBadge } from '../../../ui/StatusBadge';
+import { PlayerNames } from '../../../ui/PlayerName';
 
 type Result = RoundResult;
 export interface PlayedItem {
@@ -89,6 +90,7 @@ export function PlayedList({
   title,
   titleOrder = 2,
   wrap,
+  onPlayer,
 }: {
   items: PlayedItem[];
   /** The player's path (rounds already played), for ranks and sat-out rounds. */
@@ -99,6 +101,8 @@ export function PlayedList({
   titleOrder?: 2 | 3;
   /** A screen's own section frame (the Hub folds it): heading text, the won/lost line, the list. */
   wrap?: (title: string, summary: ReactNode, body: ReactNode) => ReactNode;
+  /** A tap on a player's name opens their card. */
+  onPlayer?: (id: string, name: string) => void;
 }) {
   useLocale();
   const standings = path ? standingsOf(path) : new Map<string, Standing>();
@@ -211,7 +215,7 @@ export function PlayedList({
                   data-testid={i === 0 ? 'played-own' : 'played-other'}
                 >
                   <span className={classes.names}>
-                    {side.names.join(' & ')}
+                    <PlayerNames names={side.names} ids={side.ids} onPlayer={onPlayer} />
                     {/* The same marker as every other match card: bold is taken by the winner. */}
                     {i === 0 && (
                       <Badge ml={6} size="xs" variant="outline" component="span">

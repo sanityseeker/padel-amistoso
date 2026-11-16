@@ -11,6 +11,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from ..auth.deps import get_current_user, get_current_user_optional, require_not_demo
 from ..auth.models import User, UserRole
@@ -27,6 +28,7 @@ from ..models import GPPhase, MatchStatus, Sport
 from ..tournaments.playoff import bracket_matches
 from .helpers import (
     _find_match_full,
+    _require_club_join_access,
     _require_editor_access,
     _require_owner_or_admin,
     get_scope_branding as _get_tournament_branding,
@@ -65,10 +67,11 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
-from .club_elo import deferred_club_elo, elo_scope, get_tournament_display_elos, recompute_club_elo
+from .club_elo import deferred_club_elo, elo_scope, get_starting_ratings, recompute_club_elo
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
-from .leaderboard_cache import etag_for, get_mini_card_cached
+from .leaderboard_cache import etag_for, get_mini_card_cached, invalidate_cards_after_scope_change
+from .tournament_card import build_tournament_player_card
 from .routes_announcements import list_announcements
 from .routes_admin_players import (
     _purge_profile_record,
@@ -163,6 +166,7 @@ async def set_tournament_community(tid: str, req: SetCommunityRequest, user: Use
         _tournaments[tid]["club_id"] = existing_club_id
         _tournaments[tid]["season_id"] = existing_season_id
         await save_tournament(tid)
+    invalidate_cards_after_scope_change()
     return {
         "ok": True,
         "community_id": new_community_id,
@@ -387,6 +391,7 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
             raise HTTPException(404, "Tournament not found")
         _tournaments[tid]["public"] = req.public
         await save_tournament(tid)
+    invalidate_cards_after_scope_change()
     return {"ok": True, "public": req.public}
 
 
@@ -519,6 +524,9 @@ async def get_tournament_meta(tid: str) -> dict:
     }
 
 
+_CARD_CACHE_CONTROL = "public, no-cache"
+
+
 @router.get("/{tid}/players/{player_id}/public-card", response_model=None)
 async def get_tournament_player_public_card(
     tid: str,
@@ -533,27 +541,22 @@ async def get_tournament_player_public_card(
     required; mirrors the public TV view's exposure surface (no emails).
 
     Cached in-memory for ``MINI_CARD_TTL_S`` to absorb repeat clicks, and
-    served with ``ETag`` + ``Cache-Control: public, max-age=15``.
+    served with ``ETag`` + ``Cache-Control: public, no-cache`` (the card follows live scores,
+    so a browser revalidates and the ETag keeps that cheap).
     """
     if tid not in state._tournaments:
         raise HTTPException(404, "Tournament not found")
 
     payload = get_mini_card_cached(
         ("tournament", tid, player_id),
-        lambda: _build_tournament_player_card(tid, player_id),
+        lambda: build_tournament_player_card(tid, player_id),
     )
     tag = etag_for(payload)
     if request.headers.get("if-none-match") == tag:
-        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "public, max-age=15"})
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": _CARD_CACHE_CONTROL})
     response.headers["ETag"] = tag
-    response.headers["Cache-Control"] = "public, max-age=15"
+    response.headers["Cache-Control"] = _CARD_CACHE_CONTROL
     return payload
-
-
-# Hard upper bound on the per-tournament mini-card history payload. Realistic
-# match counts sit well below this; the cap protects the ETag cost and JSON
-# size against pathological / back-imported tournaments.
-RECENT_MATCHES_HARD_CAP: int = 200
 
 
 def _collect_tournament_match_round_info(tournament: object) -> dict[str, tuple[int, str]]:
@@ -583,157 +586,6 @@ def _collect_tournament_match_round_info(tournament: object) -> dict[str, tuple[
     return info
 
 
-def _build_tournament_player_card(tid: str, player_id: str) -> dict:
-    """Build (uncached) the public mini-card payload for a tournament player."""
-    data = state._tournaments[tid]
-    tournament = data.get("tournament")
-    sport = data.get("sport", Sport.PADEL)
-    round_info_by_match = _collect_tournament_match_round_info(tournament)
-
-    # Resolve display name from the in-memory tournament roster (preferred)
-    # or fall back to the most recent match log payload.
-    player_name: str | None = None
-    if tournament is not None:
-        for p in getattr(tournament, "players", []) or []:
-            if getattr(p, "id", None) == player_id:
-                player_name = getattr(p, "name", None) or player_id
-                break
-
-    # A club tournament shows the club's own ratings (see ``club_elo``).
-    elo_columns = (
-        "COALESCE(club_elo_before, elo_before) AS elo_before, COALESCE(club_elo_after, elo_after) AS elo_after,"
-        " COALESCE(club_elo_after - club_elo_before, elo_delta) AS elo_delta"
-        if data.get("club_id")
-        else "elo_before, elo_after, elo_delta"
-    )
-    with get_db() as conn:
-        rows = conn.execute(
-            f"""SELECT match_id, sport, {elo_columns},
-                      match_payload, updated_at, is_manual, match_order
-               FROM player_elo_log
-              WHERE tournament_id = ? AND player_id = ?
-              ORDER BY updated_at ASC, match_order ASC""",
-            (tid, player_id),
-        ).fetchall()
-
-    if player_name is None and not rows:
-        raise HTTPException(404, "Player not in this tournament")
-    if player_name is None:
-        # Last resort: scan the latest payload for the player's name.
-        for r in reversed(rows):
-            try:
-                payload = json.loads(r["match_payload"] or "{}")
-            except (ValueError, TypeError):
-                payload = {}
-            for entry in (payload.get("team1") or []) + (payload.get("team2") or []):
-                if entry.get("player_id") == player_id and entry.get("player_name"):
-                    player_name = entry["player_name"]
-                    break
-            if player_name:
-                break
-        if player_name is None:
-            player_name = player_id
-
-    wins = draws = losses = 0
-    elo_history: list[float] = []
-    recent: list[dict] = []
-    for r in rows:
-        try:
-            payload = json.loads(r["match_payload"] or "{}")
-        except (ValueError, TypeError):
-            payload = {}
-        team1 = payload.get("team1") or []
-        team2 = payload.get("team2") or []
-        team1_ids = {p.get("player_id") for p in team1}
-        team2_ids = {p.get("player_id") for p in team2}
-        on_team1 = player_id in team1_ids
-        on_team2 = player_id in team2_ids
-
-        score = payload.get("score") or []
-        if not r["is_manual"] and isinstance(score, list) and len(score) >= 2:
-            try:
-                s1 = int(score[0])
-                s2 = int(score[1])
-            except (ValueError, TypeError):
-                s1 = s2 = 0
-            if on_team1 or on_team2:
-                if s1 == s2:
-                    draws += 1
-                else:
-                    won = (s1 > s2 and on_team1) or (s2 > s1 and on_team2)
-                    if won:
-                        wins += 1
-                    else:
-                        losses += 1
-
-        if r["elo_after"] is not None:
-            elo_history.append(round(float(r["elo_after"]), 1))
-
-        round_number = payload.get("round_number")
-        round_label = payload.get("round_label") or ""
-        if not round_number and not round_label:
-            fallback = round_info_by_match.get(r["match_id"])
-            if fallback:
-                round_number = fallback[0] or None
-                round_label = fallback[1]
-
-        sets = payload.get("sets") or []
-        recent.append(
-            {
-                "match_id": r["match_id"],
-                "score": score,
-                "sets": sets,
-                "decider": payload.get("decider") or ("full_set" if sets else None),
-                "team1": [p.get("player_name", "") for p in team1],
-                "team2": [p.get("player_name", "") for p in team2],
-                # The card's own player: 1 or 2, so the card can show the match from their side.
-                "side": 1 if on_team1 else 2 if on_team2 else None,
-                "elo_before": r["elo_before"],
-                "elo_after": r["elo_after"],
-                "elo_delta": r["elo_delta"],
-                "updated_at": r["updated_at"],
-                "is_manual": bool(r["is_manual"]),
-                "round_number": round_number or None,
-                "round_label": round_label,
-            }
-        )
-
-    # Newest-first for display; sparkline already chronological.
-    recent.reverse()
-    matches_played = wins + draws + losses
-    last_match_elo = elo_history[-1] if elo_history else None
-    starting_elo = next(
-        (float(r["elo_before"]) for r in rows if r["elo_before"] is not None),
-        None,
-    )
-    elo_delta_total = (
-        round(last_match_elo - starting_elo, 1) if last_match_elo is not None and starting_elo is not None else None
-    )
-    current_elo = last_match_elo
-    if data.get("club_id"):
-        # Also picks up a tier / manual club rating set after the last match.
-        club_elo = get_tournament_display_elos(tid, sport).get(player_id)
-        if club_elo is not None:
-            current_elo = round(club_elo, 1)
-
-    return {
-        "tournament_id": tid,
-        "player_id": player_id,
-        "player_name": player_name,
-        "sport": sport,
-        "elo": current_elo,
-        "elo_scope": elo_scope(data),
-        "elo_start": round(starting_elo, 1) if starting_elo is not None else None,
-        "elo_delta_total": elo_delta_total,
-        "matches": matches_played,
-        "wins": wins,
-        "draws": draws,
-        "losses": losses,
-        "recent_matches": recent[:RECENT_MATCHES_HARD_CAP],
-        "elo_history": elo_history,
-    }
-
-
 @router.patch("/{tid}/match-comment")
 async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = Depends(get_current_user)) -> dict:
     """Set or clear an optional admin comment on a match."""
@@ -761,6 +613,36 @@ async def set_match_comment(tid: str, req: SetMatchCommentRequest, user: User = 
 async def email_status() -> dict:
     """Return whether the server has email/SMTP configured."""
     return {"configured": email_is_configured()}
+
+
+class StartingRatingsRequest(BaseModel):
+    """Profiles whose starting rating the create form prefills as strength."""
+
+    sport: Sport = Sport.PADEL
+    community_id: str = "open"
+    club_id: str | None = None
+    profile_ids: list[str] = Field(default_factory=list, max_length=512)
+
+
+class StartingRatingsResponse(BaseModel):
+    """``{profile_id: rating}``; profiles without a rating are left out."""
+
+    ratings: dict[str, float]
+
+
+@router.post("/starting-ratings", response_model=StartingRatingsResponse)
+async def starting_ratings(
+    req: StartingRatingsRequest, user: User = Depends(get_current_user)
+) -> StartingRatingsResponse:
+    """The rating each profile would be seeded from in a new tournament of this scope.
+
+    The same lookup the create routes run (club rating, else community, else
+    global), so the strengths the form prefills match the server's seeding.
+    """
+    _require_club_join_access(req.club_id, user)
+    profiles = {p: p for p in dict.fromkeys(req.profile_ids) if p}
+    ratings = get_starting_ratings(profiles, req.sport.value, req.community_id, req.club_id)
+    return StartingRatingsResponse(ratings={p: round(v, 1) for p, v in ratings.items()})
 
 
 @router.post("/{tid}/notify-players")

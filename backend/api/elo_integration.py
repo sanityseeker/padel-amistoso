@@ -39,6 +39,7 @@ from .elo_store import (
     sync_live_elos_to_profiles,
     upsert_tournament_elo,
 )
+from .leaderboard_cache import invalidate_mini_card_cache
 from .state import _tournaments
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 _MEX_ELO_POINTS_BASELINE = 32
 
 
-def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
+def _elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
     """Update ELO after a match score is finalized.
 
     Safe to call even if the match is not yet completed (no-ops).
@@ -98,7 +99,7 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
     rate_new_club_match(tid, match, sport)
 
 
-def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
+def _elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
     """Full ELO recalculation from all completed matches in a tournament.
 
     Used after score corrections to ensure consistency.
@@ -188,7 +189,7 @@ def elo_init_tournament(tournament_id: str, player_ids: list[str], sport: str) -
         logger.exception("Failed to initialize ELO for tournament %s", tournament_id)
 
 
-def elo_finish_tournament(tournament_id: str) -> None:
+def _elo_finish_tournament(tournament_id: str) -> None:
     """Transfer final ELO ratings to player profiles when a tournament finishes.
 
     Goes through :func:`refresh_profiles_after_tournament` so each linked profile
@@ -377,3 +378,33 @@ def elo_match_weight(data: dict[str, Any], match: Match) -> float:
     if score_format == EloScoreFormat.POINTS:
         weight *= _mexicano_length_factor(data, match)
     return weight
+
+
+def _invalidate_cards(tid: str) -> None:
+    """Drop cached cards a rating change can affect: the event's cards and every profile card."""
+    invalidate_mini_card_cache(("tournament", tid))
+    invalidate_mini_card_cache(("profile",))
+
+
+def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
+    """Update ELO after a match score is finalized (see :func:`_elo_after_score`)."""
+    try:
+        _elo_after_score(tid, data, match)
+    finally:
+        _invalidate_cards(tid)
+
+
+def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
+    """Full ELO recalculation of a tournament (see :func:`_elo_recalculate_tournament`)."""
+    try:
+        _elo_recalculate_tournament(tournament_id, reseed_player_ids)
+    finally:
+        _invalidate_cards(tournament_id)
+
+
+def elo_finish_tournament(tournament_id: str) -> None:
+    """Transfer final ratings to profiles (see :func:`_elo_finish_tournament`)."""
+    try:
+        _elo_finish_tournament(tournament_id)
+    finally:
+        _invalidate_cards(tournament_id)

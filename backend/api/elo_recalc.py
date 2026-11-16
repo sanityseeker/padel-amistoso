@@ -30,6 +30,7 @@ from backend.tournaments.elo import DEFAULT_RATING
 from .club_elo import deferred_club_elo, recompute_club_elo_for_tournaments
 from .db import get_db
 from .elo_integration import elo_recalculate_tournament
+from .leaderboard_cache import invalidate_mini_card_cache
 from .elo_store import (
     _get_linked_profiles,
     get_pretournament_seed,
@@ -105,6 +106,10 @@ async def flush_elo_recalculation() -> None:
                 recompute_club_elo_for_tournaments(tournaments)
         except Exception:
             logger.exception("ELO recalculation after a link change failed")
+        finally:
+            # A link change moves ratings and decides whether a participant has a profile card.
+            invalidate_mini_card_cache(("tournament",))
+            invalidate_mini_card_cache(("profile",))
 
 
 async def _recalculate(profiles: set[str], whole: set[str], tournaments: set[str], reseed: set[str]) -> None:

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from .. import config
-from .club_elo import elo_scope, resolve_initial_strengths
+from .club_elo import elo_scope, resolve_initial_strengths, team_strength
 from .rate_limit import BoundedRateLimiter
 from ..auth.deps import get_current_user, get_current_user_optional, get_current_player, PlayerIdentity
 from ..auth.models import User
@@ -122,6 +122,7 @@ async def create_group_playoff(
         req.sport.value,
         req.community_id,
         req.club_id,
+        req.seeding,
     )
 
     team_roster: dict[str, list[str]] = {}
@@ -144,7 +145,7 @@ async def create_group_playoff(
             team_roster[team_pid] = member_ids
             team_member_names[team_pid] = list(member_names)
             if initial_strength:
-                initial_strength[team_pid] = sum(initial_strength.get(mid, 0.0) for mid in member_ids)
+                initial_strength[team_pid] = team_strength(initial_strength, member_ids)
         players = team_players
     else:
         players = individual_players

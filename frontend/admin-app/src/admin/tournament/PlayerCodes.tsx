@@ -3,6 +3,7 @@ import {
   ConfirmAction,
   EmptyState,
   FormActions,
+  MutationError,
   ResponsiveSheet,
   copyText as copy,
 } from '../../ui';
@@ -128,7 +129,7 @@ function QrDialog({
             style={{ imageRendering: 'pixelated' }}
           />
         ) : qr.error ? (
-          <Text c="red">{tx(qr.error.message)}</Text>
+          <MutationError error={qr.error} />
         ) : (
           <Loading />
         )}

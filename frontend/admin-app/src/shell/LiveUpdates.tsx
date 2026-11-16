@@ -38,6 +38,10 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       }
       if (playerTid) {
         void client.invalidateQueries({ queryKey: ['player', 'matches', playerTid] });
+        // An open player card (public data of the same event) follows the event too.
+        void client.invalidateQueries({ queryKey: ['public', 'tv', playerTid, 'card'] });
+        // So does a wider card opened from it (its numbers include this event's matches).
+        void client.invalidateQueries({ queryKey: ['player', 'card', 'event', playerTid] });
         return;
       }
       for (const key of [
@@ -46,7 +50,12 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
         ['public', 'events'],
       ])
         void client.invalidateQueries({ queryKey: key });
-      if (tid) void client.invalidateQueries({ queryKey: ['admin', 'tournament', tid] });
+      if (tid) {
+        void client.invalidateQueries({ queryKey: ['admin', 'tournament', tid] });
+        // A player card open on the workspace standings.
+        void client.invalidateQueries({ queryKey: ['public', 'tv', tid, 'card'] });
+        void client.invalidateQueries({ queryKey: ['admin', 'card', 'event', tid] });
+      }
     };
     const stopPolling = () => {
       if (timer !== undefined) window.clearInterval(timer);

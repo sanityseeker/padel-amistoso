@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from ..auth.deps import ProfileIdentity, get_current_profile
@@ -50,7 +51,13 @@ from .player_secret_store import (
 )
 from .rate_limit import BoundedRateLimiter
 from .rating_scope import RatingScope, resolve_scope, scope_stats
-from .routes_clubs import _compute_club_leaderboard_rows, ensure_club_roster_synced, project_club_board
+from .routes_clubs import (
+    _compute_club_leaderboard_rows,
+    _get_club,
+    ensure_club_roster_synced,
+    project_club_board,
+    require_club_card_access,
+)
 from .state import bump_tournament_version, get_tournament_data
 from .elo_recalc import mark_elo_dirty
 from .elo_store import (
@@ -2034,11 +2041,15 @@ def _backfill_finished_secrets(profile_id: str) -> None:
         )
 
 
+_leaderboard_bearer = HTTPBearer(auto_error=False)
+
+
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 def get_leaderboard(
     identity: ProfileIdentity | None = Depends(get_current_profile),
     community_id: str | None = Query(default=None, max_length=64),
     club_id: str | None = Query(default=None, max_length=64),
+    creds: HTTPAuthorizationCredentials | None = Depends(_leaderboard_bearer),
 ) -> LeaderboardResponse:
     """ELO leaderboard for signed-in Player Hub members.
 
@@ -2047,12 +2058,15 @@ def get_leaderboard(
 
     Returns rated players for each sport, sorted by ELO descending.
     Includes both Player Hub members and unlinked tournament participants.
-    Scoped to a club, a community, or all communities (when no scope is
+    Scoped to a club (members only), a community, or all communities (when no scope is
     provided — the global aggregate view).  ``community_id`` accepts both
     ``None`` and the empty string for the all-communities view.
     """
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
+    if club_id:
+        # A club board is for the club's visible members (403 otherwise; 404 for an unknown club).
+        require_club_card_access(_get_club(club_id), creds)
     scope_community = community_id or ""
     padel = _leaderboard_for_sport("padel", scope_community, club_id=club_id)
     tennis = _leaderboard_for_sport("tennis", scope_community, club_id=club_id)

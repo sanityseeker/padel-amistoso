@@ -40,7 +40,7 @@ import {
   espejoScopes,
   type CourtPreferences,
 } from './CourtPreferencesFields';
-import { PlayerDetails, PlayersFields, type PlayerMeta } from './PlayersFields';
+import { PlayerDetails, PlayersFields, type PlayerMeta, type SeedingState } from './PlayersFields';
 import {
   effectiveChoice,
   PLAYOFF_DEFAULTS,
@@ -53,6 +53,7 @@ import { TeamBuilder } from './TeamBuilder';
 import {
   bracketMatches,
   clean,
+  DEFAULT_STRENGTH,
   defaultEntry,
   defaultGroupName,
   entryRules,
@@ -63,10 +64,12 @@ import {
   newTeam,
   teamLabel,
   teamMembers,
+  teamStrength,
   uniquePlayers,
   defaultTitle,
   type EntryMode,
   type GroupDraw as Draw,
+  type Seeding,
   type Sport,
   type Team,
   type TournamentKind,
@@ -101,6 +104,7 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
   const [text, setText] = useState('');
   const [teams, setTeams] = useState<Team[]>(initialTeams);
   const [meta, setMeta] = useState<Record<string, PlayerMeta>>({});
+  const [seedingMode, setSeedingMode] = useState<Seeding>('elo');
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (!lobby) return new Set();
     const eligible = lobby.participant_filter?.length ? new Set(lobby.eligible_player_ids) : null;
@@ -173,21 +177,60 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
     { length: groupCount },
     (_, i) => clean(groupLabels[i] ?? '') || defaultGroupName(i),
   );
+  // ELO seeding prefills each linked player's starting rating: the club rating in a club event, else
+  // the community rating, the same lookup the server seeds from.
+  const lobbyProfiles = Object.fromEntries(
+    (lobby?.registrants ?? []).flatMap((r) =>
+      r.profile_id ? [[r.player_name, r.profile_id]] : [],
+    ),
+  );
+  const profileOf = (n: string) => meta[n]?.profile_id || lobbyProfiles[n];
+  const linkedProfiles = [...new Set(people.map(profileOf).filter((p): p is string => !!p))].sort();
+  const scopeCommunity = lobby ? lobby.community_id : community;
+  const scopeClub = lobby ? lobby.club_id : club;
+  const startingRatings = useQuery({
+    queryKey: ['admin', 'starting-ratings', sport, scopeCommunity, scopeClub, linkedProfiles],
+    queryFn: () =>
+      write<{ ratings: Record<string, number> }>('/tournaments/starting-ratings', {
+        sport,
+        community_id: scopeCommunity,
+        club_id: scopeClub,
+        profile_ids: linkedProfiles,
+      }),
+    enabled: seedingMode === 'elo' && linkedProfiles.length > 0,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
+  });
+  const ratingsByName: Record<string, number> = {};
+  if (seedingMode === 'elo')
+    for (const n of people) {
+      const r = startingRatings.data?.ratings[profileOf(n) ?? ''];
+      if (r !== undefined) ratingsByName[n] = Math.round(r);
+    }
+  const seeding: SeedingState = {
+    mode: seedingMode,
+    onMode: setSeedingMode,
+    ratings: ratingsByName,
+  };
+  // A typed strength wins; with ELO seeding a linked player falls back to their rating.
   const strengths = (() => {
+    if (seedingMode === 'none') return null;
     const out: Record<string, number> = {};
     for (const n of people) {
-      const v = meta[n]?.strength;
+      const v = meta[n]?.strength ?? ratingsByName[n];
       if (v !== undefined && Number.isFinite(v)) out[n] = v;
     }
     return Object.keys(out).length ? out : null;
   })();
-  // The draw works on entries. With fixed teams an entry's strength is the sum of its members' (as the
+  // The draw works on entries. With fixed teams an entry's strength comes from its members' (as the
   // backend seeds it); keyed by person it would never match the team labels and the draw stayed unseeded.
   const entryStrengths = (() => {
     if (!strengths || !rules.builder) return strengths;
     const out: Record<string, number> = {};
     for (const team of builtTeams)
-      out[teamLabel(team)] = teamMembers(team).reduce((sum, m) => sum + (strengths[m] ?? 0), 0);
+      out[teamLabel(team)] = Math.round(
+        teamStrength(teamMembers(team).map((m) => strengths[m] ?? DEFAULT_STRENGTH)),
+      );
     return out;
   })();
   const drawSig = JSON.stringify([entries, groupNames, entryStrengths]);
@@ -274,7 +317,8 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
         assign_courts: assignCourts,
         public: isPublic,
         team_mode: rules.teamMode,
-        player_strengths: pick((m) => m.strength),
+        seeding: seedingMode,
+        player_strengths: strengths ?? undefined,
         ...teamBody,
         ...specific,
       };
@@ -500,7 +544,13 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
                 {rules.builder && (
                   <TeamBuilder teams={teams} onChange={setTeams} pool={selectedNames} />
                 )}
-                <PlayerDetails names={people} meta={meta} onMeta={setMeta} strengthOnly />
+                <PlayerDetails
+                  names={people}
+                  meta={meta}
+                  onMeta={setMeta}
+                  seeding={seeding}
+                  strengthOnly
+                />
               </Stack>
             ) : (
               <PlayersFields
@@ -518,6 +568,7 @@ export function TournamentForm({ kind, lobby }: { kind: TournamentKind; lobby?: 
                 count={entries.length}
                 sport={sport}
                 clubId={club}
+                seeding={seeding}
                 hint={
                   rules.teamMode
                     ? tx('One name per line. Each line plays as one side.')

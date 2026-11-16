@@ -44,6 +44,7 @@ This project is a prototype and it continues to change. One data scientist with 
   - [For players](#for-players)
 - [Reference](#reference) — the detailed settings and formulas
   - [Mexicano advanced settings](#mexicano-advanced-settings)
+  - [Starting seeding (new tournaments)](#starting-seeding-new-tournaments)
   - [Seeding logic (play-offs)](#seeding-logic-play-offs)
   - [ELO rating system](#elo-rating-system)
   - [Authentication & API](#authentication--api)
@@ -432,6 +433,16 @@ An extra penalty for two partners of very different strength in one team. An exa
 - `2.0` — a strong preference for partners of similar strength.
 
 > This setting has no effect in team mode, because the partners are fixed. In individual mode, it adds to `skill_gap`. `skill_gap` is a hard limit on court assignment. `partner_balance_weight` is a soft preference for partners of equal strength on a court.
+
+### Starting seeding (new tournaments)
+
+The create form has a **Seeding** choice. It sets the starting strength of each player. The starting strength is on the ELO scale.
+
+- **By rating** (the default): each player linked to a profile gets their club rating (in a club event), else their community rating, else the global rating. The form fills in these values, and you can change any value.
+- **Manual**: only the strengths that you enter count.
+- **No seeding**: the app ignores ratings and strengths.
+
+A player without a value starts at 1000. A fixed team of two gets `0.4 × stronger + 0.6 × weaker`, because the weaker partner limits a pair more than the stronger one lifts it. The starting strengths divide players into balanced Group + Play-off groups (snake draft) and set the order of a Direct Play-off bracket. In Mexicano they set the groups and partners of round 1 only. For that round, the app changes each value into the points the player can expect in one match against the average player (`total_points_per_match × ELO expected score`). Thus `skill_gap` and the pairing balance use match points, as in later rounds. From round 2, only the points of the event count.
 
 ### Seeding logic (play-offs)
 

@@ -19,12 +19,18 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
-from ..auth.deps import get_current_user, require_not_demo, require_profile_or_user
+from ..auth.deps import get_current_user, get_current_user_optional, require_not_demo, require_profile_or_user
 from ..auth.models import User, UserRole
-from ..auth.security import create_profile_email_verify_token, create_profile_token
+from ..auth.security import (
+    create_profile_email_verify_token,
+    create_profile_token,
+    decode_access_token,
+    decode_profile_token,
+)
 from ..auth.store import user_store
 from .. import config
 from ..config import DATA_DIR
@@ -63,8 +69,10 @@ from .leaderboard_cache import (
     etag_for,
     get_cached_leaderboard_rows,
     get_mini_card_cached,
+    invalidate_cards_after_scope_change,
     invalidate_leaderboard_cache,
 )
+from .player_card import match_entry_from_log
 from .rating_scope import RatingScope, ScopeStats, resolve_scope, scope_stats
 from .routes_communities import DEFAULT_COMMUNITY_ID
 from .elo_recalc import flush_elo_recalculation, mark_elo_dirty
@@ -146,7 +154,8 @@ class ClubOut(BaseModel):
     community_id: str
     name: str
     has_logo: bool = False
-    created_by: str
+    # ``None`` for viewers who may not edit the club (see ``GET /api/clubs/{id}``).
+    created_by: str | None = None
     created_at: str
     shared: bool = False
     email_settings: dict | None = None
@@ -317,6 +326,130 @@ def _require_club_editor(club: dict, user: User) -> None:
     co_editors = get_club_co_editors(club["id"])
     if user.username not in co_editors:
         raise HTTPException(403, "You do not have editing access to this club")
+
+
+def is_club_editor(club: dict, user: User | None) -> bool:
+    """:func:`_require_club_editor` as a yes/no answer (``None`` is no)."""
+    if user is None or user.disabled:
+        return False
+    try:
+        _require_club_editor(club, user)
+    except HTTPException:
+        return False
+    return True
+
+
+def _bearer_user(creds: HTTPAuthorizationCredentials | None) -> User | None:
+    """The organizer account behind a bearer token (``None`` for a Hub profile or no token)."""
+    if creds is None:
+        return None
+    username = decode_access_token(creds.credentials)
+    return user_store.get(username) if username else None
+
+
+def is_visible_club_member(club_id: str, profile_id: str) -> bool:
+    """A profile is a member of a club while it has a visible (not hidden) roster row there.
+
+    The same rule as the Hub's own club list (``_get_player_clubs``): the
+    roster fills itself from participation, and removing a player from the
+    club hides every row (a single hidden sport keeps the other one visible).
+    Callers sync the roster first (:func:`ensure_club_roster_synced`).
+    """
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM profile_club_elo WHERE club_id = ? AND profile_id = ? AND hidden = 0 LIMIT 1",
+            (club_id, profile_id),
+        ).fetchone()
+    return row is not None
+
+
+def may_open_club_cards(
+    club: dict, creds: HTTPAuthorizationCredentials | None, card_profile_id: str | None = None
+) -> bool:
+    """Whether the bearer may see this club's ratings: its boards, season boards and player cards.
+
+    Allowed: a Hub profile that is a visible member of the club, or an
+    organizer account that may edit the club (:func:`_require_club_editor`:
+    the club's creator, a co-editor, or a global admin; a community's creator
+    is not one by that alone).  One exception, for a single card only: a Hub
+    profile may always open its own card (*card_profile_id*), even after
+    being removed from the club.  Anyone else, a signed-in profile of another
+    club or an organizer of another club included, is not.
+    """
+    if creds is None:
+        return False
+    profile_id = decode_profile_token(creds.credentials)
+    if profile_id is not None:
+        if card_profile_id is not None and profile_id == card_profile_id:
+            return True
+        ensure_club_roster_synced(club["id"])
+        return is_visible_club_member(club["id"], profile_id)
+    return is_club_editor(club, _bearer_user(creds))
+
+
+def require_club_card_access(
+    club: dict, creds: HTTPAuthorizationCredentials | None, card_profile_id: str | None = None
+) -> None:
+    """403 unless :func:`may_open_club_cards` allows the bearer (boards pass no *card_profile_id*)."""
+    if not may_open_club_cards(club, creds, card_profile_id):
+        raise HTTPException(403, "Only club members and the club's organizers can see this")
+
+
+def _clubs_played_and_visible(profile_id: str) -> list[str]:
+    """Clubs where *profile_id* took part in a tournament of the club and is still a visible member.
+
+    Participation is a linked entry (``player_secrets`` / ``player_history``)
+    in a tournament with that ``club_id``.  A roster row an editor added by
+    hand (``POST /players``, a tier or rating edit) is not participation, so
+    it never counts here.
+    """
+    with get_db() as conn:
+        played = [
+            r["club_id"]
+            for r in conn.execute(
+                """SELECT DISTINCT t.club_id FROM tournaments t
+                     JOIN (SELECT tournament_id FROM player_secrets WHERE profile_id = ?
+                           UNION
+                           SELECT entity_id FROM player_history WHERE profile_id = ? AND entity_type = 'tournament'
+                          ) lp ON lp.tournament_id = t.id
+                    WHERE t.club_id IS NOT NULL""",
+                (profile_id, profile_id),
+            ).fetchall()
+        ]
+    out: list[str] = []
+    for club_id in played:
+        ensure_club_roster_synced(club_id)
+        if is_visible_club_member(club_id, profile_id):
+            out.append(club_id)
+    return out
+
+
+def viewer_can_see_unlisted(creds: HTTPAuthorizationCredentials | None, profile_id: str) -> bool:
+    """Whether the bearer sees *profile_id*'s matches of unlisted events in every scope.
+
+    True for the player's own Hub profile, for a global admin, and for an
+    organizer who may edit (:func:`_require_club_editor`) at least one club
+    where the player has played (a tournament of that club) and is still a
+    visible member (:func:`_clubs_played_and_visible`).  A player an editor
+    only added to the roster by hand does not count, so adding someone to a
+    club never reveals their unlisted events elsewhere.  Everyone else gets
+    the normal rule: unlisted events count in the numbers, their rows stay
+    hidden.
+    """
+    if creds is None:
+        return False
+    viewer_profile = decode_profile_token(creds.credentials)
+    if viewer_profile is not None:
+        return viewer_profile == profile_id
+    user = _bearer_user(creds)
+    if user is None or user.disabled:
+        return False
+    if user.role == UserRole.ADMIN:
+        return True
+    return any(is_club_editor(_get_club(club_id), user) for club_id in _clubs_played_and_visible(profile_id))
+
+
+_card_bearer = HTTPBearer(auto_error=False)
 
 
 def _safe_json_loads(raw: str | None, default):
@@ -1105,11 +1238,13 @@ def get_club_public_leaderboard(
     request: Request,
     response: Response,
     sport: str = Query(default="all", pattern=r"^(padel|tennis|all)$"),
+    creds: HTTPAuthorizationCredentials | None = Depends(_card_bearer),
 ) -> dict | list[dict] | Response:
     """ELO leaderboard for a club, shown on the club landing page. No emails are exposed.
 
-    Requires a signed-in Player Hub profile or an organizer/admin account
-    (401 for anonymous visitors).
+    Members only: 401 for anonymous visitors, 403 for a signed-in profile that
+    is not a visible member and for an organizer who cannot edit the club
+    (:func:`require_club_card_access`).
 
     When ``sport=all`` (default) returns ``{padel: [...], tennis: [...]}``,
     each list being ``[{rank, name, elo, tier_name, matches}]`` sorted by ELO desc.
@@ -1121,7 +1256,7 @@ def get_club_public_leaderboard(
     short-circuit repeat requests (``private`` because the response is
     auth-gated and must not be stored by shared proxies).
     """
-    _get_club(club_id)
+    require_club_card_access(_get_club(club_id), creds)
     ensure_club_roster_synced(club_id)
 
     with get_db() as conn:
@@ -1137,6 +1272,26 @@ def get_club_public_leaderboard(
     response.headers["ETag"] = tag
     response.headers["Cache-Control"] = "private, max-age=30"
     return payload
+
+
+# Fields of one recent match on the club mini-card (kept as they were for the legacy club page).
+_CLUB_CARD_MATCH_FIELDS = (
+    "tournament_name",
+    "tournament_alias",
+    "sport",
+    "score",
+    "sets",
+    "decider",
+    "team1",
+    "team2",
+    "elo_before",
+    "elo_after",
+    "elo_delta",
+    "updated_at",
+    "is_manual",
+    "round_number",
+    "round_label",
+)
 
 
 class ClubCardScope(BaseModel):
@@ -1177,8 +1332,13 @@ def get_club_player_public_card(
     response: Response,
     sport: str = Query(default="all", pattern=r"^(padel|tennis|all)$"),
     season_id: str | None = Query(default=None, max_length=64),
+    creds: HTTPAuthorizationCredentials | None = Depends(_card_bearer),
 ) -> ClubPlayerMiniCard | Response:
-    """Mini-card for a player at a club (signed-in profiles / organizers only).
+    """Mini-card for a player at a club (club members and the club's organizers only).
+
+    401 without a session; 403 for a signed-in profile that is not a visible
+    member of the club, or an organizer who cannot edit it
+    (:func:`require_club_card_access`).
 
     Returns club-scoped ELO/tier/rank plus the most recent matches and a short
     ELO sparkline history.  ``sport=padel|tennis`` restricts every field --
@@ -1192,14 +1352,17 @@ def get_club_player_public_card(
     Cached in-memory for ``MINI_CARD_TTL_S`` to absorb repeat clicks, and
     served with ``ETag`` + ``Cache-Control: private, max-age=30``.
     """
-    _get_club(club_id)
+    club = _get_club(club_id)
+    require_club_card_access(club, creds, card_profile_id=profile_id)
     scope = resolve_scope(club_id=club_id, season_id=season_id, sport=sport)
     ensure_club_roster_synced(club_id)
+    # An unlisted event's alias is its capability link: only the club's editors get it.
+    editor = is_club_editor(club, _bearer_user(creds))
 
     def _build() -> ClubPlayerMiniCard:
-        return _build_club_player_card(club_id, profile_id, scope)
+        return _build_club_player_card(club_id, profile_id, scope, unlisted_aliases=editor)
 
-    key = ("club", club_id, profile_id, scope.sport or "all", scope.season_id or "")
+    key = ("club", club_id, profile_id, scope.sport or "all", scope.season_id or "", editor)
     card = get_mini_card_cached(key, _build)
     payload = card.model_dump()
     tag = etag_for(payload)
@@ -1210,7 +1373,9 @@ def get_club_player_public_card(
     return card
 
 
-def _build_club_player_card(club_id: str, profile_id: str, scope: RatingScope | None = None) -> ClubPlayerMiniCard:
+def _build_club_player_card(
+    club_id: str, profile_id: str, scope: RatingScope | None = None, *, unlisted_aliases: bool = False
+) -> ClubPlayerMiniCard:
     """Build (uncached) the public mini-card payload for a club player.
 
     Ratings, match counts, recent matches and sparkline all come from the same
@@ -1257,49 +1422,13 @@ def _build_club_player_card(club_id: str, profile_id: str, scope: RatingScope | 
     recent: list[dict] = []
     history_by_sport: dict[str, list[float]] = {"padel": [], "tennis": []}
     round_info_cache: dict[str, dict[str, tuple[int, str]]] = {}
-    # Lazy import: ``routes_crud`` already imports from this module, so a
-    # top-level import here would create a cycle.
-    from .routes_crud import _collect_tournament_match_round_info  # noqa: PLC0415
-    from .state import _tournaments  # noqa: PLC0415
-
     for log in raw_logs:
-        try:
-            payload = json.loads(log.get("match_payload") or "{}")
-        except (ValueError, TypeError):
-            payload = {}
-        team1 = [p.get("player_name", "") for p in payload.get("team1", [])]
-        team2 = [p.get("player_name", "") for p in payload.get("team2", [])]
-        round_number = payload.get("round_number")
-        round_label = payload.get("round_label") or ""
-        if not round_number and not round_label:
-            tid = log.get("tournament_id")
-            if tid:
-                if tid not in round_info_cache:
-                    tournament = _tournaments.get(tid, {}).get("tournament")
-                    round_info_cache[tid] = _collect_tournament_match_round_info(tournament)
-                fallback = round_info_cache[tid].get(log.get("match_id"))
-                if fallback:
-                    round_number = fallback[0] or None
-                    round_label = fallback[1]
-        recent.append(
-            {
-                "tournament_name": log.get("tournament_name"),
-                "tournament_alias": log.get("tournament_alias"),
-                "sport": log.get("sport"),
-                "score": payload.get("score") or [],
-                "sets": payload.get("sets") or [],
-                "decider": payload.get("decider"),
-                "team1": team1,
-                "team2": team2,
-                "elo_before": log.get("elo_before"),
-                "elo_after": log.get("elo_after"),
-                "elo_delta": log.get("elo_delta"),
-                "updated_at": log.get("updated_at"),
-                "is_manual": bool(log.get("is_manual")),
-                "round_number": round_number or None,
-                "round_label": round_label,
-            }
-        )
+        # The shared card row (player_card), in this endpoint's own field list (legacy club.js reads it).
+        entry = match_entry_from_log(log, round_info_cache)
+        row = {key: entry[key] for key in _CLUB_CARD_MATCH_FIELDS}
+        if log.get("tournament_public") == 0 and not unlisted_aliases:
+            row["tournament_alias"] = None
+        recent.append(row)
         sport = log.get("sport")
         if sport in history_by_sport and log.get("elo_after") is not None:
             history_by_sport[sport].append(round(float(log["elo_after"]), 1))
@@ -1363,10 +1492,20 @@ def list_clubs(user: User = Depends(get_current_user)) -> list[ClubOut]:
 
 
 @router.get("/{club_id}", response_model=ClubOut)
-def get_club_endpoint(club_id: str) -> ClubOut:
-    """Get a club by ID."""
+def get_club_endpoint(club_id: str, user: User | None = Depends(get_current_user_optional)) -> ClubOut:
+    """Get a club by ID.
+
+    The creator's username and the reply-to address are for the club's
+    editors only (creator, co-editor, admin): anyone else, anonymous visitors
+    and Hub profiles included, gets them as ``null``.
+    """
     club = _get_club(club_id)
-    return _build_club_out(club)
+    out = _build_club_out(club)
+    if not is_club_editor(club, user):
+        out.created_by = None
+        if out.email_settings:
+            out.email_settings = {k: v for k, v in out.email_settings.items() if k != "reply_to"}
+    return out
 
 
 @router.post("", response_model=ClubOut, status_code=201)
@@ -1512,6 +1651,7 @@ async def delete_club(club_id: str, user: User = Depends(get_current_user)) -> d
                 _tournaments[tid]["season_id"] = db_season_by_tid.get(tid)
     for tid in affected_tids:
         _tournaments[tid]["club_id"] = None
+    invalidate_cards_after_scope_change()
     return {"ok": True}
 
 
@@ -1726,8 +1866,12 @@ def list_club_players(
     When ``sport`` is provided, only players visible for that sport are
     returned. This is used by tournament creation so hidden padel/tennis club
     players are not proposed for the wrong sport.
+
+    The roster carries players' emails: only the club's editors (creator,
+    co-editors, admins) may read it (403 otherwise), as with every other
+    roster endpoint.  Filing an event in a club needs the same access.
     """
-    _get_club(club_id)
+    _require_club_editor(_get_club(club_id), user)
     ensure_club_roster_synced(club_id)
 
     with get_db() as conn:

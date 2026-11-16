@@ -81,9 +81,10 @@ test('the group legend names the columns the table shows, points or sets', async
   const points = await createTournament(request, 'gp', `TV legend ${stamp()}`);
   await patchTvSettings(request, points.id, { refresh_interval: 0 });
   let legend = await legendRows(points.id);
-  // The phone's combined record column is explained too.
-  await expect(legend.getByRole('cell', { name: 'W–L', exact: true })).toBeVisible();
-  await expect(legend.getByText('Wins and losses')).toBeVisible();
+  // A wide table shows W and L, so the phone's combined record column is not listed.
+  await expect(legend.getByText('Matches won')).toBeVisible();
+  await expect(legend.getByText('Matches lost')).toBeVisible();
+  await expect(legend.getByRole('cell', { name: 'W–L', exact: true })).toHaveCount(0);
   await expect(legend.getByText('Point difference')).toBeVisible();
   await expect(legend.getByText('Set difference')).toHaveCount(0);
   await expect(legend.getByText('Game difference')).toHaveCount(0);
@@ -194,12 +195,13 @@ test('standings keep P, the W–L record and the main column on a 360px phone', 
   await expect(table.getByRole('columnheader', { name: /Total points/ })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: /Wins and losses/ })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: /Matches played/ })).toBeVisible();
-  // The legend explains the phone's record column.
+  // The legend explains the phone's record column, and not the W and L columns it replaces.
   await page
     .locator('[data-section="standings"]')
     .getByRole('button', { name: 'Column legend' })
     .click();
   await expect(page.getByRole('dialog').getByText('Wins and losses')).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('Matches won')).toHaveCount(0);
   await page.keyboard.press('Escape');
   // The name keeps its room: the table fits the phone instead of scrolling sideways.
   await expect
@@ -399,10 +401,91 @@ test('a standings name opens the player card', async ({ page, request }) => {
   const { id } = await mexicano(request, `TV Card ${stamp()}`);
   await patchTvSettings(request, id, { refresh_interval: 0 });
   await page.goto(`/tv/${id}`);
-  await page.getByRole('button', { name: 'Open profile for Ana' }).click();
+  // The standings row's card button (match-card names open the card too).
+  await page.getByRole('cell').getByRole('button', { name: 'Open profile for Ana' }).click();
   const card = page.getByRole('dialog');
   await expect(card.getByTestId('tv-player-card')).toBeVisible();
   await expect(card.getByText('Match history')).toBeVisible();
+});
+
+test('a composed team row opens a card with the team matches and its members', async ({
+  page,
+  request,
+}) => {
+  const { id, headers } = await createTournament(request, 'gp', `TV Team ${stamp()}`, {
+    team_mode: true,
+    teams: [
+      ['Ana', 'Beto'],
+      ['Carla', 'Diego'],
+      ['Elena', 'Fabio'],
+      ['Gala', 'Hugo'],
+    ],
+    num_groups: 1,
+  });
+  const groups = await (await request.get(`/api/tournaments/${id}/gp/groups`)).json();
+  for (const m of Object.values(groups.matches).flat() as { id: string }[])
+    expect(
+      (
+        await request.post(`/api/tournaments/${id}/gp/record-group`, {
+          headers,
+          data: { match_id: m.id, score1: 6, score2: 2 },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  await patchTvSettings(request, id, { refresh_interval: 0 });
+  await page.goto(`/tv/${id}`);
+  await page.getByRole('cell').getByRole('button', { name: 'Open profile for Ana & Beto' }).click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-player-card')).toBeVisible();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(3);
+  await expect(card.getByTestId('tv-card-members')).toContainText('Ana');
+  await expect(card.getByTestId('tv-card-members')).toContainText('Beto');
+  // Only the group stage so far: no stage switch.
+  await expect(card.getByTestId('tv-card-scope')).toHaveCount(0);
+});
+
+test('a name on a match card opens that player card, with no scope switch for a spectator', async ({
+  page,
+  request,
+}) => {
+  const { id, headers } = await createTournament(request, 'mex', `TV Scout ${stamp()}`);
+  const first = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+  for (const m of first.current_matches as { id: string }[])
+    await request.post(`/api/tournaments/${id}/mex/record`, {
+      headers,
+      data: { match_id: m.id, score1: 14, score2: 10 },
+    });
+  expect(
+    (await request.post(`/api/tournaments/${id}/mex/next-round`, { headers, data: {} })).ok(),
+  ).toBeTruthy();
+  // Ana has a Hub profile: the spectator screen still shows this event only.
+  const secrets = (
+    await (await request.get(`/api/tournaments/${id}/player-secrets`, { headers })).json()
+  ).players as Record<string, { name: string; passphrase: string }>;
+  const ana = Object.values(secrets).find((p) => p.name === 'Ana')!;
+  expect(
+    (
+      await request.post('/api/player-profile', {
+        data: {
+          participant_passphrase: ana.passphrase,
+          name: 'Ana',
+          email: `tv-scout-${stamp()}@example.com`,
+        },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await patchTvSettings(request, id, { show_pending_matches: true, refresh_interval: 0 });
+  await page.goto(`/tv/${id}`);
+  await page
+    .getByTestId('tv-match')
+    .getByRole('button', { name: 'Open profile for Ana', exact: true })
+    .first()
+    .click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-player-card')).toBeVisible();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(1);
+  await expect(card.getByTestId('card-scope')).toHaveCount(0);
+  await expect(card.getByTestId('card-no-profile')).toHaveCount(0);
 });
 
 test('the phone layout has no sideways scroll and keeps the footer', async ({ page, request }) => {

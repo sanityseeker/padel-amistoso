@@ -378,8 +378,8 @@ async function _clubLoadLeaderboard(sport) {
     _clubShow('club-leaderboard');
     await _clubLoadLeaderboardData(sport);
   } catch (e) {
-    // Expired / revoked session: behave like a signed-out visitor.
-    if (e && e.status === 401) {
+    // Expired / revoked session, or not a member of this club: behave like a signed-out visitor.
+    if (e && (e.status === 401 || e.status === 403)) {
       _clubLeaderboardCache = {};
       _clubSeasonStandingsCache = {};
       _clubHideLeaderboard();
@@ -403,7 +403,7 @@ async function _clubLoadLeaderboardData(sport) {
         _clubLeaderboardCache['all'] = data;
         _clubRenderDualLeaderboard(data.padel, data.tennis);
       } catch (e) {
-        if (e && e.status === 401) throw e;
+        if (e && (e.status === 401 || e.status === 403)) throw e;
         _clubRenderDualLeaderboard([], []);
       }
     } else {
@@ -417,7 +417,7 @@ async function _clubLoadLeaderboardData(sport) {
         _clubLeaderboardCache[sport] = data;
         _clubRenderGlobalLeaderboard(data);
       } catch (e) {
-        if (e && e.status === 401) throw e;
+        if (e && (e.status === 401 || e.status === 403)) throw e;
         _clubRenderGlobalLeaderboard([]);
       }
     }
@@ -433,7 +433,7 @@ async function _clubLoadLeaderboardData(sport) {
       data = await _clubFetchJson(`/api/seasons/${encodeURIComponent(seasonId)}/standings`);
       _clubSeasonStandingsCache[seasonId] = data;
     } catch (e) {
-      if (e && e.status === 401) throw e;
+      if (e && (e.status === 401 || e.status === 403)) throw e;
       if (sport === null) {
         _clubRenderDualSeasonLeaderboard([], []);
       } else {

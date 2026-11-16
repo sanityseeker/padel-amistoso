@@ -5,12 +5,21 @@ import { t as tx } from '../../../i18n';
 import type { EloMatch } from '../../../player/types';
 import { formatSets } from '../../../admin/tournament/scoring';
 import type { SetDecider } from '../../../types';
+import { PlayerName } from '../../../ui';
 
 type Side = NonNullable<EloMatch['team1']>;
 
 // "Ana 1043 +4 & Luis 1020 +4": each player with the rating before and the change; the signed-in
 // player's change is colored, the others' are dimmed.
-function Team({ players, me }: { players: Side; me?: string }) {
+function Team({
+  players,
+  me,
+  onPlayer,
+}: {
+  players: Side;
+  me?: string;
+  onPlayer?: (playerId: string) => void;
+}) {
   if (!players.length) return <>—</>;
   return (
     <>
@@ -21,7 +30,10 @@ function Team({ players, me }: { players: Side; me?: string }) {
         return (
           <span key={p.player_id}>
             {i > 0 && ' & '}
-            {p.player_name}{' '}
+            <PlayerName
+              name={p.player_name}
+              onOpen={onPlayer && !mine ? () => onPlayer(p.player_id) : undefined}
+            />{' '}
             <Text span size="xs" c="dimmed">
               {before}
             </Text>{' '}
@@ -44,7 +56,17 @@ export const scoreOf = (m: EloMatch) =>
       : '';
 
 // One rating change: a manual adjustment (who, why) or a match (event, date, order, both teams, score).
-export function ResultRow({ m, locale }: { m: EloMatch; locale: string }) {
+export function ResultRow({
+  m,
+  locale,
+  onPlayer,
+}: {
+  m: EloMatch;
+  locale: string;
+  /** A tap on another player's name opens their card from that event (tournament and player id). */
+  onPlayer?: (tid: string, playerId: string) => void;
+}) {
+  const open = onPlayer ? (pid: string) => onPlayer(m.tournament_id, pid) : undefined;
   const change = m.elo_delta ?? m.elo_after - m.elo_before;
   const color = change >= 0 ? 'success' : 'danger';
   const date = m.updated_at
@@ -108,11 +130,11 @@ export function ResultRow({ m, locale }: { m: EloMatch; locale: string }) {
       <Text size="sm">{transition}</Text>
       {(m.team1?.length || m.team2?.length) && (
         <Text size="sm">
-          <Team players={m.team1 ?? []} me={m.player_id} />{' '}
+          <Team players={m.team1 ?? []} me={m.player_id} onPlayer={open} />{' '}
           <Text span fw={650}>
             {score || tx('vs')}
           </Text>{' '}
-          <Team players={m.team2 ?? []} me={m.player_id} />
+          <Team players={m.team2 ?? []} me={m.player_id} onPlayer={open} />
         </Text>
       )}
       {!(m.team1?.length || m.team2?.length) && score && <Text size="sm">{score}</Text>}

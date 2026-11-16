@@ -35,7 +35,7 @@ import {
   OrganizerInfo,
 } from '../../public/OrganizerNotes';
 import { markAnnouncementsSeen } from '../../public/announcementSeen';
-import { PlayerCardModal } from '../../tv/PlayerCardModal';
+import { PlayerCardModal, playerCardSource, type CardStage } from '../../playercard';
 import { useOpenState } from '../../tv/TvSection';
 import { HubSection } from '../components/HubSection';
 
@@ -62,6 +62,12 @@ function EventView({ kind, id }: { kind: string; id: string }) {
   const newest = newestAnnouncementAt(event.data?.tv);
   // A tap on a standings row opens that player's card: their record and every match in this event.
   const [cardId, setCardId] = useState<string | null>(null);
+  const [cardStage, setCardStage] = useState<CardStage | null>(null);
+  // A tap on a name in a match opens that player's card on the whole event.
+  const openPlayer = useCallback((pid: string) => {
+    setCardStage(null);
+    setCardId(pid);
+  }, []);
   const closeCard = useCallback(() => setCardId(null), []);
   // Every section but Up next folds away; the choice is remembered per tournament.
   const sections = useOpenState(id, 'padel-hub-sections');
@@ -189,6 +195,7 @@ function EventView({ kind, id }: { kind: string; id: string }) {
         testId="player-match"
         courts={usesCourts(data.status)}
         queueLabels
+        onPlayer={openPlayer}
         actions={
           <MatchContacts
             match={m}
@@ -286,7 +293,10 @@ function EventView({ kind, id }: { kind: string; id: string }) {
             highlightId={entry.player_id}
             highlightPlaces={s.preset === 'group' ? groupHighlight(data?.tv, s.name) : undefined}
             sets={s.preset === 'group' && data?.tv.score_mode['gp-group'] === 'sets'}
-            onSelect={(row) => setCardId(row.id)}
+            onSelect={(row) => {
+              setCardStage(s.preset === 'group' ? 'group' : 'rounds');
+              setCardId(row.id);
+            }}
           />
         </Paper>
       ))}
@@ -386,6 +396,7 @@ function EventView({ kind, id }: { kind: string; id: string }) {
           {playedNow.length > 0 && (
             <PlayedList
               testId="event-played"
+              onPlayer={openPlayer}
               items={playedNow}
               title={earlier ? tx('Play-offs') : undefined}
               path={earlier ? pathRounds?.filter((r) => r.stage === 'playoff') : pathRounds}
@@ -404,6 +415,7 @@ function EventView({ kind, id }: { kind: string; id: string }) {
                   <Stack gap="sm">
                     <PlayedList
                       testId="event-played-earlier"
+                      onPlayer={openPlayer}
                       items={playedEarlier}
                       titleOrder={3}
                       path={pathRounds?.filter((r) => r.stage !== 'playoff')}
@@ -430,7 +442,14 @@ function EventView({ kind, id }: { kind: string; id: string }) {
         </HubSection>
       )}
       {fullView}
-      <PlayerCardModal tid={id} playerId={cardId} onClose={closeCard} autoClose={false} />
+      <PlayerCardModal
+        tid={id}
+        playerId={cardId}
+        stage={cardStage}
+        onClose={closeCard}
+        autoClose={false}
+        source={playerCardSource}
+      />
     </Stack>
   );
 }

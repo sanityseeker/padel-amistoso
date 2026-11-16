@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from ..auth.deps import get_current_user, get_current_user_optional, require_admin
 from ..auth.models import User, UserRole
 from .db import get_db, get_shared_club_ids
+from .leaderboard_cache import invalidate_cards_after_scope_change
 from .state import _tournaments
 
 router = APIRouter(prefix="/api/communities", tags=["communities"])
@@ -245,4 +246,5 @@ async def delete_community(community_id: str, user: User = Depends(get_current_u
     for data in list(_tournaments.values()):
         if data.get("community_id") == community_id:
             data["community_id"] = DEFAULT_COMMUNITY_ID
+    invalidate_cards_after_scope_change()
     return {"ok": True}

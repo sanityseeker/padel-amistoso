@@ -3,6 +3,7 @@ import {
   Accordion,
   Button,
   Group,
+  Input,
   NumberInput,
   SegmentedControl,
   SimpleGrid,
@@ -14,9 +15,16 @@ import { IconUsersPlus } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../i18n';
 import { NameListField } from './NameListField';
 import { RosterPicker, type PickedPlayer } from './RosterPicker';
-import { newTeam, clean, type EntryMode, type Team } from './rules';
+import { newTeam, clean, DEFAULT_STRENGTH, type EntryMode, type Seeding, type Team } from './rules';
 import { TeamBuilder } from './TeamBuilder';
 import { useDemoAccount } from '../../useDemoAccount';
+
+/** The seeding choice and the ratings it prefills, keyed by player name. */
+export interface SeedingState {
+  mode: Seeding;
+  onMode: (mode: Seeding) => void;
+  ratings: Record<string, number>;
+}
 
 export interface PlayerMeta {
   email?: string;
@@ -43,6 +51,7 @@ export function PlayersFields({
   sport,
   clubId,
   hint,
+  seeding,
   details = true,
 }: {
   choice: boolean;
@@ -62,6 +71,7 @@ export function PlayersFields({
   sport: string;
   clubId: string | null;
   hint: string;
+  seeding: SeedingState;
   details?: boolean;
 }) {
   useLocale();
@@ -127,7 +137,9 @@ export function PlayersFields({
           {builder ? tx('{n} teams', { n: count }) : tx('{n} players', { n: count })}
         </Text>
       </Group>
-      {details && <PlayerDetails names={playerNames} meta={meta} onMeta={onMeta} />}
+      {details && (
+        <PlayerDetails names={playerNames} meta={meta} onMeta={onMeta} seeding={seeding} />
+      )}
       {picking && (
         <RosterPicker
           clubId={clubId}
@@ -141,17 +153,21 @@ export function PlayersFields({
   );
 }
 
-// Optional contact details and a starting strength per person. `strengthOnly` is for converting a lobby,
-// whose registrants already carry their contact details.
+// The seeding choice, then optional contact details and a starting strength per person. With ELO
+// seeding a linked player's strength shows their rating until it is edited (clearing the field brings
+// the rating back). `strengthOnly` is for converting a lobby, whose registrants already carry their
+// contact details.
 export function PlayerDetails({
   names,
   meta,
   onMeta,
+  seeding,
   strengthOnly = false,
 }: {
   names: string[];
   meta: Record<string, PlayerMeta>;
   onMeta: (next: Record<string, PlayerMeta>) => void;
+  seeding: SeedingState;
   strengthOnly?: boolean;
 }) {
   useLocale();
@@ -159,60 +175,111 @@ export function PlayerDetails({
   const set = (name: string, patch: PlayerMeta) =>
     onMeta({ ...meta, [name]: { ...meta[name], ...patch } });
   if (!names.length) return null;
+  const withStrength = seeding.mode !== 'none';
+  const prefilled = (n: string) =>
+    seeding.mode === 'elo' && meta[n]?.strength === undefined ? seeding.ratings[n] : undefined;
   return (
-    <Accordion variant="contained" radius="lg">
-      <Accordion.Item value="details">
-        <Accordion.Control>
-          {strengthOnly
-            ? tx('Starting strength (optional)')
-            : tx('Contact details and starting strength (optional)')}
-        </Accordion.Control>
-        <Accordion.Panel>
-          <Stack gap="sm">
-            {names.map((n) => (
-              <SimpleGrid key={n} cols={{ base: 1, sm: strengthOnly ? 2 : 4 }} spacing="xs">
-                <Text size="sm" fw={600} pt={6}>
-                  {n}
-                  {meta[n]?.profile_id && (
-                    <Text span size="xs" c="dimmed">
-                      {' '}
-                      · {tx('Linked to a profile')}
+    <Stack gap="sm">
+      <Input.Wrapper
+        label={tx('Seeding')}
+        description={
+          seeding.mode === 'elo'
+            ? tx(
+                'Linked players start from their club or community rating. Edit a value to override it. Everyone else starts at 1000.',
+              )
+            : seeding.mode === 'manual'
+              ? tx(
+                  'Only the strengths you enter count, on the rating scale. Blank players start at 1000.',
+                )
+              : tx('No seeding: ratings and strengths are ignored.')
+        }
+      >
+        <SegmentedControl
+          mt={4}
+          fullWidth
+          aria-label={tx('Seeding')}
+          value={seeding.mode}
+          onChange={(v) => seeding.onMode(v as Seeding)}
+          data={[
+            { value: 'elo', label: tx('By rating') },
+            { value: 'manual', label: tx('Manual') },
+            { value: 'none', label: tx('No seeding') },
+          ]}
+        />
+      </Input.Wrapper>
+      {(withStrength || !strengthOnly) && (
+        <Accordion variant="contained" radius="lg">
+          <Accordion.Item value="details">
+            <Accordion.Control>
+              {strengthOnly
+                ? tx('Starting strength (optional)')
+                : withStrength
+                  ? tx('Contact details and starting strength (optional)')
+                  : tx('Contact details (optional)')}
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="sm">
+                {names.map((n) => (
+                  <SimpleGrid
+                    key={n}
+                    cols={{
+                      base: 1,
+                      sm: strengthOnly ? 2 : withStrength ? 4 : 3,
+                    }}
+                    spacing="xs"
+                  >
+                    <Text size="sm" fw={600} pt={6}>
+                      {n}
+                      {meta[n]?.profile_id && (
+                        <Text span size="xs" c="dimmed">
+                          {' '}
+                          · {tx('Linked to a profile')}
+                        </Text>
+                      )}
+                      {prefilled(n) !== undefined && (
+                        <Text span size="xs" c="dimmed">
+                          {' '}
+                          · {tx('Rating')}
+                        </Text>
+                      )}
                     </Text>
-                  )}
-                </Text>
-                {!strengthOnly && (
-                  <>
-                    <TextInput
-                      aria-label={tx('Email for {name}', { name: n })}
-                      placeholder={tx('Email')}
-                      disabled={demo}
-                      title={demo ? tx('Not available in demo mode') : undefined}
-                      type="email"
-                      value={meta[n]?.email ?? ''}
-                      onChange={(e) => set(n, { email: e.currentTarget.value })}
-                    />
-                    <TextInput
-                      aria-label={tx('Contact for {name}', { name: n })}
-                      placeholder={tx('Contact')}
-                      disabled={demo}
-                      title={demo ? tx('Not available in demo mode') : undefined}
-                      value={meta[n]?.contact ?? ''}
-                      onChange={(e) => set(n, { contact: e.currentTarget.value })}
-                    />
-                  </>
-                )}
-                <NumberInput
-                  aria-label={tx('Starting strength for {name}', { name: n })}
-                  placeholder={tx('Strength')}
-                  min={0}
-                  value={meta[n]?.strength ?? ''}
-                  onChange={(v) => set(n, { strength: v === '' ? undefined : Number(v) })}
-                />
-              </SimpleGrid>
-            ))}
-          </Stack>
-        </Accordion.Panel>
-      </Accordion.Item>
-    </Accordion>
+                    {!strengthOnly && (
+                      <>
+                        <TextInput
+                          aria-label={tx('Email for {name}', { name: n })}
+                          placeholder={tx('Email')}
+                          disabled={demo}
+                          title={demo ? tx('Not available in demo mode') : undefined}
+                          type="email"
+                          value={meta[n]?.email ?? ''}
+                          onChange={(e) => set(n, { email: e.currentTarget.value })}
+                        />
+                        <TextInput
+                          aria-label={tx('Contact for {name}', { name: n })}
+                          placeholder={tx('Contact')}
+                          disabled={demo}
+                          title={demo ? tx('Not available in demo mode') : undefined}
+                          value={meta[n]?.contact ?? ''}
+                          onChange={(e) => set(n, { contact: e.currentTarget.value })}
+                        />
+                      </>
+                    )}
+                    {withStrength && (
+                      <NumberInput
+                        aria-label={tx('Starting strength for {name}', { name: n })}
+                        placeholder={String(DEFAULT_STRENGTH)}
+                        min={0}
+                        value={meta[n]?.strength ?? prefilled(n) ?? ''}
+                        onChange={(v) => set(n, { strength: v === '' ? undefined : Number(v) })}
+                      />
+                    )}
+                  </SimpleGrid>
+                ))}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      )}
+    </Stack>
   );
 }

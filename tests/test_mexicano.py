@@ -2606,3 +2606,38 @@ class TestMexicanoClearResult:
         t.end_mexicano()
         with pytest.raises(MatchClearBlocked):
             t.clear_result(m.id)
+
+
+class TestMexicanoEloScaleSeeding:
+    """Round-1 strengths are ELO-scale; grouping works in expected match points."""
+
+    def _seeded(self, ratings: list[float], **kw) -> MexicanoTournament:
+        players = _make_players(len(ratings))
+        strengths = {p.id: r for p, r in zip(players, ratings)}
+        return MexicanoTournament(
+            players, _make_courts(len(ratings) // 4), total_points_per_match=32, initial_strength=strengths, **kw
+        )
+
+    def test_round_zero_estimates_are_expected_points(self):
+        t = self._seeded([1200, 1000, 1000, 800])
+        est = {p.name: v for p, v in zip(t.players, (t._estimated_scores()[p.id] for p in t.players))}
+        assert est["P2"] == pytest.approx(16.0)
+        assert est["P1"] == pytest.approx(32 / (1 + 10 ** (-200 / 400)))
+        assert est["P1"] + est["P4"] == pytest.approx(32.0)
+        assert all(0 < v < 32 for v in est.values())
+
+    def test_skill_gap_in_points_holds_for_elo_ratings(self):
+        # Two clear tiers 300 ELO apart; a 10-point gap must split them by tier.
+        t = self._seeded([1500, 1490, 1480, 1470, 1200, 1190, 1180, 1170], skill_gap=10)
+        groups = t._form_groups(t._ranked_players(t.players))
+        names = sorted(sorted(p.name for p in g) for g in groups)
+        assert names == [["P1", "P2", "P3", "P4"], ["P5", "P6", "P7", "P8"]]
+        est = t._estimated_scores()
+        assert t._skill_gap_violations(groups, est) == (0, 0.0)
+
+    def test_estimates_use_real_scores_after_first_match(self):
+        t = self._seeded([1200, 1000, 1000, 800])
+        t.generate_next_round()
+        m = t.rounds[-1][0]
+        t.record_result(m.id, (20, 12))
+        assert sorted(t._estimated_scores().values()) == [12, 12, 20, 20]

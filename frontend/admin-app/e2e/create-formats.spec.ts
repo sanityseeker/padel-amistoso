@@ -164,3 +164,98 @@ test.afterAll(async ({ request }) => {
     if (/^Create (GP|PO)/.test(t.name))
       await request.delete(`/api/tournaments/${t.id}`, { headers });
 });
+
+// Seeding: ratings prefill the strength of linked players, edits override them, and the draw preview
+// and the request follow the chosen mode. The profile list and ratings are stubbed (the lookup itself
+// is covered by tests/test_club_elo.py).
+async function addLinkedPlayers(page: Page) {
+  await page.route('**/api/admin/player-profiles?*', (route) =>
+    route.fulfill({
+      json: [
+        { id: 'seed-ana', name: 'Ana', email: '', is_ghost: false },
+        { id: 'seed-beto', name: 'Beto', email: '', is_ghost: false },
+      ],
+    }),
+  );
+  await page.getByRole('button', { name: 'Add known players' }).click();
+  await page.getByRole('tab', { name: 'Player profiles' }).click();
+  await page.getByRole('checkbox', { name: 'Ana' }).check();
+  await page.getByRole('checkbox', { name: 'Beto' }).check();
+  await page.getByRole('button', { name: 'Add selected' }).click();
+}
+
+test('create: seeding by rating prefills linked players and seeds the group draw', async ({
+  page,
+}) => {
+  await loginAdmin(page);
+  let asked: { profile_ids: string[] } | null = null;
+  await page.route('**/api/tournaments/starting-ratings', async (route) => {
+    asked = route.request().postDataJSON();
+    await route.fulfill({ json: { ratings: { 'seed-ana': 1400.4, 'seed-beto': 1300 } } });
+  });
+  await page.goto('/admin/new?type=group_playoff');
+  await page.getByLabel('Tournament name').fill(`Seeded GP ${Date.now()}`);
+  await fillNames(page, 'players', EIGHT.slice(2).join('\n'));
+  await addLinkedPlayers(page);
+  await fillNames(page, 'courts', 'Court 1\nCourt 2');
+  await page.getByLabel(/^Groups/).fill('2');
+
+  await expect(page.getByRole('radio', { name: 'By rating' })).toBeChecked();
+  await page.getByRole('button', { name: /starting strength/ }).click();
+  await expect(page.getByLabel('Starting strength for Ana')).toHaveValue('1400');
+  await expect(page.getByLabel('Starting strength for Beto')).toHaveValue('1300');
+  await expect(page.getByLabel('Starting strength for Carla')).toHaveValue('');
+  expect(asked!.profile_ids).toEqual(['seed-ana', 'seed-beto']);
+  await page.getByLabel('Starting strength for Beto').fill('1250');
+
+  // Snake draft: the two strongest open the two groups.
+  await page.getByRole('button', { name: 'Group names and draw' }).click();
+  await page.getByRole('button', { name: 'Preview the draw' }).click();
+  const draw = page.getByTestId('group-draw');
+  await expect(draw.getByText('Ana · 1400')).toBeVisible();
+  await expect(draw.getByText('Beto · 1250')).toBeVisible();
+  await expect(draw.getByText('Carla · 1000')).toHaveCount(0);
+  const target = async (name: string) =>
+    (await draw
+      .getByRole('button', { name: new RegExp(`^Move ${name} to `) })
+      .getAttribute('aria-label'))!.replace(/^Move \S+ to /, '');
+  expect(await target('Ana')).not.toBe(await target('Beto'));
+
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith('/api/tournaments/group-playoff') && r.method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Create tournament', exact: true }).click();
+  const body = (await sent).postDataJSON();
+  expect(body.seeding).toBe('elo');
+  expect(body.player_strengths).toEqual({ Ana: 1400, Beto: 1250 });
+});
+
+test('create: manual seeding ignores ratings and no seeding sends no strengths', async ({
+  page,
+}) => {
+  await loginAdmin(page);
+  await page.route('**/api/tournaments/starting-ratings', (route) =>
+    route.fulfill({ json: { ratings: { 'seed-ana': 1400 } } }),
+  );
+  await page.goto('/admin/new?type=mexicano');
+  await page.getByLabel('Tournament name').fill(`Unseeded Mexicano ${Date.now()}`);
+  await fillNames(page, 'players', EIGHT.slice(2).join('\n'));
+  await addLinkedPlayers(page);
+  await fillNames(page, 'courts', 'Court 1\nCourt 2');
+
+  await page.getByRole('radiogroup', { name: 'Seeding' }).getByText('Manual').click();
+  await page.getByRole('button', { name: /starting strength/ }).click();
+  await expect(page.getByLabel('Starting strength for Ana')).toHaveValue('');
+  await page.getByLabel('Starting strength for Carla').fill('1100');
+
+  await page.getByRole('radiogroup', { name: 'Seeding' }).getByText('No seeding').click();
+  await expect(page.getByLabel('Starting strength for Carla')).toHaveCount(0);
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith('/api/tournaments/mexicano') && r.method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Create tournament', exact: true }).click();
+  const body = (await sent).postDataJSON();
+  expect(body.seeding).toBe('none');
+  expect(body.player_strengths).toBeUndefined();
+  await expect(page).toHaveURL(/\/admin\/t\/[^/]+$/);
+});

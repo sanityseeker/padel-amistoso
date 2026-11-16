@@ -99,6 +99,8 @@ const counterpartName = (c: Counterpart) => c.current_name || c.name || '';
 
 export interface Ranked {
   name: string;
+  /** Known when the person is linked to a profile (their card can open). */
+  profileId?: string;
   games: number;
   wins: number;
   winPct: number;
@@ -127,16 +129,15 @@ export function careerStats(entries: Entry[]): CareerStats {
   let wins = 0;
   let losses = 0;
   let draws = 0;
-  const partners = new Map<string, { name: string; games: number; wins: number }>();
-  const rivals = new Map<string, { name: string; games: number; wins: number }>();
-  const add = (
-    map: Map<string, { name: string; games: number; wins: number }>,
-    list: Counterpart[],
-  ) => {
+  type Tally = { name: string; profileId?: string; games: number; wins: number };
+  const partners = new Map<string, Tally>();
+  const rivals = new Map<string, Tally>();
+  const add = (map: Map<string, Tally>, list: Counterpart[]) => {
     for (const c of list) {
       const key = counterpartKey(c);
       const row = map.get(key) ?? { name: counterpartName(c), games: 0, wins: 0 };
       row.name = counterpartName(c) || row.name;
+      row.profileId = c.profile_id || row.profileId;
       row.games += c.games || 0;
       row.wins += c.wins || 0;
       map.set(key, row);
@@ -279,6 +280,7 @@ export function entrySummary(e: Entry): {
 export const rankedOf = (list: Counterpart[] | undefined): Ranked[] =>
   (list ?? []).map((c) => ({
     name: c.current_name || c.name,
+    profileId: c.profile_id,
     games: c.games,
     wins: c.wins,
     winPct: c.win_pct ?? (c.games ? Math.round((c.wins / c.games) * 100) : 0),

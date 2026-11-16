@@ -44,7 +44,7 @@ from ..tournaments import GroupPlayoffTournament, MexicanoTournament, PlayoffTou
 from ..tournaments.player_secrets import generate_passphrase, generate_token
 from .db import add_co_editor, get_db, get_registration_co_editors, get_shared_registration_ids
 from .elo_integration import elo_init_tournament
-from .club_elo import resolve_initial_strengths
+from .club_elo import resolve_initial_strengths, team_strength
 from .helpers import (
     _require_club_join_access,
     _store_tournament,
@@ -1592,6 +1592,7 @@ async def convert_registration(
             req.sport.value,
             registration.get("community_id", "open"),
             registration.get("club_id"),
+            req.seeding,
         )
 
         tid = await allocate_tournament_id()
@@ -1619,7 +1620,7 @@ async def convert_registration(
                     team_member_names[team_pid] = list(member_names)
                     # Aggregate strength for the synthetic team
                     if initial_strength:
-                        team_str = sum(initial_strength.get(mid, 0.0) for mid in member_ids)
+                        team_str = team_strength(initial_strength, member_ids)
                         initial_strength[team_pid] = team_str
                 players = team_players
             else:
@@ -1679,7 +1680,7 @@ async def convert_registration(
                     # Aggregate individual strengths into team-level strength
                     if initial_strength:
                         member_ids = [entry_map[n] for n in member_names if n in entry_map]
-                        initial_strength[team_pid] = sum(initial_strength.get(mid, 0.0) for mid in member_ids)
+                        initial_strength[team_pid] = team_strength(initial_strength, member_ids)
                     # Reuse first known member's passphrase/token for the team secret
                     first_sec = next(
                         (

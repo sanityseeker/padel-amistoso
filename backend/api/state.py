@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 
 from ..models import GPPhase, Sport
 from .db import get_db
+from .leaderboard_cache import invalidate_mini_card_cache
 from .player_secret_store import (
     delete_secrets_for_tournament,
     extract_history_stats,
@@ -172,6 +173,7 @@ def bump_tournament_version(tid: str) -> None:
     """
     global _state_version
     _state_version += 1
+    invalidate_mini_card_cache(("tournament", tid))
 
     version = _tournament_versions.get(tid, 0) + 1
     _tournament_versions[tid] = version
@@ -194,6 +196,7 @@ def _save_tournament(tid: str) -> bool:
     """
     global _state_version
     _state_version += 1
+    invalidate_mini_card_cache(("tournament", tid))
 
     version = _tournament_versions.get(tid, 0) + 1
     _tournament_versions[tid] = version

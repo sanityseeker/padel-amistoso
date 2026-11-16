@@ -224,7 +224,9 @@ test('the event page lists Up next first, then Played', async ({ page, request }
   expect((await next.boundingBox())!.y).toBeLessThan((await played.boundingBox())!.y);
   await expect(page.getByTestId('event-banner')).toHaveCount(0);
   await expect(next.getByRole('button', { name: 'Enter score' })).toBeVisible();
-  await expect(played.getByRole('button')).toHaveCount(0);
+  // No actions on a played row; only the names open the players' cards.
+  await expect(played.locator('button:not([data-testid="player-name"])')).toHaveCount(0);
+  await expect(played.getByTestId('player-name').first()).toBeVisible();
   // Played rows lead with the result; Ana's own pair is always the first line, with her score.
   await expect(page.getByTestId('played-summary')).toHaveText(/^(1 won · 0 lost|0 won · 1 lost)$/);
   const row = played.getByTestId('player-match');
@@ -569,6 +571,128 @@ test("a tap on another player's name in the standings opens their card with thei
   await page.setViewportSize(PHONE);
   await standings.getByRole('button', { name: 'Open profile for Carla' }).click();
   await expect(page.getByRole('dialog').getByTestId('tv-player-card')).toBeVisible();
+});
+
+test('a tap on an opponent in Up next opens their card, and its club tab widens it', async ({
+  page,
+  request,
+}) => {
+  const headers = await adminHeaders(request);
+  const s = `${Date.now()}`;
+  const community = await (
+    await request.post('/api/communities', { headers, data: { name: `Scout community ${s}` } })
+  ).json();
+  const club = await (
+    await request.post('/api/clubs', {
+      headers,
+      data: { name: `Scout Club ${s}`, community_id: community.id },
+    })
+  ).json();
+  const { id } = await createTournament(request, 'mex', `Scout ${s}`, {
+    community_id: community.id,
+    club_id: club.id,
+  });
+  // Round one is played; Ana's round-two match is Up next.
+  const first = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();
+  for (const m of first.current_matches as Match[])
+    await request.post(`/api/tournaments/${id}/mex/record`, {
+      headers,
+      data: { match_id: m.id, score1: 14, score2: 10 },
+    });
+  expect(
+    (await request.post(`/api/tournaments/${id}/mex/next-round`, { headers, data: {} })).ok(),
+  ).toBeTruthy();
+  const { session, playerId, secrets } = await profileFor(request, id, 'Ana', 'scout');
+  const next = (await (await request.get(`/api/tournaments/${id}/mex/matches`)).json())
+    .current_matches as Match[];
+  const mine = next.find((m) => [...m.team1_ids, ...m.team2_ids].includes(playerId))!;
+  const opponentId = (mine.team1_ids.includes(playerId) ? mine.team2_ids : mine.team1_ids)[0]!;
+  const opponent = secrets[opponentId]!.name;
+  // The opponent has a profile too, so their card can widen to the club.
+  await profileFor(request, id, opponent, 'scout-opp');
+  await page.setViewportSize(DESKTOP);
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await page
+    .getByTestId('event-up-next')
+    .getByRole('button', { name: `Open profile for ${opponent}` })
+    .click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-player-card')).toBeVisible();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(1);
+  // Signed in: the card widens to the event's club (never further).
+  const scope = card.getByTestId('card-scope');
+  await expect(scope).toContainText('This event');
+  await scope.getByText(`Scout Club ${s}`).click();
+  const wide = card.getByTestId('scoped-player-card');
+  await expect(wide).toBeVisible();
+  await expect(wide.getByTestId('tv-card-match')).toHaveCount(1);
+  await expect(wide.getByTestId('card-match-event')).toHaveText(`Scout ${s}`);
+  await expect(wide.getByTestId('card-opponents')).toBeVisible();
+});
+
+test('a finished team event keeps team cards with matches and a stage switch', async ({
+  page,
+  request,
+}) => {
+  const { id, headers } = await createTournament(request, 'gp', `Team card ${Date.now()}`, {
+    team_mode: true,
+    teams: [
+      ['Ana', 'Beto'],
+      ['Carla', 'Diego'],
+      ['Elena', 'Fabio'],
+      ['Gala', 'Hugo'],
+    ],
+    num_groups: 1,
+    top_per_group: 2,
+  });
+  const { session, playerId } = await profileFor(request, id, 'Ana', 'teamcard');
+  const status = await (await request.get(`/api/tournaments/${id}/gp/status`)).json();
+  const team = Object.entries(status.team_roster as Record<string, string[]>).find(([, members]) =>
+    members.includes(playerId),
+  )![0];
+  const groups = await (await request.get(`/api/tournaments/${id}/gp/groups`)).json();
+  for (const m of Object.values(groups.matches).flat() as Match[]) {
+    const mine = m.team2_ids.includes(team);
+    expect(
+      (
+        await request.post(`/api/tournaments/${id}/gp/record-group`, {
+          headers,
+          data: { match_id: m.id, score1: mine ? 2 : 6, score2: mine ? 6 : 2 },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  }
+  expect(
+    (await request.post(`/api/tournaments/${id}/gp/start-playoffs`, { headers, data: {} })).ok(),
+  ).toBeTruthy();
+  const pending = (await (await request.get(`/api/tournaments/${id}/gp/playoffs`)).json())
+    .pending as Match[];
+  for (const m of pending)
+    expect(
+      (
+        await request.post(`/api/tournaments/${id}/gp/record-playoff`, {
+          headers,
+          data: { match_id: m.id, score1: 6, score2: 3 },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  await page.setViewportSize(DESKTOP);
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await page
+    .getByTestId('event-standings')
+    .getByRole('button', { name: 'Ana & Beto', exact: true })
+    .click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-player-card')).toBeVisible();
+  // This stage: the three group matches. Whole event: the final too.
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(3);
+  await expect(card.getByTestId('tv-card-members')).toContainText('Beto');
+  await card.getByText('Whole event', { exact: true }).click();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(4);
+  await card.getByText('This stage', { exact: true }).click();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(3);
 });
 
 test('a finished event leads with its final standings', async ({ page, request }) => {

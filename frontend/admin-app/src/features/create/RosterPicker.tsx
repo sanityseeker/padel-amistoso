@@ -40,6 +40,10 @@ interface Past {
 // Add players from what the system already knows: a club roster, Player Hub profiles (site
 // administrators) and past participants without a profile. Returns names plus the profile id and
 // email, which the create request carries as player_profile_ids and player_emails.
+const isDenied = (error: unknown) => (error as { status?: number } | null)?.status === 403;
+// A list the organizer may not read stays closed: asking again changes nothing.
+const noRetryWhenDenied = (count: number, error: unknown) => !isDenied(error) && count < 3;
+
 export function RosterPicker({
   clubId,
   sport,
@@ -66,6 +70,7 @@ export function RosterPicker({
     queryKey: ['admin', 'club-roster', clubId, sport],
     queryFn: () => api<ClubPlayer[]>(`/clubs/${clubId}/players?sport=${sport}`),
     enabled: !!clubId,
+    retry: noRetryWhenDenied,
   });
   const profiles = useQuery({
     queryKey: ['admin', 'profiles', needle],
@@ -82,6 +87,7 @@ export function RosterPicker({
           : `/admin/player-profiles/past-participants?q=${encodeURIComponent(needle)}`,
       ),
     enabled: tab === 'past' && (!!clubId || isAdmin),
+    retry: noRetryWhenDenied,
   });
 
   const list: Candidate[] = useMemo(() => {
@@ -114,6 +120,9 @@ export function RosterPicker({
     }));
   }, [tab, club.data, profiles.data, past.data, needle]);
 
+  // The club's roster and past players are for its editors (the server answers 403 to anyone else).
+  const denied =
+    (tab === 'club' && isDenied(club.error)) || (tab === 'past' && isDenied(past.error));
   const loading =
     (tab === 'club' && club.isPending && !!clubId) ||
     (tab === 'profiles' && profiles.isPending) ||
@@ -180,10 +189,17 @@ export function RosterPicker({
                 />
               );
             })}
-            {!loading && !list.length && (
-              <Text size="sm" c="dimmed">
-                {tx('No players found')}
+            {denied ? (
+              <Text size="sm" c="dimmed" data-testid="roster-denied">
+                {tx("Only the club's organizers can use its player lists.")}
               </Text>
+            ) : (
+              !loading &&
+              !list.length && (
+                <Text size="sm" c="dimmed">
+                  {tx('No players found')}
+                </Text>
+              )
             )}
           </Stack>
         </ScrollArea.Autosize>

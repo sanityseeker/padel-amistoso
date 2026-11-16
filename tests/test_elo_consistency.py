@@ -307,9 +307,10 @@ def _hub_headers(client, profile_id: str) -> dict[str, str]:
 
 
 def _member() -> dict[str, str]:
-    from backend.auth.security import create_profile_token
+    """Headers that may read club boards, standings and cards: the admin organizes every club."""
+    from backend.auth.security import create_access_token
 
-    return {"Authorization": f"Bearer {create_profile_token('member-viewer')}"}
+    return {"Authorization": f"Bearer {create_access_token('admin')}"}
 
 
 class TestLeaderboardHistoryScopeParity:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from ...models import MatchStatus, MexPhase, Player, reset_match_result
 from ..errors import MatchClearBlocked
 from .. import pairing as pairing_mod
+from ..elo import DEFAULT_RATING, compute_expected_score
 
 
 class ScoringMixin:
@@ -233,9 +234,9 @@ class ScoringMixin:
         their per-match average.
 
         When no matches have been played yet (round 0) and
-        ``initial_strength`` is set, strength values are returned instead
-        so that round-1 grouping and pairing respects pre-assigned
-        rankings.
+        ``initial_strength`` is set, the strengths stand in for scores so
+        that round-1 grouping and pairing respect them; see
+        :meth:`_strength_as_points`.
 
         The result is cached and invalidated by ``record_result`` since scores
         never change during proposal generation — avoiding hundreds of thousands
@@ -248,7 +249,7 @@ class ScoringMixin:
         initial = getattr(self, "initial_strength", None)
         max_played = max(self._matches_played.values()) if self._matches_played else 0
         if max_played == 0 and initial:
-            estimated = {pid: initial.get(pid, 0.0) for pid in self.scores}
+            estimated = self._strength_as_points(initial)
             self._est_cache = estimated
             return estimated
 
@@ -262,6 +263,23 @@ class ScoringMixin:
                 estimated[pid] = float(raw_score)
         self._est_cache = estimated
         return estimated
+
+    def _strength_as_points(self, initial: dict[str, float]) -> dict[str, float]:
+        """Turn ELO-scale strengths into the points each player expects per match.
+
+        ``skill_gap`` and the pairing balance are measured in match points, so
+        raw ratings (around 1000) would put almost every round-1 group over
+        the gap.  Each player instead gets ``total_points_per_match`` times
+        their ELO expected score against the field average: a 1200 player in
+        a 1000 field expects about 24 of 32 points.  Order is unchanged, and
+        the values are on the same scale as the scores after one round.
+        """
+        values = {pid: float(initial.get(pid, DEFAULT_RATING)) for pid in self.scores}
+        if not values:
+            return {}
+        mean = sum(values.values()) / len(values)
+        total = self.total_points_per_match
+        return {pid: total * compute_expected_score(v, mean) for pid, v in values.items()}
 
     # ------------------------------------------------------------------ #
     # Record results

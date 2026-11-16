@@ -110,7 +110,7 @@ test('the same page is served by path, and a signed-in player sees the leaderboa
   void headers;
   await page.goto(`/club/${c.slug}`);
   await expect(page.getByRole('heading', { level: 1, name: c.name })).toBeVisible();
-  // Any Player Hub session is enough to read the members-only leaderboard.
+  // A member's Player Hub session (Ana played here) reads the members-only leaderboard.
   const secrets = (
     await (
       await request.get(`/api/tournaments/${c.first}/player-secrets`, { headers: c.headers })
@@ -138,6 +138,39 @@ test('the same page is served by path, and a signed-in player sees the leaderboa
   await expect(page.getByRole('heading', { name: 'Leaderboard' })).toBeVisible();
   await chooseLanguage(page, 'Español');
   await expect(page.getByRole('heading', { name: 'Eventos' })).toBeVisible();
+});
+
+test('a signed-in player who is not a club member sees the page without the leaderboard', async ({
+  page,
+  request,
+}) => {
+  const c = await club(request);
+  // A Hub profile from an event outside this club.
+  const { id, headers } = await createTournament(request, 'mex', `Elsewhere board ${c.s}`);
+  const secrets = (
+    await (await request.get(`/api/tournaments/${id}/player-secrets`, { headers })).json()
+  ).players as Record<string, { name: string; passphrase: string }>;
+  const ana = Object.values(secrets).find((p) => p.name === 'Ana')!;
+  const profile = await (
+    await request.post('/api/player-profile', {
+      data: {
+        participant_passphrase: ana.passphrase,
+        name: 'Ana Outside',
+        email: `outside-${stamp()}@example.com`,
+      },
+    })
+  ).json();
+  const board = page.waitForResponse((r) => r.url().includes('/public-leaderboard'));
+  await page.goto(`/club/${c.slug}`);
+  await page.evaluate(
+    (token) => localStorage.setItem('padel-player-profile', token),
+    profile.access_token,
+  );
+  await page.reload();
+  expect((await board).status()).toBe(403);
+  await expect(page.getByRole('heading', { level: 1, name: c.name })).toBeVisible();
+  await expect(page.getByTestId('club-leaderboard')).toHaveCount(0);
+  await expect(page.getByText('Could not load', { exact: false })).toHaveCount(0);
 });
 
 test('an unknown club leads to the not-found page', async ({ page }) => {
@@ -202,24 +235,33 @@ test('a leaderboard row opens a card for that board sport only', async ({ page, 
       json: { padel: [row(1, 'Pala Pro', 'pp_pala')], tennis: [row(1, 'Net Ace', 'pp_net')] },
     }),
   );
-  await page.route('**/api/clubs/*/players/*/public-card*', (route) => {
+  await page.route('**/api/player-cards/*', (route) => {
     cardUrl = route.request().url();
     return route.fulfill({
       json: {
         profile_id: 'pp_pala',
         name: 'Pala Pro',
-        elo_padel: 1099,
-        elo_tennis: null,
-        matches_padel: 3,
-        matches_tennis: 0,
-        tier_name_padel: null,
-        tier_name_tennis: null,
-        rank_padel: 1,
-        rank_tennis: null,
+        scope: { kind: 'club', id: 'cl', label: 'Landing Club' },
+        sport: 'padel',
+        is_team: false,
+        members: [],
+        stats: [
+          {
+            sport: 'padel',
+            elo: 1099,
+            matches: 3,
+            wins: 2,
+            losses: 1,
+            draws: 0,
+            elo_history: [],
+            rank: 1,
+            tier_name: null,
+          },
+        ],
+        top_partners: [],
+        top_opponents: [{ name: 'Net Ace', profile_id: 'pp_net', matches: 2, wins: 1 }],
         recent_matches: [],
-        elo_history_padel: [1090, 1099],
-        elo_history_tennis: [],
-        scope: { sport: 'padel', season_id: null },
+        unlisted_matches: 0,
       },
     });
   });
@@ -227,12 +269,52 @@ test('a leaderboard row opens a card for that board sport only', async ({ page, 
   await page.evaluate(() => localStorage.setItem('padel-player-profile', 'any-session-is-mocked'));
   await page.reload();
   await page.getByRole('button', { name: 'Open profile for Pala Pro' }).first().click();
-  const card = page.getByTestId('club-player-card');
+  // The shared player card, locked to this club and to the board's sport.
+  const card = page.getByTestId('profile-player-card');
   await expect(card).toBeVisible();
+  expect(cardUrl).toContain(`club_id=${c.id}`);
   expect(cardUrl).toContain('sport=padel');
-  // Only the padel panel: no tennis panel on a padel card.
-  await expect(card.getByText('Padel', { exact: true })).toHaveCount(1);
-  await expect(card.getByText('Tennis', { exact: true })).toHaveCount(0);
+  await expect(card.getByTestId('card-scope-label')).toHaveText('Landing Club');
+  await expect(card.getByTestId('card-sport')).toHaveCount(1);
+  await expect(card.getByTestId('card-opponents')).toContainText('Net Ace');
+  await expect(page.getByRole('dialog').getByTestId('card-scope')).toHaveCount(0);
+});
+
+test('a signed-in visitor who is not a club member gets no player data on the card', async ({
+  page,
+  request,
+}) => {
+  const c = await club(request);
+  await page.route('**/api/clubs/*/public-leaderboard*', (route) =>
+    route.fulfill({
+      json: {
+        padel: [
+          {
+            rank: 1,
+            name: 'Pala Pro',
+            elo: 1099,
+            tier_name: null,
+            matches: 3,
+            profile_id: 'pp_pala',
+          },
+        ],
+        tennis: [],
+      },
+    }),
+  );
+  await page.route('**/api/player-cards/*', (route) =>
+    route.fulfill({
+      status: 403,
+      json: { detail: "Only club members and the club's organizers can open this card" },
+    }),
+  );
+  await page.goto(`/club/${c.slug}`);
+  await page.evaluate(() => localStorage.setItem('padel-player-profile', 'any-session-is-mocked'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Open profile for Pala Pro' }).first().click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByTestId('card-members-only')).toBeVisible();
+  await expect(dialog.getByTestId('profile-player-card')).toHaveCount(0);
 });
 
 test('the Player Hub on a club subdomain keeps to that club, profile page included', async ({

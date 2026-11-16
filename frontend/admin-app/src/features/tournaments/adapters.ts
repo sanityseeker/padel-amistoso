@@ -15,6 +15,8 @@ export interface MatchFlag {
 }
 export interface SideView {
   names: string[];
+  /** Participant ids in the order of `names` (a composed team is one id); absent when unknown. */
+  ids?: string[];
   score: number | null;
   games: number[] | null;
   win: boolean;
@@ -49,6 +51,7 @@ function sides(
   const lead = m.score ? Math.sign(m.score[0] - m.score[1]) : 0;
   const one = (key: 'team1' | 'team2', index: 0 | 1): SideView => ({
     names: m[key],
+    ids: key === 'team1' ? m.team1_ids : m.team2_ids,
     score: m.score?.[index] ?? null,
     games: m.sets?.map((s) => s[index]) ?? null,
     win: done && (index === 0 ? lead > 0 : lead < 0),

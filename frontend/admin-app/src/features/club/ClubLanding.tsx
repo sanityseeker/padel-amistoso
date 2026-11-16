@@ -4,8 +4,6 @@ import {
   Group,
   Image,
   Loader,
-  Modal,
-  Paper,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -23,9 +21,6 @@ import { formatType } from '../../api';
 import { ErrorState, Loading } from '../../components';
 import { publicApi, publicEventUrl, type PublicEvent } from '../../events/api';
 import { t as tx, useLocale } from '../../i18n';
-import { formatRoundLabel } from '../../roundLabel';
-import { formatSets } from '../../admin/tournament/scoring';
-import type { SetDecider } from '../../types';
 import { PLAYER_TOKEN, playerApi } from '../../player/api';
 import { sportProps } from '../../theme';
 import { EmptyState, EventCodeFinder, EventRow, SportMark, StatusBadge } from '../../ui';
@@ -33,6 +28,7 @@ import { hostClubSlug } from '../public/meta';
 import { StandingsTable, type StandingRow } from '../tournaments';
 import { Notice } from '../../ui/Notice';
 import { PageContainer } from '../../ui/PageContainer';
+import { ProfileCardModal, profileCardSource, type ProfileCardTarget } from '../playercard';
 
 interface Club {
   club_id: string;
@@ -127,7 +123,7 @@ function Rows({ items, hideSport }: { items: ClubEvent[]; hideSport: boolean }) 
               </StatusBadge>
               <Text size="xs" c="dimmed">
                 {event.kind === 'registration'
-                  ? tx(event.registrant_count === 1 ? '{n} signed up' : '{n} signed up', {
+                  ? tx('{n} registered', {
                       n: event.registrant_count || 0,
                     })
                   : formatType(event.type)}
@@ -149,7 +145,7 @@ function Rows({ items, hideSport }: { items: ClubEvent[]; hideSport: boolean }) 
 
 function useMember<T>(path: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['public', 'club', path, 'member'],
+    queryKey: ['player', 'club', path, 'member'],
     enabled,
     retry: false,
     queryFn: () => playerApi<T>(path, undefined, 'GET', profileJwt()),
@@ -157,139 +153,16 @@ function useMember<T>(path: string, enabled: boolean) {
 }
 
 // The card shows the one sport of the board it was opened from, and for a season board only that
-// season's matches, so its numbers agree with the row that was clicked.
-function PlayerCard({
-  clubId,
-  target,
-  onClose,
-}: {
-  clubId: string;
-  target: CardTarget | null;
-  onClose: () => void;
-}) {
-  useLocale();
-  const profileId = target?.profileId ?? null;
-  const sport = target?.sport ?? null;
-  const seasonId = target?.seasonId ?? null;
-  const card = useQuery({
-    queryKey: ['public', 'club', clubId, 'card', profileId, sport, seasonId],
-    enabled: !!profileId,
-    retry: false,
-    queryFn: () =>
-      playerApi<{
-        name: string;
-        [k: string]: unknown;
-        recent_matches?: {
-          sport?: string;
-          tournament_name?: string;
-          tournament_alias?: string;
-          round_label?: string;
-          team1: string[];
-          team2: string[];
-          score?: number[] | null;
-          sets?: [number, number][] | null;
-          decider?: SetDecider | null;
-          elo_delta: number | null;
-        }[];
-      }>(
-        `/clubs/${encodeURIComponent(clubId)}/players/${encodeURIComponent(profileId!)}/public-card?sport=${sport ?? 'all'}${seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : ''}`,
-        undefined,
-        'GET',
-        profileJwt(),
-      ),
-  });
-  const data = card.data;
-  const sports: Sport[] = sport ? [sport] : ['padel', 'tennis'];
-  return (
-    <Modal opened={!!profileId} onClose={onClose} size="lg" title={data?.name ?? tx('Loading')}>
-      {card.isPending && <Loader aria-label={tx('Loading')} />}
-      {card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
-      {data && (
-        <Stack gap="md" data-testid="club-player-card">
-          <SimpleGrid cols={{ base: 1, sm: sports.length }}>
-            {sports.map((sport) => {
-              const elo = data[`elo_${sport}`] as number | null;
-              return (
-                <Paper key={sport} p="sm" variant="row" {...sportProps(sport)}>
-                  <Stack gap={4}>
-                    <SportMark sport={sport} />
-                    {elo == null ? (
-                      <Text c="dimmed">—</Text>
-                    ) : (
-                      <Group gap="lg">
-                        {[
-                          [tx('ELO'), Number(elo).toFixed(1)],
-                          [
-                            tx('Rank'),
-                            data[`rank_${sport}`] == null
-                              ? '—'
-                              : `#${String(data[`rank_${sport}`])}`,
-                          ],
-                          [tx('Matches'), String(data[`matches_${sport}`] ?? 0)],
-                          ...(data[`tier_name_${sport}`]
-                            ? [[tx('Tier'), String(data[`tier_name_${sport}`])]]
-                            : []),
-                        ].map(([label, value]) => (
-                          <Stack key={label} gap={0}>
-                            <Text size="xs" c="dimmed">
-                              {label}
-                            </Text>
-                            <Text variant="score">{value}</Text>
-                          </Stack>
-                        ))}
-                      </Group>
-                    )}
-                  </Stack>
-                </Paper>
-              );
-            })}
-          </SimpleGrid>
-          <Text variant="eyebrow">{tx('Recent matches')}</Text>
-          {!data.recent_matches?.length && (
-            <Text c="dimmed" size="sm">
-              {seasonId ? tx('No matches in this season yet.') : tx('No matches yet.')}
-            </Text>
-          )}
-          {data.recent_matches?.map((m, i) => (
-            <Group key={i} justify="space-between" wrap="nowrap">
-              <Stack gap={0} miw={0}>
-                <Text size="xs" c="dimmed">
-                  {[
-                    m.tournament_alias || m.tournament_name,
-                    m.round_label && formatRoundLabel(m.round_label),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Text>
-                <Text size="sm">
-                  {m.team1.join(' / ')}{' '}
-                  <b>
-                    {m.sets?.length
-                      ? formatSets(m.sets, m.decider ?? 'full_set')
-                      : m.score?.length
-                        ? m.score.join(' – ')
-                        : tx('Vs')}
-                  </b>{' '}
-                  {m.team2.join(' / ')}
-                </Text>
-              </Stack>
-              {m.elo_delta != null && (
-                <Text
-                  fw={700}
-                  size="sm"
-                  c={m.elo_delta > 0 ? 'green' : m.elo_delta < 0 ? 'red' : 'dimmed'}
-                >
-                  {m.elo_delta > 0 ? '+' : ''}
-                  {Number(m.elo_delta).toFixed(1)}
-                </Text>
-              )}
-            </Group>
-          ))}
-        </Stack>
-      )}
-    </Modal>
-  );
-}
+// season's matches, so its numbers agree with the row that was clicked. It is the shared player card,
+// locked to this club (no scope switch), read with the profile session this page holds.
+const clubCardSource = profileCardSource(profileJwt);
+const cardTarget = (clubId: string, target: CardTarget | null): ProfileCardTarget | null =>
+  target && {
+    profileId: target.profileId,
+    query: `?club_id=${encodeURIComponent(clubId)}&sport=${target.sport}${
+      target.seasonId ? `&season_id=${encodeURIComponent(target.seasonId)}` : ''
+    }`,
+  };
 
 function Board({
   rows,
@@ -412,8 +285,10 @@ function Leaderboard({
     !global,
   );
   const active = global ? board : season;
-  // A rejected session behaves like a signed-out visitor: the section disappears.
-  if (active.error && (active.error as { status?: number }).status === 401) return null;
+  // A rejected session, or a visitor who is not a member of this club, behaves like a signed-out
+  // visitor: the section disappears (the board is for members and the club's organizers).
+  const denied = (active.error as { status?: number } | null)?.status;
+  if (denied === 401 || denied === 403) return null;
   const sports: Sport[] = sport ? [sport] : ['padel', 'tennis'];
   const rowsOf = (s: Sport): BoardRow[] => {
     const data = board.data;
@@ -474,7 +349,11 @@ function Leaderboard({
           ))}
         </SimpleGrid>
       )}
-      <PlayerCard clubId={club.club_id} target={card} onClose={() => setCard(null)} />
+      <ProfileCardModal
+        target={cardTarget(club.club_id, card)}
+        source={clubCardSource}
+        onClose={() => setCard(null)}
+      />
     </Stack>
   );
 }

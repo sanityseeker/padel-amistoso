@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Accordion,
   Group,
@@ -13,7 +13,10 @@ import {
 import { IconSearch, IconTrophy } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../../i18n';
 import type { Entry } from '../../../player/types';
-import { StatTile } from '../../../ui';
+import { PlayerName, StatTile } from '../../../ui';
+import { playerCardSource, ProfileCardModal, type ProfileCardTarget } from '../../playercard';
+import { usePlayerSpace } from '../context';
+import { scopedSportQuery } from './Leaderboard';
 import {
   bestResults,
   careerStats,
@@ -22,6 +25,7 @@ import {
   type ParticipantRow,
   type ParticipantSort,
   type Ranked,
+  type Sport,
 } from '../stats';
 
 /** "Champion", "3rd Place": the stored play-off stage, in the reader's language. */
@@ -36,23 +40,43 @@ const place = (rank: number) =>
         ? tx('3rd place')
         : tx('Place {rank}', { rank });
 
-const line = (rows: Ranked[]) => rows.map((r) => `${r.name} ${r.winPct}%`).join(', ');
+/** "Ana 100%, Luis 50%": a linked name opens that player's card when `onProfile` is given. */
+function line(rows: Ranked[], onProfile?: (profileId: string) => void) {
+  return rows.map((r, i) => (
+    <Fragment key={`${i}:${r.name}`}>
+      {i > 0 && ', '}
+      <PlayerName
+        name={r.name}
+        onOpen={onProfile && r.profileId ? () => onProfile(r.profileId!) : undefined}
+      />{' '}
+      {r.winPct}%
+    </Fragment>
+  ));
+}
 
 /** "Best teammates: Ana 100%, Luis 50%. Toughest rivals: ..." (top three of each). */
-export function SocialLine({ partners, rivals }: { partners: Ranked[]; rivals: Ranked[] }) {
+export function SocialLine({
+  partners,
+  rivals,
+  onProfile,
+}: {
+  partners: Ranked[];
+  rivals: Ranked[];
+  onProfile?: (profileId: string) => void;
+}) {
   useLocale();
   if (!partners.length && !rivals.length) return null;
   return (
     <Text size="sm" c="dimmed" data-testid="social-line">
       {partners.length > 0 && (
         <>
-          <b>{tx('Best teammates')}:</b> {line(partners)}
+          <b>{tx('Best teammates')}:</b> {line(partners, onProfile)}
         </>
       )}
       {partners.length > 0 && rivals.length > 0 && ' · '}
       {rivals.length > 0 && (
         <>
-          <b>{tx('Toughest rivals')}:</b> {line(rivals)}
+          <b>{tx('Toughest rivals')}:</b> {line(rivals, onProfile)}
         </>
       )}
     </Text>
@@ -159,6 +183,11 @@ export function CareerStats({ entries }: { entries: Entry[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
   const all = useMemo(() => careerStats(withStats), [entries]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A tap on a teammate or rival opens their card in the Hub's picked scope and that sport.
+  const { scopeQuery, sport: hubSport } = usePlayerSpace();
+  const [card, setCard] = useState<ProfileCardTarget | null>(null);
+  const open = (sport: Sport) => (profileId: string) =>
+    setCard({ profileId, query: scopedSportQuery(scopeQuery, sport) });
   if (all.tournaments === 0) return null;
   const finished = withStats.filter((e) => e.status === 'finished');
   return (
@@ -176,7 +205,11 @@ export function CareerStats({ entries }: { entries: Entry[] }) {
                 <Stack key={sport} gap="sm" data-sport={sport}>
                   <Text fw={650}>{tx(sport === 'tennis' ? 'Tennis' : 'Padel')}</Text>
                   <Totals stats={stats} />
-                  <SocialLine partners={stats.topPartners} rivals={stats.topRivals} />
+                  <SocialLine
+                    partners={stats.topPartners}
+                    rivals={stats.topRivals}
+                    onProfile={open(sport as Sport)}
+                  />
                   <Explorer rows={stats.participants} />
                 </Stack>
               );
@@ -185,12 +218,17 @@ export function CareerStats({ entries }: { entries: Entry[] }) {
         ) : (
           <Stack gap="sm">
             <Totals stats={all} />
-            <SocialLine partners={all.topPartners} rivals={all.topRivals} />
+            <SocialLine
+              partners={all.topPartners}
+              rivals={all.topRivals}
+              onProfile={open((bySport[0]?.[0] as Sport | undefined) ?? hubSport)}
+            />
             <Explorer rows={all.participants} />
           </Stack>
         )}
       </Paper>
       <BestResults entries={finished} bySport={bySport.length > 1} />
+      <ProfileCardModal target={card} source={playerCardSource} onClose={() => setCard(null)} />
     </Stack>
   );
 }

@@ -75,6 +75,25 @@ export interface GroupDraw {
   name: string;
   players: string[];
 }
+/** Strengths are on the ELO scale; a player without one starts here (the backend's DEFAULT_RATING). */
+export const DEFAULT_STRENGTH = 1000;
+
+/** A fixed team's strength, as the backend seeds it: 0.4 × stronger + 0.6 × weaker for a pair. */
+export function teamStrength(values: number[]): number {
+  if (!values.length) return DEFAULT_STRENGTH;
+  if (values.length === 2) {
+    const [low, high] = [Math.min(...values), Math.max(...values)];
+    return 0.4 * high + 0.6 * low;
+  }
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+/**
+ * How a new tournament is seeded: `elo` prefills each linked player's club or community rating (any
+ * value can be edited), `manual` uses only the strengths typed in, `none` seeds nothing.
+ */
+export type Seeding = 'elo' | 'manual' | 'none';
+
 export function drawGroups(
   names: string[],
   groupNames: string[],
@@ -83,7 +102,8 @@ export function drawGroups(
   const count = Math.max(1, groupNames.length);
   const rated = !!strengths && Object.keys(strengths).length > 0;
   const order = [...names];
-  if (rated) order.sort((a, b) => (strengths![b] ?? 0) - (strengths![a] ?? 0));
+  if (rated)
+    order.sort((a, b) => (strengths![b] ?? DEFAULT_STRENGTH) - (strengths![a] ?? DEFAULT_STRENGTH));
   else
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));

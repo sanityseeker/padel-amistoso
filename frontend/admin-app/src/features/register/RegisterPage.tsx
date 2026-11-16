@@ -155,8 +155,7 @@ function SignUp({
     <Stack gap="md">
       <Group gap="xs">
         <Badge variant="light" size="lg" data-testid="registrant-count">
-          {lobby.registrant_count}{' '}
-          {tx(lobby.registrant_count === 1 ? 'player registered' : 'players registered')}
+          {tx('{n} registered', { n: lobby.registrant_count })}
         </Badge>
       </Group>
       {lobby.description && <Markdown source={lobby.description} />}

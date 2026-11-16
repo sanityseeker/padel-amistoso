@@ -35,7 +35,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from backend.models import GPPhase, Match
-from backend.tournaments.elo import DEFAULT_RATING, EloUpdate, compute_match_elo_updates
+from backend.tournaments.elo import DEFAULT_RATING, EloUpdate, compute_match_elo_updates, team_rating
 
 from .db import get_db
 from .elo_integration import (
@@ -181,6 +181,26 @@ def get_club_starting_elos(club_id: str, sport: str, pid_to_profile: dict[str, s
     return {pid: by_profile[prof] for pid, prof in pid_to_profile.items() if prof in by_profile}
 
 
+def get_starting_ratings(
+    pid_to_profile: dict[str, str],
+    sport: str,
+    community_id: str,
+    club_id: str | None,
+) -> dict[str, float]:
+    """``{player_id: rating}`` a linked player starts a new tournament from.
+
+    The club rating in a club tournament, else the community rating (with the
+    global fallback of :func:`get_profile_starting_elos`).  Players without a
+    linked profile or without any rating are omitted.
+    """
+    if not pid_to_profile:
+        return {}
+    elos = get_profile_starting_elos(pid_to_profile, community_id, sport)
+    if club_id:
+        elos.update(get_club_starting_elos(club_id, sport, pid_to_profile))
+    return elos
+
+
 def resolve_initial_strengths(
     player_ids: Collection[str],
     manual: dict[str, float] | None,
@@ -188,26 +208,32 @@ def resolve_initial_strengths(
     sport: str,
     community_id: str,
     club_id: str | None,
+    seeding: str = "elo",
 ) -> dict[str, float] | None:
     """Seed strengths for a new tournament: manual first, then club / community ELO.
 
-    ELO seeding applies when some player is linked to a profile and lacks a
-    manual strength.  Those players are seeded from their club rating (in a
-    club tournament), else their community rating; everyone else without a
-    manual strength — unlinked or unrated — starts at ``DEFAULT_RATING`` so
-    they do not land below every rated player.  Otherwise (no linked player,
-    or all manual) the manual strengths are returned unchanged (``None`` if
-    empty).
+    Strengths are on the ELO scale.  With ``seeding="elo"`` a player without a
+    manual strength is seeded from their club rating (in a club tournament),
+    else their community rating; ``"manual"`` uses only the given strengths
+    and ``"none"`` seeds nothing.  Everyone else — unlinked, unrated or left
+    blank — starts at ``DEFAULT_RATING`` so they do not land below every rated
+    player.  Returns ``None`` when nobody has a strength (the draw stays random).
     """
+    if seeding == "none":
+        return None
     manual = dict(manual or {})
     needs_elo = [pid for pid in player_ids if pid not in manual]
-    linked = {pid: prof for pid, prof in pid_to_profile.items() if prof and pid in set(needs_elo)}
-    if not linked:
-        return manual or None
-    elos = get_profile_starting_elos(linked, community_id, sport)
-    if club_id:
-        elos.update(get_club_starting_elos(club_id, sport, linked))
+    wanted = set(needs_elo)
+    linked = {pid: prof for pid, prof in pid_to_profile.items() if prof and pid in wanted}
+    elos = get_starting_ratings(linked, sport, community_id, club_id) if seeding == "elo" else {}
+    if not manual and not elos:
+        return None
     return {**{pid: elos.get(pid, DEFAULT_RATING) for pid in needs_elo}, **manual}
+
+
+def team_strength(strengths: dict[str, float], member_ids: Collection[str]) -> float:
+    """A fixed team's strength (ELO scale) from its members'; see :func:`team_rating`."""
+    return team_rating([strengths.get(mid, DEFAULT_RATING) for mid in member_ids])
 
 
 def get_tournament_display_elos(tournament_id: str, sport: str) -> dict[str, float]:

@@ -169,6 +169,25 @@ def reliability(matches_played: int) -> float:
     return RELIABILITY_BASELINE + (1.0 - RELIABILITY_BASELINE) * matches_played / RELIABILITY_THRESHOLD
 
 
+TEAM_STRONGER_WEIGHT = 0.4
+"""Share of the stronger partner in a two-player team's strength; the weaker one gets the rest."""
+
+
+def team_rating(ratings: list[float]) -> float:
+    """A fixed team's strength from its members' ratings.
+
+    Two players: ``0.4 × stronger + 0.6 × weaker``, since the weaker partner
+    limits a pair more than the stronger one lifts it.  One player keeps their
+    rating; larger teams use the mean.  An empty team gets ``DEFAULT_RATING``.
+    """
+    if not ratings:
+        return DEFAULT_RATING
+    if len(ratings) == 2:
+        low, high = sorted(ratings)
+        return TEAM_STRONGER_WEIGHT * high + (1.0 - TEAM_STRONGER_WEIGHT) * low
+    return sum(ratings) / len(ratings)
+
+
 def compute_expected_score(rating_a: float, rating_b: float) -> float:
     """Classic ELO expected score for player A vs player B."""
     return 1.0 / (1.0 + 10.0 ** ((rating_b - rating_a) / 400.0))

@@ -1,4 +1,4 @@
-import { Fragment, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useState, type CSSProperties } from 'react';
 import { ActionIcon, Skeleton, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import { IconChevronDown, IconId, IconUserMinus } from '@tabler/icons-react';
@@ -31,6 +31,8 @@ export interface StandingRow {
   pointDiff?: number;
   /** Extra line shown in the expanded row (for example a tier name). */
   note?: string;
+  /** The row has no card to open (a leaderboard row without a profile). */
+  noCard?: boolean;
 }
 
 export interface StandingsTableProps {
@@ -52,6 +54,8 @@ export interface StandingsTableProps {
   onSelect?: (row: StandingRow) => void;
   /** The tournament scores these matches in sets (its score mode). Sets in the rows also count. */
   sets?: boolean;
+  /** Reports the keys of the columns the table shows at its current width (a legend lists only those). */
+  onColumns?: (keys: string[]) => void;
 }
 
 type NumKey =
@@ -283,6 +287,7 @@ export function StandingsTable({
   eloLabel,
   onSelect,
   sets,
+  onColumns,
 }: StandingsTableProps) {
   useLocale();
   // Columns drop out by the table's own width (a narrow side pane, a phone), not the viewport's.
@@ -298,6 +303,11 @@ export function StandingsTable({
   );
   // A hidden phone summary repeats wider columns, and a shown one already says what it covers.
   const covered = new Set(visible.flatMap((c) => c.covers ?? []));
+  const shownKeys = visible.map((c) => c.key).join(' ');
+  const measured = width > 0;
+  useEffect(() => {
+    if (measured) onColumns?.(shownKeys.split(' '));
+  }, [onColumns, shownKeys, measured]);
   const hidden = all.filter((c) => !visible.includes(c) && !c.max && !covered.has(c.key));
   const hasDetail = (r: StandingRow) =>
     !board && (hidden.some((c) => c.get(r) != null) || !!r.note);
@@ -438,7 +448,7 @@ export function StandingsTable({
                               aria-hidden
                             />
                           </UnstyledButton>
-                        ) : onSelect && !r.removed ? (
+                        ) : onSelect && !r.removed && !r.noCard ? (
                           // Where the name does not expand the row, it opens the player's card too.
                           <UnstyledButton
                             className={classes.toggle}
@@ -450,7 +460,7 @@ export function StandingsTable({
                         ) : (
                           <NameText name={r.name} withdrawn={r.withdrawn} />
                         )}
-                        {onSelect && !r.removed && (
+                        {onSelect && !r.removed && !r.noCard && (
                           <ActionIcon
                             size="sm"
                             variant="subtle"

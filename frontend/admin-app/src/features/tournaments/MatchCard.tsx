@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Badge, Group, Paper, Skeleton, Stack, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../../i18n';
 import { formatRoundLabel, queueRoundLabel } from '../../roundLabel';
-import { ScoreDigits, StatusBadge } from '../../ui';
+import { PlayerNames, ScoreDigits, StatusBadge } from '../../ui';
 import { tiebreakOf, type MatchView, type SideView } from './adapters';
 import classes from './MatchCard.module.css';
 
@@ -13,11 +13,13 @@ function Side({
   view,
   tv,
   hideScore,
+  onPlayer,
 }: {
   side: SideView;
   view: MatchView;
   tv: boolean;
   hideScore?: boolean;
+  onPlayer?: (id: string, name: string) => void;
 }) {
   return (
     <div
@@ -32,7 +34,11 @@ function Side({
         fz={tv ? 'var(--fs-tv-lg)' : undefined}
         miw={0}
       >
-        {side.names.join(' & ') || tx('To be decided')}
+        {side.names.length ? (
+          <PlayerNames names={side.names} ids={side.ids} onPlayer={onPlayer} />
+        ) : (
+          tx('To be decided')
+        )}
         {side.isYou && (
           <Badge ml={6} size="xs" variant="outline" component="span">
             {tx('You')}
@@ -79,6 +85,8 @@ export interface MatchCardProps {
   queueLabels?: boolean;
   /** Spectator lists: a scheduled match of the signed-in player, tinted and labelled "Your match". */
   yours?: boolean;
+  /** A tap on a player's name opens their card (the participant id and the name shown). */
+  onPlayer?: (id: string, name: string) => void;
 }
 
 // One match: meta line, two sides with scoreboard numerals, one action. Used in the admin match
@@ -98,6 +106,7 @@ export function MatchCard({
   courts = true,
   queueLabels = false,
   yours,
+  onPlayer,
 }: MatchCardProps) {
   useLocale();
   const tv = density === 'tv';
@@ -156,8 +165,20 @@ export function MatchCard({
           </Group>
         )}
         <Stack gap={2} miw={0} className={classes.sides}>
-          <Side side={match.sides[0]} view={match} tv={tv} hideScore={hideScores} />
-          <Side side={match.sides[1]} view={match} tv={tv} hideScore={hideScores} />
+          <Side
+            side={match.sides[0]}
+            view={match}
+            tv={tv}
+            hideScore={hideScores}
+            onPlayer={onPlayer}
+          />
+          <Side
+            side={match.sides[1]}
+            view={match}
+            tv={tv}
+            hideScore={hideScores}
+            onPlayer={onPlayer}
+          />
         </Stack>
         {children && <div className={classes.extra}>{children}</div>}
         {!editor && actions && <div className={classes.actions}>{actions}</div>}

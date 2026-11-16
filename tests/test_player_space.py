@@ -30,6 +30,19 @@ def _lb_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {create_profile_token('lb-viewer')}"}
 
 
+def _lb_club_headers(club_id: str) -> dict[str, str]:
+    """Auth headers of a profile on *club_id*'s roster: a club board is for its members only."""
+    from backend.api.db import get_db
+
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO profile_club_elo (profile_id, club_id, sport, elo, matches, hidden)"
+            " VALUES ('lb-viewer', ?, 'padel', 1000, 0, 0)",
+            (club_id,),
+        )
+    return _lb_headers()
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
@@ -954,7 +967,7 @@ class TestGetPlayerSpace:
         assert clubs[club_id]["elo_padel"] == 1015
         assert clubs[club_id]["matches_padel"] == 3
 
-        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_headers())
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_club_headers(club_id))
         assert res.status_code == 200
         assert [(e["name"], e["elo"], e["matches"]) for e in res.json()["padel"]] == [("Unrostered", 1015, 3)]
 
@@ -3984,7 +3997,7 @@ class TestLeaderboard:
                     (tid_other, f"ao-{idx}", pid_alice_other, idx + 1, elo, elo - 1000.0, now),
                 )
 
-        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_headers())
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_club_headers(club_id))
         assert res.status_code == 200
         padel = res.json()["padel"]
         names = [entry["name"] for entry in padel]
@@ -4050,7 +4063,7 @@ class TestLeaderboard:
                     (tid_tier, f"h-{idx}", pid_hidden, idx + 1, elo, elo - 1000.0, now),
                 )
 
-        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_headers())
+        res = client.get(f"/api/player-profile/leaderboard?club_id={club_id}", headers=_lb_club_headers(club_id))
         assert res.status_code == 200
         padel = res.json()["padel"]
         assert [entry["name"] for entry in padel] == ["Visible Tier"]

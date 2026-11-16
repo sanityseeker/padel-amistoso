@@ -127,6 +127,7 @@ async def create_playoff(req: CreatePlayoffRequest, request: Request, user=Depen
         req.sport.value,
         req.community_id,
         req.club_id,
+        req.seeding,
     )
 
     try:

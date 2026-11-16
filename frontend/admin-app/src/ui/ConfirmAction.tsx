@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Alert, Button, Stack, Text } from '@mantine/core';
+import { Button, Stack, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../i18n';
 import { FormActions } from './FormActions';
+import { MutationError } from './MutationError';
 import { ResponsiveSheet } from './ResponsiveSheet';
 
 // The one confirmation dialog for state-advancing or destructive actions. Menus, shortcuts and the
@@ -33,7 +34,7 @@ export function ConfirmAction({
   return (
     <ResponsiveSheet opened={opened} onClose={onClose} title={title ?? ''}>
       <Stack>
-        {error && <Alert color="red">{tx(error.message)}</Alert>}
+        <MutationError error={error} />
         {description && (
           <Text size="sm" component="div">
             {description}

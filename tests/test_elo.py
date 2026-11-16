@@ -7,6 +7,7 @@ import pytest
 from backend.models import Match, MatchStatus, Player, SetDecider
 from backend.tournaments.elo import (
     DEFAULT_RATING,
+    team_rating,
     MIN_DELTA_WIN,
     RELIABILITY_BASELINE,
     RELIABILITY_THRESHOLD,
@@ -571,3 +572,16 @@ class TestScoreFormat:
         assert new - 1400 == pytest.approx(MIN_DELTA_WIN)
         lost = compute_1v1_update(1000, 1400, (12, 13), 50, weight=0.1)
         assert lost - 1000 == pytest.approx(-MIN_DELTA_WIN)
+
+
+class TestTeamRating:
+    def test_pair_weights_the_weaker_partner_more(self):
+        assert team_rating([1400, 1000]) == pytest.approx(0.4 * 1400 + 0.6 * 1000)
+        assert team_rating([1000, 1400]) == pytest.approx(1160)
+
+    def test_single_player_keeps_rating_and_empty_team_gets_default(self):
+        assert team_rating([1234]) == 1234
+        assert team_rating([]) == DEFAULT_RATING
+
+    def test_balanced_pair_beats_lopsided_pair_with_same_sum(self):
+        assert team_rating([1200, 1200]) > team_rating([1500, 900])

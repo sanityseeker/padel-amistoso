@@ -131,7 +131,9 @@ def scoped_log_cte(
     Callers append their own ``SELECT ... FROM scoped_log``.  Columns:
     ``profile_id, tournament_id, player_id, sport, match_id, is_manual,
     elo_before, elo_after, elo_delta, match_order, updated_at, match_payload,
-    adjustment_reason, adjusted_by, tournament_name, tournament_alias``.
+    adjustment_reason, adjusted_by, tournament_name, tournament_alias,
+    tournament_public`` (``0`` for an unlisted tournament, ``NULL`` for a
+    deleted one or a club manual row).
 
     A log row belongs to a profile through ``player_secrets`` / ``player_history``
     on ``(tournament_id, player_id)``; manual club adjustments (whose
@@ -175,7 +177,8 @@ def scoped_log_cte(
             l.match_id AS match_id, l.is_manual AS is_manual, {elo_cols},
             l.match_order AS match_order, l.updated_at AS updated_at, l.match_payload AS match_payload,
             l.adjustment_reason AS adjustment_reason, l.adjusted_by AS adjusted_by,
-            COALESCE(t.name, mc.name) AS tournament_name, t.alias AS tournament_alias"""
+            COALESCE(t.name, mc.name) AS tournament_name, t.alias AS tournament_alias,
+            t.public AS tournament_public"""
 
     where: list[str] = []
     where_params: list = []
@@ -295,7 +298,7 @@ def scoped_recent_logs(
         SELECT tournament_id, sport, match_id, player_id, match_order,
                elo_before, elo_after, elo_delta, match_payload,
                updated_at, tournament_name, tournament_alias,
-               is_manual, adjustment_reason, adjusted_by
+               is_manual, adjustment_reason, adjusted_by, tournament_public
           FROM ranked
          WHERE rn <= ?
       ORDER BY updated_at DESC, match_order DESC

@@ -133,6 +133,8 @@ def invalidate_leaderboard_cache(club_id: str | None = None) -> None:
         invalidate_mini_card_cache()
     else:
         invalidate_mini_card_cache(("club", club_id))
+        # Profile cards of a club scope follow the same rows (tiers, hidden sports, manual ratings).
+        invalidate_mini_card_cache(("profile",))
 
 
 # ---------------------------------------------------------------------------
@@ -194,3 +196,13 @@ def etag_for(payload: Any) -> str:
     raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
     digest = hashlib.md5(raw, usedforsecurity=False).hexdigest()
     return f'"{digest[:16]}"'
+
+
+def invalidate_cards_after_scope_change() -> None:
+    """Drop player cards after a tournament's listing, club or community changes.
+
+    Profile cards hide unlisted events' rows and the legacy club card hides
+    their aliases, so a card built before the change must not outlive it.
+    """
+    invalidate_mini_card_cache(("profile",))
+    invalidate_mini_card_cache(("club",))

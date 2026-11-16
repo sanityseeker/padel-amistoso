@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { StatusBadge } from '../../ui/StatusBadge';
 import {
   ActionIcon,
@@ -33,6 +33,7 @@ import { BracketImage } from './BracketImage';
 import { ctxOf, isTbd, sortTbdLast, type Breakdown, type TvLive, type TvMeta } from './model';
 import type { useTvPlayer } from './useTvPlayer';
 import { Section, type OpenState } from './TvSection';
+import type { CardStage } from '../playercard';
 import classes from './Tv.module.css';
 import { EmptyState } from '../../ui/EmptyState';
 import { Notice } from '../../ui/Notice';
@@ -49,51 +50,54 @@ const ENDPOINT: Record<Ctx, string> = {
 
 // ---- Column legend --------------------------------------------------------------------------------------
 
-type LegendRow = [abbrev: string, full: string, context?: string];
+type LegendRow = [key: string, abbrev: string, full: string, context?: string];
 
 // `sets`: the table counts games (PF/PA read as games won/lost) and ranks by game difference, so the
 // legend names the same columns the table shows. `draws`: the phone record column reads W–L–D.
+// `columns`: the column keys the table shows at its width (StandingsTable `onColumns`); the legend
+// lists only those, so a phone's W–L record is not explained next to W and L it does not show.
 function Legend({
   kind,
   sets = false,
   draws = false,
+  columns,
 }: {
   kind: 'standings' | 'leaderboard' | 'double';
   sets?: boolean;
   draws?: boolean;
+  columns?: string[];
 }) {
   useLocale();
-  // A phone shows one W–L record column instead of W and L; it is listed at every width, since the
-  // popover cannot tell which columns the table shows.
   const record: LegendRow[] = [
-    ['P', 'Matches played'],
-    ['W', 'Matches won'],
-    ['L', 'Matches lost'],
-    draws ? ['W–L–D', 'Wins, losses and draws'] : ['W–L', 'Wins and losses'],
+    ['played', 'P', 'Matches played'],
+    ['wins', 'W', 'Matches won'],
+    ['losses', 'L', 'Matches lost'],
+    draws ? ['record', 'W–L–D', 'Wins, losses and draws'] : ['record', 'W–L', 'Wins and losses'],
   ];
   const scoring: LegendRow[] = sets
     ? [
-        ['SW', 'Sets won'],
-        ['SL', 'Sets lost'],
-        ['SD', 'Set difference'],
-        ['PF', 'Points for', 'games'],
-        ['PA', 'Points against', 'games'],
-        ['GD', 'Game difference'],
+        ['setsWon', 'SW', 'Sets won'],
+        ['setsLost', 'SL', 'Sets lost'],
+        ['setsDiff', 'SD', 'Set difference'],
+        ['pf', 'PF', 'Points for', 'games'],
+        ['pa', 'PA', 'Points against', 'games'],
+        ['diff', 'GD', 'Game difference'],
       ]
     : [
-        ['PF', 'Points for'],
-        ['PA', 'Points against'],
-        ['PD', 'Point difference'],
+        ['pf', 'PF', 'Points for'],
+        ['pa', 'PA', 'Points against'],
+        ['diff', 'PD', 'Point difference'],
       ];
-  const rows: LegendRow[] =
+  const all: LegendRow[] =
     kind === 'standings'
       ? [...record, ...scoring]
       : [
-          ['Pts', 'Total points'],
+          ['points', 'Pts', 'Total points'],
           ...record,
-          ['Avg', 'Average points per match'],
-          ['Bh', 'Buchholz tie-break'],
+          ['avg', 'Avg', 'Average points per match'],
+          ['buchholz', 'Bh', 'Buchholz tie-break'],
         ];
+  const rows = columns ? all.filter(([key]) => columns.includes(key)) : all;
   return (
     <Popover width={320} position="bottom-end" shadow="md" withinPortal>
       <Popover.Target>
@@ -131,8 +135,8 @@ function Legend({
           <Stack gap="xs">
             <Table withRowBorders={false} verticalSpacing={2}>
               <Table.Tbody>
-                {rows.map(([abbrev, full, context]) => (
-                  <Table.Tr key={abbrev}>
+                {rows.map(([key, abbrev, full, context]) => (
+                  <Table.Tr key={key}>
                     <Table.Td fw={700}>{tx(abbrev, { context })}</Table.Td>
                     {/* `abbr` descriptions start with the abbreviation's letter; most keys have none. */}
                     <Table.Td>{tx(full, { context: context ?? 'abbr' })}</Table.Td>
@@ -176,7 +180,7 @@ interface Scope {
   player: Player;
   split: boolean;
   scoring: (ctx: Ctx) => ScoringData;
-  onCard: (id: string) => void;
+  onCard: (id: string, stage?: CardStage) => void;
 }
 
 function TvMatch({
@@ -229,6 +233,7 @@ function TvMatch({
       courts={usesCourts(live.status)}
       queueLabels
       yours={playing && pending && !court}
+      onPlayer={(id) => scope.onCard(id)}
       footer={
         <>
           {footer}
@@ -657,6 +662,16 @@ function PastMatches({
 
 // ---- Standings ------------------------------------------------------------------------------------------
 
+/** The columns a standings table shows, for its legend; every table in a section has the same width. */
+function useShownColumns() {
+  const [columns, setColumns] = useState<string[]>();
+  const onColumns = useCallback(
+    (keys: string[]) => setColumns((cur) => (cur && cur.join(' ') === keys.join(' ') ? cur : keys)),
+    [],
+  );
+  return [columns, onColumns] as const;
+}
+
 function standingsRows(rows: Standing[]) {
   return toStandingRows(rows);
 }
@@ -685,12 +700,13 @@ function GroupStandings({
   const setsMode = live.settings.score_mode?.['gp-group'] === 'sets';
   // The same test StandingsTable uses to switch to set columns.
   const sets = setsMode || all.some((r) => (r.setsWon ?? 0) > 0 || (r.setsLost ?? 0) > 0);
+  const [columns, onColumns] = useShownColumns();
   return (
     <Section
       id="standings"
       title={title ?? tx('Group standings')}
       state={state}
-      info={<Legend kind="standings" sets={sets} draws={hasDraws(all)} />}
+      info={<Legend kind="standings" sets={sets} draws={hasDraws(all)} columns={columns} />}
     >
       <div className={classes.groups}>
         {groups.map(([name, rows]) => (
@@ -707,7 +723,8 @@ function GroupStandings({
               highlightId={highlight}
               nameLabel={teams ? tx('Team') : undefined}
               eloLabel={meta && status.elo_scope === 'club' ? tx('Club ELO') : undefined}
-              onSelect={(row) => scope.onCard(row.id)}
+              onSelect={(row) => scope.onCard(row.id, 'group')}
+              onColumns={onColumns}
             />
             {(status.withdrawals ?? [])
               .filter((w) => w.kind === 'annul' && w.group === name)
@@ -740,12 +757,13 @@ function Leaderboard({
   const status = live.status;
   const teams = Object.keys(status.team_roster ?? {}).length > 0;
   const rows = standingsRows(status.leaderboard ?? []);
+  const [columns, onColumns] = useShownColumns();
   return (
     <Section
       id="standings"
       title={tx('Leaderboard')}
       state={state}
-      info={<Legend kind="leaderboard" draws={hasDraws(rows)} />}
+      info={<Legend kind="leaderboard" draws={hasDraws(rows)} columns={columns} />}
     >
       <StandingsTable
         rows={rows}
@@ -754,7 +772,8 @@ function Leaderboard({
         highlightId={highlight}
         nameLabel={teams ? tx('Team') : undefined}
         eloLabel={status.elo_scope === 'club' ? tx('Club ELO') : undefined}
-        onSelect={(row) => scope.onCard(row.id)}
+        onSelect={(row) => scope.onCard(row.id, 'rounds')}
+        onColumns={onColumns}
       />
     </Section>
   );
@@ -877,7 +896,7 @@ export function TvBoard({
   meta: TvMeta;
   live: TvLive;
   player: Player;
-  onCard: (id: string) => void;
+  onCard: (id: string, stage?: CardStage) => void;
   /** Presentation mode shows one section at a time. */
   only?: string;
 }) {

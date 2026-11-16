@@ -8,6 +8,7 @@ export { FormActions } from './FormActions';
 export { PageHeader, PageLink, TopBarAction, TopBarTitleContext } from './PageHeader';
 export { Notice, type NoticeProps, type NoticeTone } from './Notice';
 export { PageContainer } from './PageContainer';
+export { PlayerName, PlayerNames } from './PlayerName';
 export { PaymentAction, type PaymentActionProps, type PaymentTone } from './PaymentAction';
 export { OverflowMenu, type OverflowItem } from './OverflowMenu';
 export { ResponsiveSheet } from './ResponsiveSheet';

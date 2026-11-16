@@ -32,7 +32,7 @@ import { followTournament, TOURNAMENT_UPDATE_EVENT } from '../../shell/followTou
 import { sportProps } from '../../theme';
 import { copyText, StatusBadge } from '../../ui';
 import { Announcements, OrganizerInfo } from '../public/OrganizerNotes';
-import { PlayerCardModal } from './PlayerCardModal';
+import { PlayerCardModal, type CardStage } from '../playercard';
 import { Champions, sectionKeys, TvBoard } from './TvBoard';
 import { Section, useOpenState } from './TvSection';
 import { HubInvite, TvPlayerBar } from './TvPlayerBar';
@@ -175,7 +175,7 @@ function Tv({ slug }: { slug: string }) {
     return () => window.clearInterval(timer);
   }, [present, sections.length]);
   const only = present && sections.length > 0 ? sections[step % sections.length].key : undefined;
-  const [card, setCard] = useState<string | null>(null);
+  const [card, setCard] = useState<{ id: string; stage?: CardStage } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
   const countdown = useCountdown(live.dataUpdatedAt, mode);
 
@@ -275,7 +275,14 @@ function Tv({ slug }: { slug: string }) {
             <Tooltip label={tx('Tap to copy the page link')}>
               <UnstyledButton
                 className={classes.chip}
-                onClick={() => void copyText(window.location.href, tx('Link copied'))}
+                onClick={() =>
+                  // The short public address: the alias when one is set, never the id the page was
+                  // opened by, and never the query string (it can carry a player's entry token).
+                  void copyText(
+                    `${window.location.origin}/tv/${encodeURIComponent(slugLabel)}`,
+                    tx('Link copied'),
+                  )
+                }
                 aria-label={tx('Copy the page link')}
                 miw={0}
               >
@@ -361,7 +368,7 @@ function Tv({ slug }: { slug: string }) {
             meta={meta}
             live={data}
             player={player}
-            onCard={setCard}
+            onCard={(id, stage) => setCard({ id, stage })}
             only={only}
           />
         )}
@@ -386,7 +393,14 @@ function Tv({ slug }: { slug: string }) {
           </Group>
         )}
       </Stack>
-      {tid && <PlayerCardModal tid={tid} playerId={card} onClose={closeCard} />}
+      {tid && (
+        <PlayerCardModal
+          tid={tid}
+          playerId={card?.id ?? null}
+          stage={card?.stage}
+          onClose={closeCard}
+        />
+      )}
     </Box>
   );
 }

@@ -13,6 +13,7 @@ from ..models import Court, Match, POPhase, Player
 from . import live_courts
 from . import withdrawal as wd
 from .court_preferences import CourtPlan, clean_preferences, espejo_scope_of
+from .elo import DEFAULT_RATING, team_rating
 from .errors import MatchClearBlocked, WithdrawalBlocked
 from .playoff import (
     DoubleEliminationBracket,
@@ -77,11 +78,11 @@ class PlayoffTournament:
         self.team_mode = team_mode
         self.initial_strength = initial_strength
 
-        # Sort teams by combined initial strength for proper seeding.
+        # Sort teams by their initial strength (ELO scale, see team_rating) for seeding.
         if initial_strength:
             teams = sorted(
                 teams,
-                key=lambda t: sum(initial_strength.get(p.id, 0.0) for p in t),
+                key=lambda t: team_rating([initial_strength.get(p.id, DEFAULT_RATING) for p in t]),
                 reverse=True,
             )
             self.original_teams = list(teams)

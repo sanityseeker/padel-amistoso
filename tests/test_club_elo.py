@@ -423,10 +423,10 @@ class TestClubSeeding:
         _tier(client, auth_headers, "km", alice, 1400)
         rid = _lobby_in_club(client, auth_headers, "km", names)
         _link_registrant(rid, "Alice", alice)
-        seeds = _convert(client, auth_headers, rid, names, player_strengths={"Alice": 5, "Bob": 3})
-        assert seeds["Alice"][1] == 5 and seeds["Bob"][1] == 3
-        # The only linked player has a manual strength: no ELO seeding is in play.
-        assert seeds["Carol"][1] is None
+        seeds = _convert(client, auth_headers, rid, names, player_strengths={"Alice": 1250, "Bob": 1100})
+        assert seeds["Alice"][1] == 1250 and seeds["Bob"][1] == 1100
+        # Strengths are on the ELO scale: players without one start at the default.
+        assert seeds["Carol"][1] == 1000
 
     def test_all_manual_or_unlinked_tournaments_are_unchanged(self, client, auth_headers):
         r = client.post(
@@ -456,6 +456,73 @@ class TestClubSeeding:
         t = state_mod._tournaments[r.json()["id"]]["tournament"]
         by_name = {p.name: t.initial_strength[p.id] for p in t.players}
         assert by_name == {"Alice": 1350, "Bob": 1000, "Carol": 1000, "Dave": 1000}
+
+    def _create_linked(self, client, auth_headers, club: str, alice: str, **extra):
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={
+                "player_names": ["Alice", "Bob", "Carol", "Dave"],
+                "court_names": ["C1"],
+                "num_rounds": 1,
+                "club_id": club,
+                "player_profile_ids": {"Alice": alice},
+                **extra,
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        t = state_mod._tournaments[r.json()["id"]]["tournament"]
+        return {p.name: (t.initial_strength or {}).get(p.id) for p in t.players}
+
+    def test_seeding_manual_ignores_linked_ratings(self, client, auth_headers):
+        _make_club("ksm")
+        alice = _insert_profile("Alice")
+        _tier(client, auth_headers, "ksm", alice, 1350)
+        seeds = self._create_linked(
+            client, auth_headers, "ksm", alice, seeding="manual", player_strengths={"Bob": 1200}
+        )
+        assert seeds == {"Alice": 1000, "Bob": 1200, "Carol": 1000, "Dave": 1000}
+
+    def test_seeding_none_skips_ratings_and_strengths(self, client, auth_headers):
+        _make_club("ksn")
+        alice = _insert_profile("Alice")
+        _tier(client, auth_headers, "ksn", alice, 1350)
+        seeds = self._create_linked(client, auth_headers, "ksn", alice, seeding="none", player_strengths={"Bob": 1200})
+        assert set(seeds.values()) == {None}
+
+    def test_starting_ratings_endpoint_matches_seeding(self, client, auth_headers):
+        _make_club("ksr")
+        alice, bob = _insert_profile("Alice"), _insert_profile("Bob")
+        _tier(client, auth_headers, "ksr", alice, 1350)
+        r = client.post(
+            "/api/tournaments/starting-ratings",
+            json={"sport": "padel", "club_id": "ksr", "profile_ids": [alice, bob]},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json() == {"ratings": {alice: 1350}}
+
+    def test_fixed_team_strength_weights_the_weaker_member(self, client, auth_headers):
+        r = client.post(
+            "/api/tournaments/mexicano",
+            json={
+                "player_names": ["A", "B", "C", "D"],
+                "teams": [["A", "B"], ["C", "D"]],
+                "team_mode": True,
+                "court_names": ["C1"],
+                "num_rounds": 1,
+                "player_strengths": {"A": 1400, "B": 1000, "C": 1200, "D": 1200},
+            },
+            headers=auth_headers,
+        )
+        assert r.status_code == 200, r.text
+        t = state_mod._tournaments[r.json()["id"]]["tournament"]
+        by_team = {p.name: t.initial_strength[p.id] for p in t.players}
+        assert sorted(by_team.values()) == pytest.approx([1160, 1200])
+
+    def test_starting_ratings_needs_login(self, client):
+        r = client.post("/api/tournaments/starting-ratings", json={"profile_ids": []})
+        assert r.status_code == 401
 
 
 class TestClubScopedHubEntries:

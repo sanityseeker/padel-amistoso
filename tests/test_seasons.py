@@ -13,10 +13,14 @@ from backend.api.db import get_db
 
 
 def _member_headers() -> dict[str, str]:
-    """Auth headers of a signed-in Player Hub profile (members-only rating data)."""
-    from backend.auth.security import create_profile_token
+    """Auth headers that may read season standings: the admin organizes every club.
 
-    return {"Authorization": f"Bearer {create_profile_token('member-viewer')}"}
+    Standings are for club members and organizers; the access rule itself is
+    covered in ``test_scoped_player_card.py``.
+    """
+    from backend.auth.security import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token('admin')}"}
 
 
 @pytest.fixture()

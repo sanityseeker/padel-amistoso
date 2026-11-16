@@ -249,6 +249,56 @@ test('the Hub bottom navigation on a phone has the Hub sections', async ({ page,
   ).toBeTruthy();
 });
 
+test('a Ratings leaderboard row and a result name open the player card', async ({
+  page,
+  request,
+}) => {
+  const { id, headers, match, profile } = await setup(request, 'Board card');
+  expect(
+    (
+      await request.post(`/api/tournaments/${id}/mex/record`, {
+        headers,
+        data: { match_id: match.id, score1: 14, score2: 10 },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  await openHub(page, profile.access_token);
+  await page.goto('/player/ratings');
+  // Ana's own row has a profile; unlinked participants' rows open nothing.
+  // The shared test database has many players called Ana: take the signed-in player's own row.
+  await page
+    .locator('tr[data-self]')
+    .getByRole('button', { name: 'Open profile for Ana', exact: true })
+    .click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('profile-player-card')).toBeVisible();
+  await expect(card.getByTestId('card-scope-label')).toHaveText('All events');
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(card).toBeHidden();
+  // A name in the recent results opens that player's card from the event.
+  await page.getByTestId('elo-row').getByTestId('player-name').first().click();
+  await expect(page.getByRole('dialog').getByTestId('tv-player-card')).toBeVisible();
+  await expect(page.getByRole('dialog').getByTestId('card-no-profile')).toBeVisible();
+});
+
+test('a club board the player may not see shows a members-only line, not an error', async ({
+  page,
+  request,
+}) => {
+  const { profile } = await setup(request, 'Board gate');
+  await page.route('**/api/player-profile/leaderboard*', (route) =>
+    route.fulfill({
+      status: 403,
+      json: { detail: "Only club members and the club's organizers can see this" },
+    }),
+  );
+  await openHub(page, profile.access_token);
+  await page.goto('/player/ratings');
+  await expect(page.getByTestId('board-members-only')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+});
+
 test('the community picker heads every Hub page and the sport choice carries across them', async ({
   page,
   request,
