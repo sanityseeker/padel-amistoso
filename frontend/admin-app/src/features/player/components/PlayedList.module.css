@@ -52,7 +52,7 @@
 .main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 .names {
@@ -65,7 +65,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   column-gap: var(--mantine-spacing-md);
-  font-size: var(--mantine-font-size-sm);
+  /* Names at body size: they open the player's card, so they should read (and tap) easily. */
+  font-size: var(--mantine-font-size-md);
   color: var(--color-text-muted);
 }
 .side[data-outcome='win'] {

@@ -277,3 +277,16 @@ class TestWalkoverAndFreshness:
             assert m["elo_delta"] is not None and m["elo_after"] is not None
             assert card["elo_delta_total"] == pytest.approx(m["elo_delta"], abs=0.1)
             assert card["elo_history"] == [pytest.approx(m["elo_after"], abs=0.1)]
+
+    def test_total_change_ignores_the_order_matches_were_scored(self, client, auth_headers) -> None:
+        """Later rounds scored first: the total is still the sum of each match's change."""
+        tid = _gp_teams(client, auth_headers)
+        matches = _group_matches(client, tid)
+        for i, m in enumerate(reversed(matches)):
+            _rec_group(client, auth_headers, tid, m["id"], 6, 2 + i % 4)
+        for team in _team_ids(tid):
+            card = _card(client, tid, team)
+            deltas = [m["elo_delta"] for m in card["recent_matches"]]
+            assert len(deltas) == 3 and None not in deltas
+            assert card["elo_delta_total"] == pytest.approx(sum(deltas), abs=0.15)
+            assert card["stats"]["all"]["elo_delta"] == card["elo_delta_total"]

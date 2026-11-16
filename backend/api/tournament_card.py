@@ -99,6 +99,9 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
               ORDER BY updated_at ASC, match_order ASC""",
             (tid, *rated_ids),
         ).fetchall()
+    # ``_seq`` keeps the order the ratings were applied in, which can differ from bracket order
+    # (a later round scored first, a corrected score replayed).
+    log_rows = [{**dict(r), "_seq": i} for i, r in enumerate(log_rows)]
     by_match: dict[str, dict[str, Any]] = {}
     for r in log_rows:
         by_match.setdefault(r["match_id"], {})[r["player_id"]] = r
@@ -158,7 +161,8 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
     for s in stages:
         stats[s] = stats_of([e for e in entries if e["stage"] == s])
 
-    elo_history = [e["elo_after"] for e in entries if e["elo_after"] is not None]
+    rated = sorted((e for e in entries if e["_rows"]), key=lambda e: min(r["_seq"] for r in e["_rows"]))
+    elo_history = [e["elo_after"] for e in rated if e["elo_after"] is not None]
     starts = [d for d in (_member_start(entries, pid) for pid in rated_ids) if d is not None]
     starting = _mean(starts)
 
@@ -167,7 +171,7 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
     def current_elo(pid: str, rows: list[dict[str, Any]]) -> float | None:
         if club and display.get(pid) is not None:
             return _round1(display[pid])
-        last = [float(r["elo_after"]) for r in rows if r["elo_after"] is not None]
+        last = [float(r["elo_after"]) for r in sorted(rows, key=lambda r: r["_seq"]) if r["elo_after"] is not None]
         if last:
             return round(last[-1], 1)
         return _round1(display.get(pid)) if is_team else None
@@ -222,8 +226,9 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
     }
 
 
-def _member_rows(entries: list[dict[str, Any]], pid: str) -> list[Any]:
-    return [r for e in entries for r in e["_rows"] if r["player_id"] == pid]
+def _member_rows(entries: list[dict[str, Any]], pid: str) -> list[dict[str, Any]]:
+    """*pid*'s rating rows in *entries*, in the order the ratings were applied."""
+    return sorted((r for e in entries for r in e["_rows"] if r["player_id"] == pid), key=lambda r: r["_seq"])
 
 
 def _member_start(entries: list[dict[str, Any]], pid: str) -> float | None:
@@ -232,8 +237,14 @@ def _member_start(entries: list[dict[str, Any]], pid: str) -> float | None:
 
 
 def _member_delta(entries: list[dict[str, Any]], pid: str) -> float | None:
-    """Rating change of *pid* over *entries* (last rating after minus first before)."""
-    rows = _member_rows(entries, pid)
-    firsts = [float(r["elo_before"]) for r in rows if r["elo_before"] is not None]
-    lasts = [float(r["elo_after"]) for r in rows if r["elo_after"] is not None]
-    return lasts[-1] - firsts[0] if firsts and lasts else None
+    """Rating change of *pid* over *entries*: the sum of each match's own change.
+
+    Summing (not last-after minus first-before) stays right when *entries* is one stage whose
+    matches were rated between another stage's, or in a different order than the bracket.
+    """
+    deltas = [
+        float(r["elo_after"]) - float(r["elo_before"])
+        for r in _member_rows(entries, pid)
+        if r["elo_before"] is not None and r["elo_after"] is not None
+    ]
+    return sum(deltas) if deltas else None
