@@ -223,7 +223,8 @@ test('the Hub event page keeps the group stage under the play-offs, with its tab
   await page.goto(`/player/matches/tournament/${id}`);
   const earlier = page.getByTestId('event-earlier-stage');
   await expect(earlier).toBeVisible();
-  await expect(earlier.getByRole('heading', { name: 'Group stage', level: 2 })).toBeVisible();
+  // The stage title is the collapsible section's header, just outside the stage's content.
+  await expect(page.getByRole('heading', { name: 'Group stage', level: 2 })).toBeVisible();
   await expect(earlier.getByRole('heading', { name: 'Group standings' })).toBeVisible();
   await expect(earlier.getByRole('table').first()).toBeVisible();
   await expect(earlier.getByTestId('player-match').first()).toBeVisible();

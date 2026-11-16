@@ -504,12 +504,16 @@ test('the bracket picture is drawn in the page and follows the theme', async ({
   request,
 }) => {
   const { id } = await createTournament(request, 'po', `Bracket theme ${stamp()}`);
-  const textFill = () =>
-    page
+  // Team names use the text colour; TBD slots, losers and titles are muted, so look for a name's
+  // colour among all the texts instead of taking one fixed text.
+  const textFill = async () => {
+    const body = await bodyText();
+    const fills = await page
       .getByTestId('tv-bracket')
       .locator('svg text')
-      .last()
-      .evaluate((el) => getComputedStyle(el).fill);
+      .evaluateAll((els) => els.map((el) => getComputedStyle(el).fill));
+    return fills.find((fill) => fill === body) ?? fills[0];
+  };
   const bodyText = () => page.evaluate(() => getComputedStyle(document.body).color);
 
   await page.addInitScript(() => localStorage.setItem('amistoso-theme', 'light'));
