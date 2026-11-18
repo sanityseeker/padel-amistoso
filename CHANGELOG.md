@@ -1,3 +1,9 @@
+## v3.12.1 (2026-11-18)
+
+### Fix
+
+- community rating summary of club ELO changes from played matches
+
 ## v3.12.0 (2026-11-18)
 
 ### Feat
