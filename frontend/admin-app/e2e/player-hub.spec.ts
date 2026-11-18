@@ -64,6 +64,8 @@ async function openHub(page: Page, token: string) {
   );
   await page.goto(`/player#token=${encodeURIComponent(token)}`);
   await space;
+  // A later page.goto reloads the app: wait until the session is stored, or it lands on the sign-in screen.
+  await page.waitForFunction(() => !!localStorage.getItem('padel-player-profile'));
 }
 
 test('signed-out deep links return to the requested Hub page after login', async ({
