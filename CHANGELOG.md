@@ -1,3 +1,9 @@
+## v3.12.2 (2026-11-19)
+
+### Fix
+
+- e2e Hub helper waits for the stored session before reloading
+
 ## v3.12.1 (2026-11-18)
 
 ### Fix
