@@ -1,3 +1,9 @@
+## v3.11.3 (2026-11-18)
+
+### Fix
+
+- club ELO replays in played order, language code on display button, own name not a link
+
 ## v3.11.2 (2026-11-16)
 
 ### Fix
