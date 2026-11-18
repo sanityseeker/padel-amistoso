@@ -34,8 +34,11 @@ from .rating_scope import RatingScope, scoped_log_cte
 CardScopeKind = Literal["event", "club", "season", "community", "all"]
 
 OPEN_COMMUNITY_ID = "open"
-# Newest matches listed on a card; the numbers always cover the whole scope.
-RECENT_MATCHES_LIMIT = 20
+# Newest matches listed on a card (the ``limit`` query parameter); the numbers always cover the
+# whole scope.  The UI offers 10, 25 and "all"; "all" asks for the hard cap, which keeps the
+# payload and the cache bounded however long a player's history is.
+HISTORY_DEFAULT_LIMIT = 10
+HISTORY_HARD_CAP = 500
 # Rating points drawn by the trend line.
 ELO_HISTORY_LIMIT = 40
 TOP_COUNTERPARTS = 3
@@ -55,6 +58,8 @@ class CardMember(BaseModel):
     player_id: str
     name: str
     has_profile: bool
+    # Pair card only: the member's own rating in the card's scope (ratings belong to the players).
+    elo: float | None = None
 
 
 class CardCounterpart(BaseModel):
@@ -120,8 +125,13 @@ class ScopedPlayerCard(BaseModel):
     top_partners: list[CardCounterpart] = []
     top_opponents: list[CardCounterpart] = []
     recent_matches: list[CardMatch] = []
+    # Listed matches before the ``limit`` cut: the UI offers a longer history only when this exceeds 10.
+    recent_total: int = 0
     # Matches of unlisted events: counted in ``stats`` but not listed.
     unlisted_matches: int = 0
+    # A team card whose two members both have profiles: ``stats``, ``top_opponents`` and
+    # ``recent_matches`` are the record of this pair playing together (no pair rating).
+    pair: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +329,12 @@ def _hidden_in_club(conn, profile_id: str, club_id: str, sport: str) -> bool:
     return bool(row and row["hidden"])
 
 
+def club_hides(profile_id: str, club_id: str, sport: str) -> bool:
+    """Whether the club hides *sport* for *profile_id* (its card there is then 404 for most viewers)."""
+    with get_db() as conn:
+        return _hidden_in_club(conn, profile_id, club_id, sport)
+
+
 def build_scoped_card(
     profile_id: str,
     scope: RatingScope,
@@ -326,6 +342,7 @@ def build_scoped_card(
     *,
     show_unlisted: bool,
     include_hidden: bool = False,
+    limit: int = HISTORY_DEFAULT_LIMIT,
 ) -> ScopedPlayerCard:
     """Build (uncached) the card of *profile_id* within *scope*.
 
@@ -334,7 +351,7 @@ def build_scoped_card(
     ``routes_clubs.viewer_can_see_unlisted``) lists unlisted events of a
     community or global scope; otherwise they only count in the numbers.
     The caller checks the club gate (``routes_clubs.require_club_card_access``).
-    *include_hidden* is for the player's own card only: it keeps the sports
+    *include_hidden* is for the player and the club's organizers: it keeps the sports
     (or the whole membership) the club hides for them.
     """
     hide_unlisted = scope.kind in ("community", "global") and not show_unlisted
@@ -452,7 +469,8 @@ def build_scoped_card(
         stats=[by_sport[s] for s in sorted(by_sport, key=lambda s: (s != "padel", s))],
         top_partners=_top(partners),
         top_opponents=_top(opponents),
-        recent_matches=recent[:RECENT_MATCHES_LIMIT],
+        recent_matches=recent[:limit],
+        recent_total=len(recent),
         unlisted_matches=unlisted,
     )
 
@@ -482,5 +500,116 @@ def _apply_club_board(profile_id: str, scope: RatingScope, by_sport: dict[str, C
 
 
 def team_card(name: str, option: CardScopeOption, sport: str | None, members: list[CardMember]) -> ScopedPlayerCard:
-    """A composed team in a wider scope: ratings belong to its members, so the card lists them."""
+    """A composed team whose pair has no shared history to show (a member has no profile)."""
     return ScopedPlayerCard(name=name, scope=option, sport=sport, is_team=True, members=members)
+
+
+def _mean_delta(logs: Iterable[dict[str, Any]]) -> float | None:
+    values = [float(log["elo_delta"]) for log in logs if log.get("elo_delta") is not None]
+    return round(sum(values) / len(values), 1) if values else None
+
+
+def build_pair_card(
+    name: str,
+    profile_a: str,
+    profile_b: str,
+    scope: RatingScope,
+    option: CardScopeOption,
+    members: list[CardMember],
+    *,
+    show_unlisted: bool,
+    limit: int = HISTORY_DEFAULT_LIMIT,
+) -> ScopedPlayerCard:
+    """Build (uncached) the record of two profiles playing together within *scope*.
+
+    A match counts when both profiles took part in it on the same side, in any
+    event of the scope (a composed team, or partners in a Mexicano round).
+    Visibility is the individual card's: unlisted events of a community or
+    global scope count in the numbers but are not listed unless *show_unlisted*
+    (the caller decides it for both members).  The pair has no rating of its own.
+    """
+    hide_unlisted = scope.kind in ("community", "global") and not show_unlisted
+    with get_db() as conn:
+        cte, params = scoped_log_cte(scope, profile_ids=[profile_a, profile_b])
+        logs = [
+            dict(r)
+            for r in conn.execute(
+                f"""{cte}
+                SELECT * FROM scoped_log WHERE is_manual = 0 ORDER BY updated_at ASC, match_order ASC""",
+                params,
+            ).fetchall()
+        ]
+        # ``{(tournament, match): {profile: log row}}`` of the matches both members rated in.
+        together: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
+        for log in logs:
+            together.setdefault((log["tournament_id"], log["match_id"]), {})[log["profile_id"]] = log
+        pairs: set[tuple[str, str]] = set()
+        shared: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for rows in together.values():
+            if profile_a not in rows or profile_b not in rows:
+                continue
+            log_a, log_b = rows[profile_a], rows[profile_b]
+            payload = load_payload(log_a["match_payload"])
+            side = _side_of(payload, log_a["player_id"])
+            if side is None or side != _side_of(payload, log_b["player_id"]):
+                continue
+            shared.append((log_a, log_b))
+            opposing = payload.get("team2" if side == 1 else "team1") or []
+            pairs.update((log_a["tournament_id"], p["player_id"]) for p in opposing if p.get("player_id"))
+        linked = _linked_profiles(conn, pairs) if pairs else {}
+
+    shared.sort(key=lambda row: (row[0]["updated_at"] or "", row[0]["match_order"] or 0))
+    by_sport: dict[str, CardSportStats] = {}
+    round_cache: dict[str, dict[str, tuple[int, str]]] = {}
+    shown: list[dict[str, Any]] = []
+    unlisted = 0
+    opponents: dict[str, dict[str, Any]] = {}
+    for log_a, log_b in shared:
+        entry = match_entry_from_log(log_a, round_cache)
+        stats = by_sport.setdefault(log_a["sport"], CardSportStats(sport=log_a["sport"]))
+        stats.matches += 1
+        outcome = entry["outcome"]
+        if outcome == "W":
+            stats.wins += 1
+        elif outcome == "L":
+            stats.losses += 1
+        elif outcome == "D":
+            stats.draws += 1
+        if hide_unlisted and log_a.get("tournament_public") == 0:
+            unlisted += 1
+            continue
+        payload = entry["_payload"]
+        other_key = "team2" if entry["side"] == 1 else "team1"
+        entry["partners"] = []  # the partner is the other member
+        entry["partner_profiles"] = []
+        entry["opponent_profiles"] = [
+            linked.get((log_a["tournament_id"], p.get("player_id"))) if p.get("player_id") else None
+            for p in payload.get(other_key) or []
+        ]
+        entry["elo_delta"] = _mean_delta([log_a, log_b])
+        entry["elo_before"] = entry["elo_after"] = None
+        shown.append(entry)
+        for p, profile in zip(payload.get(other_key) or [], entry["opponent_profiles"], strict=True):
+            name_ = p.get("player_name") or ""
+            ident = f"p:{profile}" if profile else f"n:{name_.strip().lower()}"
+            if ident == "n:":
+                continue
+            row = opponents.setdefault(ident, {"name": name_, "profile_id": profile, "matches": 0, "wins": 0})
+            row["name"] = name_ or row["name"]
+            row["matches"] += 1
+            row["wins"] += 1 if outcome == "W" else 0
+
+    recent = [CardMatch(**{k: v for k, v in e.items() if k in CardMatch.model_fields}) for e in reversed(shown)]
+    return ScopedPlayerCard(
+        name=name,
+        scope=option,
+        sport=scope.sport,
+        is_team=True,
+        members=members,
+        stats=[by_sport[s] for s in sorted(by_sport, key=lambda s: (s != "padel", s))],
+        top_opponents=_top(opponents),
+        recent_matches=recent[:limit],
+        recent_total=len(recent),
+        unlisted_matches=unlisted,
+        pair=True,
+    )

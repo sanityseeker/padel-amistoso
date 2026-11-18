@@ -436,7 +436,7 @@ class TestLegacyFields:
             "elo_history",
         }
         assert legacy <= set(body)
-        assert set(body) - legacy <= {"is_team", "members", "stages", "stats", "has_profile"}
+        assert set(body) - legacy <= {"is_team", "members", "stages", "stats", "has_profile", "recent_total"}
 
     def test_club_card_keeps_its_shape(self, client, world) -> None:
         res = client.get(
@@ -710,6 +710,22 @@ class TestOwnCardException:
         assert _scopes(client, tid, pid, _profile_headers("pp_ann")) == ["event", "club"]
         res = client.get(f"/api/tournaments/{tid}/players/{pid}/card?scope=club", headers=_profile_headers("pp_ann"))
         assert res.status_code == 200, res.text
+
+    def test_organizer_opens_a_hidden_players_club_card(self, client, auth_headers, world) -> None:
+        # The club tab was offered to the organizer, then the card itself was a 404 ("Could not load player").
+        tid, pid = _club_event(client, auth_headers, world)
+        self._remove_ann_from_club_a(world)
+        assert _scopes(client, tid, pid, auth_headers) == ["event", "club"]
+        res = client.get(f"/api/tournaments/{tid}/players/{pid}/card?scope=club", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        card = _card(client, f"?club_id={world['club_a']}&sport=padel", headers=auth_headers)
+        assert card["stats"][0]["matches"] == 2
+
+    def test_member_is_not_offered_a_club_card_the_club_hides(self, client, auth_headers, world) -> None:
+        tid, pid = _club_event(client, auth_headers, world)
+        self._remove_ann_from_club_a(world)
+        # As for a viewer outside the club: the event's community is the wider scope.
+        assert _scopes(client, tid, pid, _profile_headers(VIEWER)) == ["event", "community"]
 
 
 # ---------------------------------------------------------------------------

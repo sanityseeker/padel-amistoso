@@ -703,6 +703,70 @@ test('a finished team event keeps team cards with matches and a stage switch', a
   await expect(card.getByTestId('tv-card-match')).toHaveCount(3);
 });
 
+test('a team card widens to the record of the pair together, not a member list', async ({
+  page,
+  request,
+}) => {
+  const headers = await adminHeaders(request);
+  const s = `${Date.now()}`;
+  const community = await (
+    await request.post('/api/communities', { headers, data: { name: `Pair community ${s}` } })
+  ).json();
+  const { id } = await createTournament(request, 'gp', `Pair ${s}`, {
+    community_id: community.id,
+    team_mode: true,
+    teams: [
+      ['Ana', 'Beto'],
+      ['Carla', 'Diego'],
+      ['Elena', 'Fabio'],
+      ['Gala', 'Hugo'],
+    ],
+    num_groups: 1,
+    top_per_group: 2,
+  });
+  const { session, playerId } = await profileFor(request, id, 'Ana', 'pair-a');
+  await profileFor(request, id, 'Beto', 'pair-b');
+  const status = await (await request.get(`/api/tournaments/${id}/gp/status`)).json();
+  const team = Object.entries(status.team_roster as Record<string, string[]>).find(([, members]) =>
+    members.includes(playerId),
+  )![0];
+  const groups = await (await request.get(`/api/tournaments/${id}/gp/groups`)).json();
+  for (const m of Object.values(groups.matches).flat() as Match[]) {
+    const mine = m.team2_ids.includes(team);
+    expect(
+      (
+        await request.post(`/api/tournaments/${id}/gp/record-group`, {
+          headers,
+          data: { match_id: m.id, score1: mine ? 2 : 6, score2: mine ? 6 : 2 },
+        })
+      ).ok(),
+    ).toBeTruthy();
+  }
+  await page.setViewportSize(DESKTOP);
+  await openHub(page, session.access_token);
+  await page.goto(`/player/matches/tournament/${id}`);
+  await page
+    .getByTestId('event-standings')
+    .getByRole('button', { name: 'Ana & Beto', exact: true })
+    .click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-card-members')).toContainText('Beto');
+  await card.getByTestId('card-scope').getByText(`Pair community ${s}`).click();
+  const pair = card.getByTestId('scoped-player-card');
+  await expect(pair).toHaveAttribute('data-pair', '');
+  await expect(pair.getByTestId('card-team-member')).toHaveCount(2);
+  await expect(pair.getByTestId('tv-card-match')).toHaveCount(3);
+  await expect(pair.getByTestId('card-opponents')).toBeVisible();
+  await expect(pair).toContainText('Record together');
+  await expect(pair).not.toContainText('Ratings belong');
+  // Three matches: no length choice. A member's name opens their own card; Back returns to the pair.
+  await expect(card.getByTestId('history-limit')).toHaveCount(0);
+  await pair.getByTestId('card-team-member').getByRole('button', { name: 'Beto' }).click();
+  await expect(card.getByTestId('scoped-player-card')).not.toHaveAttribute('data-pair', '');
+  await card.getByTestId('card-back').click();
+  await expect(card.getByTestId('scoped-player-card')).toHaveAttribute('data-pair', '');
+});
+
 test('a finished event leads with its final standings', async ({ page, request }) => {
   const { id, headers } = await createTournament(request, 'mex', `Final ${Date.now()}`);
   const matches = await (await request.get(`/api/tournaments/${id}/mex/matches`)).json();

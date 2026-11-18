@@ -46,6 +46,8 @@ interface StageStats {
 interface EventMember {
   player_id: string;
   name: string;
+  /** Whether this player has a profile (a wider team card needs both). */
+  has_profile?: boolean;
   elo: number | null;
   /** Rating change per scope: `all` or a stage. */
   elo_delta: Record<string, number | null>;
@@ -65,6 +67,8 @@ export interface EventCard {
   draws?: number;
   losses: number;
   recent_matches?: CardMatch[];
+  /** Matches there are to list (the list holds the newest `limit` of them). */
+  recent_total?: number;
   /** A wider card can exist; which scopes this viewer may open comes from `/card-scopes`. */
   has_profile?: boolean;
 }
@@ -93,10 +97,15 @@ export interface ScopedCard {
   scope: ScopeOption;
   sport: string | null;
   is_team: boolean;
-  members: { player_id: string; name: string; has_profile: boolean }[];
+  /** A pair card also carries each member's own rating in the scope. */
+  members: { player_id: string; name: string; has_profile: boolean; elo?: number | null }[];
   stats: SportStats[];
   top_partners: Counterpart[];
   top_opponents: Counterpart[];
   recent_matches: CardMatch[];
+  /** Matches there are to list (the list holds the newest `limit` of them). */
+  recent_total: number;
   unlisted_matches: number;
+  /** A team whose members both have profiles: `stats`, `top_opponents` and `recent_matches` are the pair's record together. */
+  pair?: boolean;
 }

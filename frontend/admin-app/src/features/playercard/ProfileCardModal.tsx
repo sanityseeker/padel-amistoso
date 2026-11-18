@@ -1,6 +1,6 @@
 import { Loader, Stack, Text } from '@mantine/core';
 import { t as tx, useLocale } from '../../i18n';
-import { ResponsiveSheet } from '../../ui';
+import { ResponsiveSheet, useHistoryLimit } from '../../ui';
 import { CardError, scopeLabel, ScopedCardBody, useScopedCard } from './ScopedCard';
 import type { CardSource } from './source';
 import { BackButton, useTrail } from './trail';
@@ -26,11 +26,13 @@ export function ProfileCardModal({
   useLocale();
   // A partner's or opponent's name opens their card here, in the same scope.
   const trail = useTrail<string>(target);
+  const [limit, setLimit] = useHistoryLimit();
   const profileId = trail.top ?? target?.profileId;
   const card = useScopedCard(
     source,
     ['profile', profileId, target?.query],
     target && profileId ? `/player-cards/${encodeURIComponent(profileId)}${target.query}` : null,
+    limit,
   );
   const data = card.data;
   return (
@@ -50,6 +52,7 @@ export function ProfileCardModal({
           </Text>
           <ScopedCardBody
             card={data}
+            history={{ limit, onChange: setLimit }}
             onProfile={(id) => id !== data.profile_id && trail.open(id)}
           />
         </Stack>

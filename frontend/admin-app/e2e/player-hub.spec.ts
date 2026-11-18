@@ -282,6 +282,72 @@ test('a Ratings leaderboard row and a result name open the player card', async (
   await expect(page.getByRole('dialog').getByTestId('card-no-profile')).toBeVisible();
 });
 
+test('a player card lists 10 matches and offers 25 or all when there are more', async ({
+  page,
+  request,
+}) => {
+  const { id, headers, match, profile } = await setup(request, 'Card length');
+  expect(
+    (
+      await request.post(`/api/tournaments/${id}/mex/record`, {
+        headers,
+        data: { match_id: match.id, score1: 14, score2: 10 },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  const requested: string[] = [];
+  await page.route('**/api/player-cards/**', async (route) => {
+    const url = new URL(route.request().url());
+    const limit = Number(url.searchParams.get('limit') ?? '10');
+    requested.push(url.searchParams.get('limit') ?? '');
+    const all = Array.from({ length: 30 }, (_, i) => ({
+      tournament_name: `Event ${i}`,
+      sport: 'padel',
+      score: [6, 2],
+      sets: [],
+      team1: ['Ana'],
+      team2: ['Zoe'],
+      side: 1,
+      outcome: 'W',
+      elo_delta: 1,
+      partners: [],
+      opponents: ['Zoe'],
+      partner_profiles: [],
+      opponent_profiles: [null],
+    }));
+    await route.fulfill({
+      json: {
+        profile_id: 'p1',
+        name: 'Ana',
+        scope: { kind: 'all', id: null, label: '' },
+        sport: null,
+        is_team: false,
+        members: [],
+        stats: [],
+        top_partners: [],
+        top_opponents: [],
+        recent_matches: all.slice(0, limit),
+        recent_total: all.length,
+        unlisted_matches: 0,
+      },
+    });
+  });
+  await openHub(page, profile.access_token);
+  await page.goto('/player/ratings');
+  await page
+    .locator('tr[data-self]')
+    .getByRole('button', { name: 'Open profile for Ana', exact: true })
+    .click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(10);
+  const limit = card.getByTestId('history-limit');
+  await limit.getByText('25', { exact: true }).click();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(25);
+  await limit.getByText('All', { exact: true }).click();
+  await expect(card.getByTestId('tv-card-match')).toHaveCount(30);
+  expect(requested).toEqual(expect.arrayContaining(['10', '25', '500']));
+});
+
 test('a club board the player may not see shows a members-only line, not an error', async ({
   page,
   request,

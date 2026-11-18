@@ -8,8 +8,9 @@ import asyncio
 
 import json
 import time
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -67,10 +68,17 @@ from .schemas import (
 )
 from . import state
 from .state import _delete_tournament, _tournaments, save_tournament
-from .club_elo import deferred_club_elo, elo_scope, get_starting_ratings, recompute_club_elo
+from .club_elo import (
+    deferred_club_elo,
+    elo_scope,
+    get_starting_ratings,
+    recompute_club_elo,
+    start_tournament_from_club_ratings,
+)
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
 from .leaderboard_cache import etag_for, get_mini_card_cached, invalidate_cards_after_scope_change
+from .player_card import HISTORY_DEFAULT_LIMIT, HISTORY_HARD_CAP
 from .tournament_card import build_tournament_player_card
 from .routes_announcements import list_announcements
 from .routes_admin_players import (
@@ -396,13 +404,22 @@ async def set_public(tid: str, req: SetPublicRequest, user: User = Depends(get_c
 
 
 @router.post("/{tid}/elo/recalculate")
-async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> dict:
+async def recalculate_elo(
+    tid: str,
+    from_club_ratings: bool = Query(default=False),
+    user: User = Depends(get_current_user),
+) -> dict:
     """Recalculate one tournament's ELO from all completed matches.
 
     Linked players are re-seeded from the cumulative result of their earlier
     tournaments (ELO continuity), and each profile is then rebuilt from its
     chronologically-latest tournament, so recalculating an older event never
     overwrites a newer one.  Restricted to the tournament owner or site admins.
+
+    With ``from_club_ratings`` (club tournaments), tier and manual club ratings
+    set after the tournament began apply from its start, so its club matches
+    are re-rated from them (see
+    :func:`.club_elo.start_tournament_from_club_ratings`).
     """
     _require_owner_or_admin(tid, user)
     async with state.get_tournament_lock(tid):
@@ -411,6 +428,7 @@ async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> d
             raise HTTPException(404, "Tournament not found")
 
         sport = data.get("sport", "padel")
+        moved = start_tournament_from_club_ratings(tid) if from_club_ratings else 0
         # elo_recalculate_tournament re-seeds from earlier tournaments and rebuilds
         # the affected profiles from their latest tournament internally.
         elo_recalculate_tournament(tid)
@@ -420,7 +438,7 @@ async def recalculate_elo(tid: str, user: User = Depends(get_current_user)) -> d
 
         elos = get_tournament_elos(tid, sport)
 
-    return {"ok": True, "recalculated": True, "players_with_elo": len(elos)}
+    return {"ok": True, "recalculated": True, "players_with_elo": len(elos), "club_ratings_applied": moved}
 
 
 @router.post("/elo/recalculate-all")
@@ -533,6 +551,8 @@ async def get_tournament_player_public_card(
     player_id: str,
     request: Request,
     response: Response,
+    limit: int = Query(HISTORY_DEFAULT_LIMIT, ge=1, le=HISTORY_HARD_CAP),
+    stage: Literal["group", "rounds", "playoff"] | None = None,
 ) -> dict | Response:
     """Public mini-card for a player WITHIN a single tournament.
 
@@ -548,8 +568,8 @@ async def get_tournament_player_public_card(
         raise HTTPException(404, "Tournament not found")
 
     payload = get_mini_card_cached(
-        ("tournament", tid, player_id),
-        lambda: build_tournament_player_card(tid, player_id),
+        ("tournament", tid, player_id, limit, stage),
+        lambda: build_tournament_player_card(tid, player_id, limit, stage),
     )
     tag = etag_for(payload)
     if request.headers.get("if-none-match") == tag:

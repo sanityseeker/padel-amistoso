@@ -4,7 +4,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { TOURNAMENT_UPDATE_EVENT } from '../../shell/followTournament';
 import { t as tx, useLocale } from '../../i18n';
 import { publicApi } from '../../events/api';
-import { Notice, PlayerName, ResponsiveSheet, StatTile } from '../../ui';
+import {
+  HistoryLimit,
+  historyLimitParam,
+  Notice,
+  PlayerName,
+  ResponsiveSheet,
+  StatTile,
+  useHistoryLimit,
+} from '../../ui';
 import { deltaColor, MatchLine, signed } from './MatchLine';
 import { CardError, scopeLabel, scopeQuery, ScopedCardBody, useScopedCard } from './ScopedCard';
 import { BackButton, useTrail } from './trail';
@@ -60,6 +68,9 @@ export function PlayerCardModal({
   const [member, setMember] = useState<string | null>(null);
   // Names tapped inside the card: another player of this event, or a profile in the wider scope.
   const trail = useTrail<Step>(playerId);
+  // How many matches every history in this card lists (10, 25 or all); one choice for them all.
+  const [limit, setLimit] = useHistoryLimit();
+  const history = { limit, onChange: setLimit };
   const profileStep = trail.top?.kind === 'profile' ? trail.top : null;
   const eventStep = [...trail.items].reverse().find((s) => s.kind === 'event');
   const current = eventStep?.id ?? playerId;
@@ -79,12 +90,19 @@ export function PlayerCardModal({
     window.addEventListener(TOURNAMENT_UPDATE_EVENT, changed);
     return () => window.removeEventListener(TOURNAMENT_UPDATE_EVENT, changed);
   }, [client, tid, current, source]);
+  // A card opened from a stage's table lists that stage's matches; the server ignores the stage when
+  // the player has matches in one stage only.
+  const stageParam = stage && !whole ? stage : null;
+  const cardKey = [...eventCardKey(tid, current), limit, stageParam];
   const card = useQuery({
-    queryKey: eventCardKey(tid, current),
+    queryKey: cardKey,
     enabled: !!current,
+    // A longer or shorter list replaces the shown one in place.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery && previousQuery.queryKey[4] === current ? previous : undefined,
     queryFn: () =>
       publicApi<EventCard>(
-        `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(current!)}/public-card`,
+        `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(current!)}/public-card?limit=${historyLimitParam(limit)}${stageParam ? `&stage=${stageParam}` : ''}`,
       ),
   });
   useEffect(() => {
@@ -105,7 +123,11 @@ export function PlayerCardModal({
       ),
   });
   const wider = scopes.data?.find((s) => s.kind !== 'event');
+  // A team's wider card is its pair's record: both players need a profile. With one only, that
+  // player's own card can still be opened from the member list.
+  const pairReady = !data?.is_team || (data.members ?? []).every((m) => m.has_profile);
   const canWiden = !!source && !!data?.has_profile && !!wider;
+  const showScopeTabs = canWiden && (pairReady || !!member);
   const shownId = member ?? current;
   const scoped = useScopedCard(
     source,
@@ -113,12 +135,14 @@ export function PlayerCardModal({
     canWiden && wide && shownId
       ? `/tournaments/${encodeURIComponent(tid)}/players/${encodeURIComponent(shownId)}/card?scope=${wider!.kind}`
       : null,
+    limit,
   );
   // A profile opened from the wider card: shown in that card's own scope.
   const profile = useScopedCard(
     source,
     ['profile', profileStep?.id, profileStep?.query],
     profileStep ? `/player-cards/${encodeURIComponent(profileStep.id)}${profileStep.query}` : null,
+    limit,
   );
   const openProfile = (id: string) => {
     const from = profileStep ? profile.data : scoped.data;
@@ -170,7 +194,7 @@ export function PlayerCardModal({
               <Text variant="eyebrow" data-testid="card-scope-label">
                 {scopeLabel(profile.data.scope)}
               </Text>
-              <ScopedCardBody card={profile.data} onProfile={openProfile} />
+              <ScopedCardBody card={profile.data} history={history} onProfile={openProfile} />
             </Stack>
           )}
         </>
@@ -179,7 +203,7 @@ export function PlayerCardModal({
       {!profileStep && card.error && <Notice tone="danger">{tx('Could not load player.')}</Notice>}
       {!profileStep && data && (
         <Stack gap="md" data-testid="tv-player-card">
-          {canWiden && (
+          {showScopeTabs && (
             <SegmentedControl
               fullWidth
               size="xs"
@@ -201,8 +225,9 @@ export function PlayerCardModal({
               {tx('This player has no profile yet, so the card shows this event only.')}
             </Text>
           )}
-          {wide && canWiden ? (
+          {wide && showScopeTabs ? (
             <>
+              {member && <BackButton onClick={() => setMember(null)} />}
               {scoped.isPending && <Loader aria-label={tx('Loading')} />}
               {scoped.error &&
                 (member && (scoped.error as { status?: number }).status === 404 ? (
@@ -214,7 +239,12 @@ export function PlayerCardModal({
                   <CardError error={scoped.error} />
                 ))}
               {scoped.data && (
-                <ScopedCardBody card={scoped.data} onMember={openMember} onProfile={openProfile} />
+                <ScopedCardBody
+                  card={scoped.data}
+                  history={history}
+                  onMember={member ? undefined : openMember}
+                  onProfile={openProfile}
+                />
               )}
             </>
           ) : (
@@ -270,7 +300,11 @@ export function PlayerCardModal({
                             <PlayerName
                               name={m.name}
                               id={m.player_id}
-                              onOpen={canWiden ? () => openMember(m.player_id) : undefined}
+                              onOpen={
+                                canWiden && m.has_profile !== false
+                                  ? () => openMember(m.player_id)
+                                  : undefined
+                              }
                             />
                           </Text>
                           <Group gap="md" wrap="nowrap">
@@ -287,7 +321,10 @@ export function PlayerCardModal({
                   })}
                 </Stack>
               )}
-              <Text variant="eyebrow">{tx('Match history')}</Text>
+              <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+                <Text variant="eyebrow">{tx('Match history')}</Text>
+                <HistoryLimit value={limit} onChange={setLimit} total={data.recent_total ?? 0} />
+              </Group>
               {!shown.length && (
                 <Text c="dimmed" size="sm">
                   {tx('No matches yet.')}

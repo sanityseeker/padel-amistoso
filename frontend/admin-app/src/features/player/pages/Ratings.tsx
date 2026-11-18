@@ -1,17 +1,7 @@
 import { lazy, Suspense, useCallback, useState } from 'react';
-import {
-  Group,
-  Paper,
-  SimpleGrid,
-  Skeleton,
-  Stack,
-  Select,
-  Text,
-  Title,
-  useMatches,
-} from '@mantine/core';
+import { Group, Paper, SimpleGrid, Skeleton, Stack, Text, Title, useMatches } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
-import { EmptyState, PageHeader } from '../../../ui';
+import { EmptyState, HistoryLimit, PageHeader, useHistoryLimit } from '../../../ui';
 import { FormGuide } from '../components/FormGuide';
 import { EloInfoButton } from '../../info/EloInfo';
 import { Leaderboard } from '../components/Leaderboard';
@@ -28,7 +18,9 @@ export default function Ratings() {
   const locale = useLocale();
   const { space, scopeQuery, sport } = usePlayerSpace();
   const history = historyOf(space, sport);
-  const [shown, setShown] = useState(10);
+  const [choice, setChoice] = useHistoryLimit();
+  // The Hub already holds its latest 50 rating changes (the chart's); "All" shows those.
+  const shown = choice === 'all' ? Infinity : Number(choice);
   const recent = history.slice().reverse();
   const now = history.length ? history[history.length - 1].elo_after : 0;
   const change = history.length ? Math.round(now - history[0].elo_before) : 0;
@@ -114,17 +106,9 @@ export default function Ratings() {
         </Stack>
         {recent.length > 0 && (
           <Paper p="lg">
-            <Group justify="space-between" align="flex-end" mb="md">
+            <Group justify="space-between" align="center" mb="md">
               <Title order={3}>{tx('Recent results')}</Title>
-              <Select
-                label={tx('Show last')}
-                w={110}
-                allowDeselect={false}
-                value={String(shown)}
-                onChange={(v) => v && setShown(Number(v))}
-                data={['5', '10', '20', '50']}
-                data-testid="elo-limit"
-              />
+              <HistoryLimit value={choice} onChange={setChoice} total={recent.length} />
             </Group>
             <Stack gap="sm">
               {visible.map((m, i) => (

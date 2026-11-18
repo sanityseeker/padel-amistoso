@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Group, Text } from '@mantine/core';
+import { Button, Checkbox, Group, Text } from '@mantine/core';
 import { write } from '../../api';
 import { useAuth } from '../../auth';
 import { t as tx, useLocale } from '../../i18n';
@@ -8,15 +8,20 @@ import { useAdminMutation } from '../../useAdminMutation';
 
 // Rebuilds the ELO ratings from every completed match. Needed after score corrections made outside
 // the normal flow. `all` replays every tournament (site administrators only).
-export function RatingSection({ tid }: { tid: string }) {
+// In a club tournament the organizer can also make the club's tier and manual ratings, set after the
+// event began, the players' starting ratings for it (and for what came after).
+export function RatingSection({ tid, inClub }: { tid: string; inClub: boolean }) {
   useLocale();
   const { user } = useAuth();
   // Only the all-tournaments replay asks first: one event is safe to run again, so it just runs.
   const [pending, setPending] = useState<'all' | null>(null);
+  const [fromClub, setFromClub] = useState(false);
   const run = useAdminMutation({
     request: (scope: 'one' | 'all') =>
       scope === 'one'
-        ? write<unknown>(`/tournaments/${tid}/elo/recalculate`)
+        ? write<unknown>(
+            `/tournaments/${tid}/elo/recalculate${inClub && fromClub ? '?from_club_ratings=true' : ''}`,
+          )
         : write<unknown>('/tournaments/elo/recalculate-all'),
     invalidate: [['admin', 'tournament', tid], ['player'], ['public']],
     success: 'Ratings recalculated',
@@ -37,6 +42,16 @@ export function RatingSection({ tid }: { tid: string }) {
           {tx('Recalculate ELO')}
         </Button>
       </Group>
+      {inClub && (
+        <Checkbox
+          label={tx('Start from the club tier and manual ratings')}
+          description={tx(
+            'Ratings set in the club after this tournament began count from its first match.',
+          )}
+          checked={fromClub}
+          onChange={(e) => setFromClub(e.currentTarget.checked)}
+        />
+      )}
       {user?.role === 'admin' && (
         <Group justify="space-between" wrap="nowrap">
           <Text size="sm">{tx('Every tournament')}</Text>

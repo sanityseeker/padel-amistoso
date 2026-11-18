@@ -187,7 +187,7 @@ export function TournamentSettings({
               >
                 <Collaborators base={`/tournaments/${id}`} canManage={isOwnerOrAdmin} />
               </Section>
-              {isOwnerOrAdmin && <RatingSection tid={id} />}
+              {isOwnerOrAdmin && <RatingSection tid={id} inClub={!!tournament.club_id} />}
             </Stack>
           </Tabs.Panel>
           <Tabs.Panel flex={1} miw={0} value="scoring">

@@ -1073,6 +1073,10 @@
   "Skill tier": "Уровень",
   "No tier": "Без уровня",
   "Set tier": "Задать уровень",
+  "Set padel tier": "Задать уровень в падел",
+  "Set tennis tier": "Задать уровень в теннис",
+  "Updated {updated} of {requested}": "Обновлено: {updated} из {requested}",
+  "{n} players selected.": "Выбрано игроков: {n}.",
   "Also set the rating to the tier's base ELO": "Также задать рейтинг по базовому ELO уровня",
   "Hidden from the leaderboard": "Скрыто в таблице",
   "Shown on the leaderboard": "Показано в таблице",
@@ -2060,7 +2064,6 @@
   "Top partners": "Частые партнёры",
   "Top opponents": "Частые соперники",
   "No profile": "Нет профиля",
-  "Ratings belong to the players of a team. Pick a player to see their record.": "Рейтинг есть у каждого игрока команды. Выберите игрока, чтобы увидеть его результаты.",
   "This player has no profile yet, so the card shows this event only.": "У этого игрока ещё нет профиля, поэтому карточка показывает только этот турнир.",
   "{n} matches in unlisted events count here but are not listed.": "Матчи приватных турниров учтены, но не показаны: {n}.",
   "Silver bracket winner": "Победитель серебряной сетки",
@@ -2079,5 +2082,10 @@
   "Only the strengths you enter count, on the rating scale. Blank players start at 1000.": "Учитывается только начальная сила, которую вы ввели, по шкале рейтинга. Игроки без значения начинают с 1000.",
   "No seeding: ratings and strengths are ignored.": "Без посева: рейтинг и начальная сила не учитываются.",
   "Only club members and the club's organizers can see this board.": "Эту таблицу видят только участники клуба и его организаторы.",
-  "Only the club's organizers can use its player lists.": "Списки игроков клуба доступны только его организаторам."
+  "Only the club's organizers can use its player lists.": "Списки игроков клуба доступны только его организаторам.",
+  "Record together": "Результаты вместе",
+  "No matches together yet.": "Матчей вместе пока нет.",
+  "Start from the club tier and manual ratings": "Начать с уровней и ручных рейтингов клуба",
+  "Ratings set in the club after this tournament began count from its first match.": "Рейтинги, заданные в клубе после начала турнира, действуют с его первого матча.",
+  "Each rating counts from the first club tournament the player played before it was set.": "Каждый рейтинг действует с первого турнира клуба, который игрок сыграл до того, как рейтинг задали."
 }

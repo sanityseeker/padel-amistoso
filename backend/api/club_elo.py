@@ -33,6 +33,7 @@ import threading
 from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from backend.models import GPPhase, Match
 from backend.tournaments.elo import DEFAULT_RATING, EloUpdate, compute_match_elo_updates, team_rating
@@ -125,6 +126,54 @@ def recompute_club_elo_for_tournaments(tournament_ids: Collection[str]) -> None:
     club_ids = {(_tournaments.get(tid) or {}).get("club_id") for tid in tournament_ids}
     for club_id in sorted(c for c in club_ids if c):
         recompute_club_elo(club_id)
+
+
+def start_tournament_from_club_ratings(tournament_id: str) -> int:
+    """Make the club ratings set after *tournament_id* began apply from its start.
+
+    A tier base ELO or manual club rating normally takes effect when it is set,
+    so it never changes matches that were already played.  This moves the
+    manual club rating rows of the tournament's linked players that are dated
+    after its first rated match to just before that match (keeping their
+    order), so the next club replay rates the tournament, and everything after
+    it, from those ratings.  Only the tournament's sport is touched.  Returns the
+    number of rows moved; the caller replays the club.
+    """
+    data = _tournaments.get(tournament_id)
+    club_id = data.get("club_id") if data else None
+    if not club_id:
+        return 0
+    sport = data.get("sport", "padel")
+    with _club_lock, get_db() as conn:
+        first = conn.execute(
+            "SELECT MIN(updated_at) AS ts FROM player_elo_log WHERE tournament_id = ? AND sport = ? AND is_manual = 0",
+            (tournament_id, sport),
+        ).fetchone()["ts"]
+        if first is None:
+            return 0
+        profiles = {
+            profile_id
+            for (tid, _pid), profile_id in _tournament_profile_map(conn, club_id).items()
+            if tid == tournament_id
+        }
+        if not profiles:
+            return 0
+        rows = conn.execute(
+            "SELECT rowid, player_id, profile_id FROM player_elo_log"
+            " WHERE tournament_id = ? AND sport = ? AND is_manual = 1 AND updated_at > ?"
+            " ORDER BY updated_at, rowid",
+            (club_id, sport, first),
+        ).fetchall()
+        legacy = _manual_profile_map(conn, {r["player_id"] for r in rows if r["profile_id"] is None})
+        moving = [r["rowid"] for r in rows if (r["profile_id"] or legacy.get(r["player_id"])) in profiles]
+        start = datetime.fromisoformat(first)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        conn.executemany(
+            "UPDATE player_elo_log SET updated_at = ? WHERE rowid = ?",
+            [((start - timedelta(microseconds=len(moving) - i)).isoformat(), rowid) for i, rowid in enumerate(moving)],
+        )
+    return len(moving)
 
 
 def elo_scope(data: dict | None) -> str:

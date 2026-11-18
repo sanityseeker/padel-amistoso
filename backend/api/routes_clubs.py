@@ -48,7 +48,7 @@ from .db import (
     get_shared_club_ids,
     remove_club_co_editor,
 )
-from .club_elo import deferred_club_elo, recompute_club_elo
+from .club_elo import deferred_club_elo, recompute_club_elo, start_tournament_from_club_ratings
 from .elo_integration import elo_recalculate_tournament
 from .elo_store import (
     _profile_player_ids,
@@ -286,6 +286,23 @@ class BulkAnnounceRequest(BaseModel):
     profile_ids: list[str] = Field(min_length=1, max_length=200)
     subject: str = Field(min_length=1, max_length=200)
     message: str = Field(min_length=1, max_length=4000)
+
+
+class BulkTierAssign(BaseModel):
+    """Request body for giving several club players the same tier in one sport."""
+
+    profile_ids: list[str] = Field(min_length=1, max_length=500)
+    sport: str = Field(pattern=r"^(padel|tennis)$")
+    tier_id: str | None = Field(default=None, max_length=64)
+    apply_base_elo: bool = False
+
+
+class BulkTierResponse(BaseModel):
+    """Summary of a bulk tier assignment."""
+
+    requested: int
+    updated: int
+    failed: list[BulkOperationFailure]
 
 
 class ClubPlayerCandidateOut(BaseModel):
@@ -2889,6 +2906,52 @@ async def set_player_elo(
     return {"ok": True, "elo": req.elo}
 
 
+def _club_tier_for_sport(club_id: str, tier_id: str | None, sport: str) -> dict | None:
+    """Return the club tier ``tier_id`` (``None`` for "no tier"); 404/422 when unusable for ``sport``."""
+    if tier_id is None:
+        return None
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM club_tiers WHERE id = ? AND club_id = ?", (tier_id, club_id)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Tier not found")
+    tier = dict(row)
+    if tier["sport"] != sport:
+        raise HTTPException(422, f"This tier is for {tier['sport']}, not {sport}")
+    return tier
+
+
+def _apply_player_tier(
+    club_id: str, profile_id: str, sport: str, tier: dict | None, apply_base_elo: bool, user: User
+) -> bool:
+    """Set (or clear) one player's club tier for ``sport``; return whether the base ELO was applied."""
+    tier_id = tier["id"] if tier else None
+    reset_elo = apply_base_elo and tier is not None
+    elo_val: float = tier["base_elo"] if reset_elo else 1000.0
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM profile_club_elo WHERE profile_id = ? AND club_id = ? AND sport = ?",
+            (profile_id, club_id, sport),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, tier_id) VALUES (?, ?, ?, ?, 0, ?)",
+                (profile_id, club_id, sport, elo_val, tier_id),
+            )
+        elif reset_elo:
+            conn.execute(
+                "UPDATE profile_club_elo SET tier_id = ?, elo = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
+                (tier_id, elo_val, profile_id, club_id, sport),
+            )
+        else:
+            conn.execute(
+                "UPDATE profile_club_elo SET tier_id = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
+                (tier_id, profile_id, club_id, sport),
+            )
+    if reset_elo:
+        _record_club_elo_override(club_id, profile_id, sport, elo_val, user, f"Tier: {tier['name']}")
+    return reset_elo
+
+
 @router.patch("/{club_id}/players/{profile_id}/tier")
 async def assign_player_tier(
     club_id: str, profile_id: str, req: PlayerTierAssign, user: User = Depends(get_current_user)
@@ -2901,60 +2964,58 @@ async def assign_player_tier(
     """
     club = _get_club(club_id)
     _require_club_editor(club, user)
-    sport = req.sport
-
-    tier: dict | None = None
-    if req.tier_id is not None:
-        with get_db() as conn:
-            row = conn.execute(
-                "SELECT * FROM club_tiers WHERE id = ? AND club_id = ?", (req.tier_id, club_id)
-            ).fetchone()
-        if row is None:
-            raise HTTPException(404, "Tier not found")
-        tier = dict(row)
-        if tier["sport"] != sport:
-            raise HTTPException(422, f"This tier is for {tier['sport']}, not {sport}")
-
-    elo_val: float = tier["base_elo"] if (req.apply_base_elo and tier) else 1000.0
-
-    with get_db() as conn:
-        existing = conn.execute(
-            "SELECT 1 FROM profile_club_elo WHERE profile_id = ? AND club_id = ? AND sport = ?",
-            (profile_id, club_id, sport),
-        ).fetchone()
-
-        if existing is None:
-            conn.execute(
-                "INSERT INTO profile_club_elo (profile_id, club_id, sport, elo, matches, tier_id) VALUES (?, ?, ?, ?, 0, ?)",
-                (profile_id, club_id, sport, elo_val if (req.apply_base_elo and tier) else 1000.0, req.tier_id),
-            )
-        elif req.apply_base_elo and tier:
-            conn.execute(
-                "UPDATE profile_club_elo SET tier_id = ?, elo = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
-                (req.tier_id, elo_val, profile_id, club_id, sport),
-            )
-        else:
-            conn.execute(
-                "UPDATE profile_club_elo SET tier_id = ? WHERE profile_id = ? AND club_id = ? AND sport = ?",
-                (req.tier_id, profile_id, club_id, sport),
-            )
-    if req.apply_base_elo and tier is not None:
-        _record_club_elo_override(club_id, profile_id, sport, elo_val, user, f"Tier: {tier['name']}")
+    tier = _club_tier_for_sport(club_id, req.tier_id, req.sport)
+    applied = _apply_player_tier(club_id, profile_id, req.sport, tier, req.apply_base_elo, user)
     return {
         "ok": True,
-        "sport": sport,
+        "sport": req.sport,
         "tier_id": req.tier_id,
-        "applied_base_elo": req.apply_base_elo and tier is not None,
+        "applied_base_elo": applied,
     }
 
 
+@router.post("/{club_id}/players/bulk-tier", response_model=BulkTierResponse)
+async def assign_tier_to_players(
+    club_id: str, req: BulkTierAssign, user: User = Depends(get_current_user)
+) -> BulkTierResponse:
+    """Assign or remove one tier for several club players in a sport.
+
+    Same rules as the single-player endpoint.  Profiles that are not in the
+    club are skipped and listed in ``failed``.
+    """
+    club = _get_club(club_id)
+    _require_club_editor(club, user)
+    tier = _club_tier_for_sport(club_id, req.tier_id, req.sport)
+    unique_profile_ids = list(dict.fromkeys(req.profile_ids))
+    failures: list[BulkOperationFailure] = []
+    updated = 0
+    for profile_id in unique_profile_ids:
+        if not _player_in_club(profile_id, club_id):
+            failures.append(BulkOperationFailure(profile_id=profile_id, reason="Player not found in this club"))
+            continue
+        _apply_player_tier(club_id, profile_id, req.sport, tier, req.apply_base_elo, user)
+        updated += 1
+    if updated:
+        invalidate_leaderboard_cache(club_id)
+    return BulkTierResponse(requested=len(unique_profile_ids), updated=updated, failed=failures)
+
+
 @router.post("/{club_id}/elo/recalculate")
-async def recalculate_club_elo(club_id: str, user: User = Depends(get_current_user)) -> dict:
+async def recalculate_club_elo(
+    club_id: str,
+    from_club_ratings: bool = Query(default=False),
+    user: User = Depends(get_current_user),
+) -> dict:
     """Recalculate ELO for every tournament of the club, then the club's own ratings.
 
     Replays the club's tournaments in chronological order, like the site-wide
     "Recalculate all tournaments", and then replays the club rating chain once.
     Restricted to the club owner, co-editors and site admins.
+
+    With ``from_club_ratings``, each tier or manual club rating first moves to the
+    start of the earliest club tournament its player had begun before it was
+    set (:func:`.club_elo.start_tournament_from_club_ratings`, oldest first), so
+    the replay rates those tournaments from it.
     """
     club = _get_club(club_id)
     _require_club_editor(club, user)
@@ -2963,7 +3024,11 @@ async def recalculate_club_elo(club_id: str, user: User = Depends(get_current_us
     ordered = await asyncio.to_thread(tournaments_in_chronological_order)
     club_tids = [tid for tid in ordered if (state._tournaments.get(tid) or {}).get("club_id") == club_id]
     recalculated = 0
+    moved = 0
     with deferred_club_elo():
+        if from_club_ratings:
+            for tid in club_tids:
+                moved += start_tournament_from_club_ratings(tid)
         for tid in club_tids:
             async with state.get_tournament_lock(tid):
                 if state._tournaments.get(tid, {}).get("club_id") != club_id:
@@ -2972,7 +3037,7 @@ async def recalculate_club_elo(club_id: str, user: User = Depends(get_current_us
                 recalculated += 1
         # Also when no tournament had matches to replay (e.g. only tier ratings).
         recompute_club_elo(club_id)
-    return {"ok": True, "recalculated_tournaments": recalculated}
+    return {"ok": True, "recalculated_tournaments": recalculated, "club_ratings_applied": moved}
 
 
 # ---------------------------------------------------------------------------

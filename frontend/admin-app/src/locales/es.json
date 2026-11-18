@@ -1072,6 +1072,10 @@
   "Skill tier": "Nivel",
   "No tier": "Sin nivel",
   "Set tier": "Asignar nivel",
+  "Set padel tier": "Asignar nivel de pádel",
+  "Set tennis tier": "Asignar nivel de tenis",
+  "Updated {updated} of {requested}": "Actualizados {updated} de {requested}",
+  "{n} players selected.": "{n} jugadores seleccionados.",
   "Also set the rating to the tier's base ELO": "Fijar también la puntuación al ELO base del nivel",
   "Hidden from the leaderboard": "Oculto en la clasificación",
   "Shown on the leaderboard": "Visible en la clasificación",
@@ -2048,7 +2052,6 @@
   "Top partners": "Compañeros más frecuentes",
   "Top opponents": "Rivales más frecuentes",
   "No profile": "Sin perfil",
-  "Ratings belong to the players of a team. Pick a player to see their record.": "El ELO es de cada jugador del equipo. Elige un jugador para ver su historial.",
   "This player has no profile yet, so the card shows this event only.": "Este jugador aún no tiene perfil, así que la ficha muestra solo este evento.",
   "{n} matches in unlisted events count here but are not listed.": "{n} partidos de eventos privados cuentan aquí, pero no se muestran.",
   "Silver bracket winner": "Ganador del cuadro de plata",
@@ -2067,5 +2070,10 @@
   "Only the strengths you enter count, on the rating scale. Blank players start at 1000.": "Solo cuentan los niveles que introduces, en la escala del rating. Los jugadores sin valor empiezan con 1000.",
   "No seeding: ratings and strengths are ignored.": "Sin siembra: no se usan ni el rating ni los niveles.",
   "Only club members and the club's organizers can see this board.": "Solo los miembros del club y sus organizadores pueden ver esta clasificación.",
-  "Only the club's organizers can use its player lists.": "Solo los organizadores del club pueden usar sus listas de jugadores."
+  "Only the club's organizers can use its player lists.": "Solo los organizadores del club pueden usar sus listas de jugadores.",
+  "Record together": "Resultados juntos",
+  "No matches together yet.": "Aún no han jugado juntos.",
+  "Start from the club tier and manual ratings": "Empezar desde los niveles y puntuaciones manuales del club",
+  "Ratings set in the club after this tournament began count from its first match.": "Las puntuaciones fijadas en el club después del inicio de este torneo cuentan desde su primer partido.",
+  "Each rating counts from the first club tournament the player played before it was set.": "Cada puntuación cuenta desde el primer torneo del club que el jugador jugó antes de fijarla."
 }

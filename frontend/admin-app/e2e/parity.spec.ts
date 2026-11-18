@@ -678,12 +678,12 @@ const SPACE = {
   player_clubs: [],
 };
 
-async function stubHub(page: Page) {
+async function stubHub(page: Page, space: object = SPACE) {
   await page.addInitScript((profile) => {
     localStorage.setItem('padel-player-profile', 'stub-token');
     localStorage.setItem('padel-player-profile-data', JSON.stringify(profile));
   }, SPACE.profile);
-  await page.route('**/api/player-profile/space*', (route) => route.fulfill({ json: SPACE }));
+  await page.route('**/api/player-profile/space*', (route) => route.fulfill({ json: space }));
   await page.route('**/api/player-profile/leaderboard*', (route) =>
     route.fulfill({ json: { padel: [], tennis: [] } }),
   );
@@ -724,7 +724,7 @@ test('My events shows the place, record, rating change and partners of a finishe
   await expect(card.getByTestId('social-line')).toContainText('Best teammates: Luis 75%');
 });
 
-test('Ratings shows both teams with their rating changes, manual adjustments and a row limit', async ({
+test('Ratings shows both teams with their rating changes and manual adjustments', async ({
   page,
 }) => {
   await stubHub(page);
@@ -738,14 +738,38 @@ test('Ratings shows both teams with their rating changes, manual adjustments and
   await expect(manual).toContainText('Manual adjustment');
   await expect(manual).toContainText('Adjusted by admin');
   await expect(manual).toContainText('Seeded by club level');
-  await page.getByTestId('elo-limit').click();
-  await page.getByRole('option', { name: '5', exact: true }).click();
-  await expect(page.getByTestId('elo-row')).toHaveCount(2);
+  // Two results: nothing to choose, so no length control.
+  await expect(page.getByTestId('history-limit')).toHaveCount(0);
   // The info button explains the rating.
   await page.getByRole('button', { name: 'About ELO ratings' }).click();
   await expect(page.getByRole('dialog', { name: 'About ELO ratings' })).toContainText(
     'Everyone starts at 1000',
   );
+});
+
+test('Ratings lists 10 results, with a 10 / 25 / All choice that is remembered', async ({
+  page,
+}) => {
+  const base = SPACE.elo_history[0]!;
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    ...base,
+    match_id: `m${i}`,
+    match_order: i,
+    updated_at: `2026-05-${String(30 - i).padStart(2, '0')}T10:00:00Z`,
+  }));
+  await stubHub(page, { ...SPACE, elo_history: many });
+  await page.goto('/player/ratings');
+  const rows = page.getByTestId('elo-row');
+  await expect(rows).toHaveCount(10);
+  const limit = page.getByTestId('history-limit');
+  await limit.getByText('25', { exact: true }).click();
+  await expect(rows).toHaveCount(25);
+  await limit.getByText('All', { exact: true }).click();
+  await expect(rows).toHaveCount(30);
+  // One viewer setting for every history.
+  await page.reload();
+  await expect(rows).toHaveCount(30);
+  expect(await page.evaluate(() => localStorage.getItem('amistoso-history-limit'))).toBe('all');
 });
 
 test('the new-event form explains the formats', async ({ page }) => {

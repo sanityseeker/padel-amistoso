@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import {
   Avatar,
   Button,
+  Checkbox,
   FileButton,
   Group,
   SimpleGrid,
@@ -69,8 +70,10 @@ export function ClubSettings({ club, isAdmin }: { club: Club; isAdmin: boolean }
     invalidate: KEY,
     success: 'Logo removed',
   });
+  const [fromClubRatings, setFromClubRatings] = useState(false);
   const recalc = useAdminMutation({
-    request: () => write(`/clubs/${club.id}/elo/recalculate`),
+    request: () =>
+      write(`/clubs/${club.id}/elo/recalculate${fromClubRatings ? '?from_club_ratings=true' : ''}`),
     invalidate: [['admin', 'club-players', club.id]],
     success: 'Club ratings recalculated',
   });
@@ -215,6 +218,14 @@ export function ClubSettings({ club, isAdmin }: { club: Club; isAdmin: boolean }
             </Button>
           }
         >
+          <Checkbox
+            label={tx('Start from the club tier and manual ratings')}
+            description={tx(
+              'Each rating counts from the first club tournament the player played before it was set.',
+            )}
+            checked={fromClubRatings}
+            onChange={(e) => setFromClubRatings(e.currentTarget.checked)}
+          />
           <MutationError error={recalc.error} />
         </Section>
         {isAdmin && (

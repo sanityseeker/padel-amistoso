@@ -17,11 +17,7 @@ from ..tournaments.playoff import bracket_matches
 from . import state
 from .club_elo import elo_scope, get_tournament_display_elos
 from .db import get_db
-from .player_card import participant_profiles
-
-# Hard upper bound on the per-tournament card history payload. Realistic match
-# counts sit well below this; the cap protects the ETag cost and JSON size.
-RECENT_MATCHES_HARD_CAP: int = 200
+from .player_card import HISTORY_DEFAULT_LIMIT, HISTORY_HARD_CAP, participant_profiles
 
 STAGE_ALL = "all"
 STAGE_GROUP = "group"
@@ -61,8 +57,15 @@ def _round1(value: float | None) -> float | None:
     return round(value, 1) if value is not None else None
 
 
-def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
-    """Build (uncached) the public card payload for a tournament player or composed team."""
+def build_tournament_player_card(
+    tid: str, player_id: str, limit: int = HISTORY_DEFAULT_LIMIT, only_stage: str | None = None
+) -> dict[str, Any]:
+    """Build (uncached) the public card payload for a tournament player or composed team.
+
+    ``recent_matches`` lists the newest *limit* matches (of the one *only_stage* when given and the player has matches in more than one stage; at most
+    :data:`HISTORY_HARD_CAP`), ``recent_total`` how many there are to list.  The numbers always
+    cover the whole event.
+    """
     data = state._tournaments[tid]
     tournament = data.get("tournament")
     sport = data.get("sport", Sport.PADEL)
@@ -201,11 +204,20 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
     else:
         current = current_elo(player_id, own_rows)
 
-    recent = [{k: v for k, v in e.items() if not k.startswith("_")} for e in reversed(entries)]
+    keep_stage = only_stage if only_stage in stages and len(stages) > 1 else None
+    recent = [
+        {k: v for k, v in e.items() if not k.startswith("_")}
+        for e in reversed(entries)
+        if keep_stage is None or e["stage"] == keep_stage
+    ]
     total = stats[STAGE_ALL]
     # Whether a wider card can exist (a linked profile; a team through any member). Which scopes a
     # viewer may open depends on who asks: ``/card-scopes``. Never the profile id: this card is anonymous.
-    has_profile = bool(participant_profiles(tid, rated_ids))
+    linked = participant_profiles(tid, rated_ids)
+    has_profile = bool(linked)
+    for member in members:
+        # Whether each player of a team has a profile: a wider team card needs both.
+        member["has_profile"] = member["player_id"] in linked
     return {
         "tournament_id": tid,
         "player_id": player_id,
@@ -223,7 +235,8 @@ def build_tournament_player_card(tid: str, player_id: str) -> dict[str, Any]:
         "losses": total["losses"],
         "stages": stages,
         "stats": stats,
-        "recent_matches": recent[:RECENT_MATCHES_HARD_CAP],
+        "recent_matches": recent[: min(limit, HISTORY_HARD_CAP)],
+        "recent_total": len(recent),
         "elo_history": elo_history,
         "has_profile": has_profile,
     }

@@ -349,6 +349,59 @@ class TestTournamentPageShowsClubRatings:
         _play_rounds(client, auth_headers, tid, "Alice")
         assert _log(tid, ids["Alice"])[-1]["club_elo_before"] == 1500
 
+    def test_recalculate_from_club_ratings_rates_the_tournament_from_a_later_tier(self, client, auth_headers):
+        _make_club("ky")
+        alice = _insert_profile("Alice")
+        tid, ids = _new_tournament(client, auth_headers, "ky", {"Alice": alice})
+        _play_rounds(client, auth_headers, tid, "Alice", rounds=2)
+        later, later_ids = _play(client, auth_headers, "ky", winner="Alice", profiles={"Alice": alice})
+        _tier(client, auth_headers, "ky", alice, 1500)
+
+        # A plain recalculation keeps the tier where it was set: after the matches.
+        assert client.post(f"/api/tournaments/{tid}/elo/recalculate", headers=auth_headers).status_code == 200
+        assert _log(tid, ids["Alice"])[0]["club_elo_before"] != 1500
+        assert _board_elo(client, tid, ids["Alice"]) == 1500
+
+        res = client.post(f"/api/tournaments/{tid}/elo/recalculate?from_club_ratings=true", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["club_ratings_applied"] == 1
+        rows = _log(tid, ids["Alice"])
+        assert rows[0]["club_elo_before"] == 1500
+        # She won both rounds, so she ends above the tier rating, and the later
+        # tournament continues from there.
+        assert rows[-1]["club_elo_after"] > 1500
+        assert _log(later, later_ids["Alice"])[0]["club_elo_before"] == rows[-1]["club_elo_after"]
+        assert _space(client, alice, "?club_id=ky")["profile"]["elo_padel"] > 1500
+        # Running it again changes nothing: the rating is already at the start.
+        again = client.post(f"/api/tournaments/{tid}/elo/recalculate?from_club_ratings=true", headers=auth_headers)
+        assert again.json()["club_ratings_applied"] == 0
+        assert _log(tid, ids["Alice"]) == rows
+
+    def test_club_recalculate_from_club_ratings_starts_from_the_first_tournament(self, client, auth_headers):
+        _make_club("kq")
+        alice = _insert_profile("Alice")
+        t1, ids1 = _play(client, auth_headers, "kq", winner="Alice", profiles={"Alice": alice})
+        t2, ids2 = _play(client, auth_headers, "kq", winner="Alice", profiles={"Alice": alice})
+        _tier(client, auth_headers, "kq", alice, 1300)
+        _tier(client, auth_headers, "kq", alice, 1500)  # the latest one wins
+
+        res = client.post("/api/clubs/kq/elo/recalculate?from_club_ratings=true", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["club_ratings_applied"] == 2
+        first, second = _log(t1, ids1["Alice"]), _log(t2, ids2["Alice"])
+        assert first[0]["club_elo_before"] == 1500
+        assert second[0]["club_elo_before"] == first[-1]["club_elo_after"]
+        assert _space(client, alice, "?club_id=kq")["profile"]["elo_padel"] == second[-1]["club_elo_after"]
+
+    def test_recalculate_from_club_ratings_skips_unlinked_players(self, client, auth_headers):
+        _make_club("kz")
+        alice = _insert_profile("Alice")
+        tid, ids = _play(client, auth_headers, "kz", winner="Alice")  # Alice not linked here
+        _tier(client, auth_headers, "kz", alice, 1500)
+        res = client.post(f"/api/tournaments/{tid}/elo/recalculate?from_club_ratings=true", headers=auth_headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["club_ratings_applied"] == 0
+
     def test_finished_tournament_keeps_the_rating_it_ended_with(self, client, auth_headers):
         _make_club("kx")
         alice = _insert_profile("Alice")

@@ -415,6 +415,63 @@ class TestClubPlayerELO:
         )
         assert res.status_code == 422
 
+    def test_bulk_assign_tier(self, client, auth_headers) -> None:
+        """One request gives every listed club player the tier; outsiders are reported, not touched."""
+        club, comm = self._setup_with_profile(client, auth_headers)
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO player_profiles (id, name, email, passphrase, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("prof_test2", "Second Player", "two@example.com", "testphrase456", "2024-01-01T00:00:00+00:00"),
+            )
+        client.post(f"/api/clubs/{club['id']}/players", json={"profile_id": "prof_test2"}, headers=auth_headers)
+        tier = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        ).json()
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/bulk-tier",
+            json={
+                "profile_ids": ["prof_test1", "prof_test2", "prof_nobody"],
+                "sport": "padel",
+                "tier_id": tier["id"],
+                "apply_base_elo": True,
+            },
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["requested"] == 3
+        assert body["updated"] == 2
+        assert [f["profile_id"] for f in body["failed"]] == ["prof_nobody"]
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT profile_id, elo, tier_id FROM profile_club_elo WHERE club_id = ? AND sport = 'padel'",
+                (club["id"],),
+            ).fetchall()
+        by_id = {r["profile_id"]: dict(r) for r in rows}
+        assert set(by_id) == {"prof_test1", "prof_test2"}
+        assert all(r["tier_id"] == tier["id"] and r["elo"] == 1500 for r in by_id.values())
+        listed = {
+            p["profile_id"]: p for p in client.get(f"/api/clubs/{club['id']}/players", headers=auth_headers).json()
+        }
+        assert listed["prof_test1"]["tier_name_padel"] == "Gold"
+        assert listed["prof_test2"]["elo_padel"] == 1500
+
+    def test_bulk_assign_tier_wrong_sport_rejected(self, client, auth_headers) -> None:
+        club, comm = self._setup_with_profile(client, auth_headers)
+        tier = client.post(
+            f"/api/clubs/{club['id']}/tiers",
+            json={"name": "Gold", "sport": "padel", "base_elo": 1500, "position": 1},
+            headers=auth_headers,
+        ).json()
+        res = client.post(
+            f"/api/clubs/{club['id']}/players/bulk-tier",
+            json={"profile_ids": ["prof_test1"], "sport": "tennis", "tier_id": tier["id"]},
+            headers=auth_headers,
+        )
+        assert res.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # Club logo

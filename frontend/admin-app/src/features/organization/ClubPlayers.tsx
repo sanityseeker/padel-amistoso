@@ -51,6 +51,11 @@ interface BulkResult {
   sent: number;
   failed: { profile_id: string; reason: string }[];
 }
+interface BulkTierResult {
+  requested: number;
+  updated: number;
+  failed: { profile_id: string; reason: string }[];
+}
 interface DuplicateGroup {
   name: string;
   profiles: ClubPlayer[];
@@ -128,15 +133,17 @@ function EditSheet({
   clubId,
   player,
   tiers,
+  initialSport,
   onClose,
 }: {
   clubId: string;
   player: ClubPlayer;
   tiers: Tier[];
+  initialSport: string;
   onClose: () => void;
 }) {
   useLocale();
-  const [sport, setSport] = useState('padel');
+  const [sport, setSport] = useState(initialSport);
   const elo = sport === 'padel' ? player.elo_padel : player.elo_tennis;
   const tier = sport === 'padel' ? player.tier_id_padel : player.tier_id_tennis;
   const hidden = sport === 'padel' ? player.hidden_padel : player.hidden_tennis;
@@ -288,6 +295,108 @@ function EditSheet({
           </Paper>
         )}
       </Stack>
+    </ResponsiveSheet>
+  );
+}
+
+// One tier for every selected player, in the sport the list is showing.
+function TierSheet({
+  clubId,
+  sport,
+  ids,
+  tiers,
+  onDone,
+  onClose,
+}: {
+  clubId: string;
+  sport: string;
+  ids: string[];
+  tiers: Tier[];
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  useLocale();
+  const [pickedTier, setPickedTier] = useState('');
+  const [applyBase, setApplyBase] = useState(false);
+  const forSport = tiers.filter((t) => t.sport === sport);
+  const assign = useAdminMutation({
+    request: () =>
+      write<BulkTierResult>(`/clubs/${clubId}/players/bulk-tier`, {
+        profile_ids: ids,
+        sport,
+        tier_id: pickedTier || null,
+        apply_base_elo: applyBase,
+      }),
+    invalidate: [playersKey(clubId)],
+    success: 'Tier updated',
+    onSuccess: (r) => {
+      if (!r.failed.length) {
+        onDone();
+        onClose();
+      }
+    },
+  });
+  return (
+    <ResponsiveSheet
+      opened
+      onClose={onClose}
+      title={sport === 'padel' ? tx('Set padel tier') : tx('Set tennis tier')}
+    >
+      {assign.data?.failed.length ? (
+        <Stack>
+          <Notice tone="warning">
+            {tx('Updated {updated} of {requested}', {
+              updated: assign.data.updated,
+              requested: assign.data.requested,
+            })}
+          </Notice>
+          {assign.data.failed.map((f) => (
+            <Text key={f.profile_id} size="sm" c="dimmed">
+              {f.reason}
+            </Text>
+          ))}
+          <FormActions>
+            <Button onClick={onClose}>{tx('Done')}</Button>
+          </FormActions>
+        </Stack>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            assign.mutate();
+          }}
+        >
+          <Stack>
+            <MutationError error={assign.error} />
+            <Text size="sm" c="dimmed">
+              {tx('{n} players selected.', { n: ids.length })}
+            </Text>
+            <NativeSelect
+              label={tx('Skill tier')}
+              value={pickedTier}
+              onChange={(e) => setPickedTier(e.currentTarget.value)}
+              data={[
+                { value: '', label: tx('No tier') },
+                ...forSport.map((t) => ({
+                  value: t.id,
+                  label: `${t.name} (${Math.round(t.base_elo)})`,
+                })),
+              ]}
+            />
+            <Checkbox
+              label={tx("Also set the rating to the tier's base ELO")}
+              checked={applyBase}
+              disabled={!pickedTier}
+              onChange={(e) => setApplyBase(e.currentTarget.checked)}
+            />
+            <FormActions onCancel={onClose}>
+              <Button type="submit" loading={assign.isPending}>
+                {tx('Set tier')}
+              </Button>
+            </FormActions>
+          </Stack>
+        </form>
+      )}
     </ResponsiveSheet>
   );
 }
@@ -548,7 +657,9 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
   const [sport, setSport] = useState('padel');
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
-  const [sheet, setSheet] = useState<'add' | 'cleanup' | 'announce' | 'invite' | null>(null);
+  const [sheet, setSheet] = useState<'add' | 'cleanup' | 'announce' | 'invite' | 'tier' | null>(
+    null,
+  );
   const [editing, setEditing] = useState<ClubPlayer | null>(null);
   const [removing, setRemoving] = useState<ClubPlayer | null>(null);
   const players = useQuery({
@@ -609,6 +720,9 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
       <Group gap="xs" wrap="nowrap">
         <Button variant="subtle" size="compact-md" onClick={() => setSelected([])}>
           {tx('Clear')}
+        </Button>
+        <Button variant="light" size="compact-md" onClick={() => setSheet('tier')}>
+          {tx('Set tier')}
         </Button>
         <Button variant="light" size="compact-md" onClick={() => setSheet('invite')}>
           {tx('Invite to a lobby')}
@@ -799,11 +913,22 @@ export function ClubPlayers({ clubId }: { clubId: string }) {
       {(sheet === 'announce' || sheet === 'invite') && (
         <BulkSheet clubId={clubId} mode={sheet} ids={selected} onClose={() => setSheet(null)} />
       )}
+      {sheet === 'tier' && (
+        <TierSheet
+          clubId={clubId}
+          sport={sport}
+          ids={selected}
+          tiers={tiers.data ?? []}
+          onDone={() => setSelected([])}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {editing && (
         <EditSheet
           clubId={clubId}
           player={players.data.find((p) => p.profile_id === editing.profile_id) ?? editing}
           tiers={tiers.data ?? []}
+          initialSport={sport}
           onClose={() => setEditing(null)}
         />
       )}

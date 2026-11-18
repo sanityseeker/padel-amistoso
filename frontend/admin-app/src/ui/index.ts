@@ -26,3 +26,10 @@ export { QrSheet } from './QrSheet';
 export { ZoomableImage, type ZoomableImageHandle } from './ZoomableImage';
 export { SchemaSvg, sanitizeSchemaSvg } from './SchemaSvg';
 export { SchemaViewer } from './SchemaViewer';
+export { HistoryLimit } from './HistoryLimit';
+export {
+  HISTORY_ALL,
+  historyLimitParam,
+  useHistoryLimit,
+  type HistoryLimitValue,
+} from './historyLimit';
