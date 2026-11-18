@@ -458,6 +458,9 @@ def log_manual_elo_adjustment(
     adjustments use ``club_id`` as the row's ``tournament_id``; the club
     roster, public club leaderboard and Player Hub club views all honour such
     rows for the *rating* while leaving the match count untouched.
+
+    The row is owned by *profile_id* (``player_elo_log.profile_id``); *player_id*
+    is only a legacy key and never decides whose rating it is.
     """
     tournament_id = club_id or "manual-adjustments"
     match_id = f"MANUAL-{uuid4().hex[:12]}"
@@ -468,8 +471,8 @@ def log_manual_elo_adjustment(
             INSERT INTO player_elo_log (
                 tournament_id, sport, match_id, player_id, match_order,
                 elo_before, elo_after, elo_delta, match_payload,
-                updated_at, is_manual, adjustment_reason, adjusted_by
-            ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, '{}', ?, 1, ?, ?)
+                updated_at, is_manual, adjustment_reason, adjusted_by, profile_id
+            ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, '{}', ?, 1, ?, ?, ?)
             """,
             (
                 tournament_id,
@@ -482,6 +485,7 @@ def log_manual_elo_adjustment(
                 updated_at,
                 adjustment_reason,
                 adjusted_by,
+                profile_id,
             ),
         )
 

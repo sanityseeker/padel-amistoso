@@ -274,7 +274,7 @@ export function LinkProfileSheet({
       ),
     enabled: debounced.trim().length >= 2,
   });
-  const invalidate = [codesKey(tid), ['admin', 'profile']];
+  const invalidate = [codesKey(tid), ['admin', 'profile'], ['admin', 'card']];
   const link = useAdminMutation({
     request: (profileId: string) =>
       write(`/admin/player-profiles/${profileId}/link/${tid}/${playerId}`),

@@ -223,16 +223,24 @@ def scoped_log_cte(
         if scope.sport:
             manual_where.append("l.sport = ?")
             manual_params.append(scope.sport)
+        # Rows carry their owner; legacy rows without one go through the profile's players.
+        manual_owner = " AND COALESCE(l.profile_id, lp.profile_id) IS NOT NULL"
+        manual_owner_params: list = []
+        if profile_ids is not None:
+            marks = ",".join("?" for _ in profile_ids) or "NULL"
+            manual_owner += f" AND COALESCE(l.profile_id, lp.profile_id) IN ({marks})"
+            manual_owner_params = _ids()
         manual_rows = f"""
         UNION ALL
-        SELECT lp.profile_id AS profile_id,{select_cols}
+        SELECT COALESCE(l.profile_id, lp.profile_id) AS profile_id,{select_cols}
           FROM player_elo_log l
-          JOIN (SELECT DISTINCT profile_id, player_id FROM linked) lp ON lp.player_id = l.player_id
+     LEFT JOIN (SELECT DISTINCT profile_id, player_id FROM linked) lp
+            ON l.profile_id IS NULL AND lp.player_id = l.player_id
      LEFT JOIN tournaments t ON t.id = l.tournament_id
      LEFT JOIN clubs mc ON l.is_manual = 1 AND mc.id = l.tournament_id
-         WHERE {" AND ".join(manual_where)}{hidden_sql.format(pid="lp.profile_id")}
+         WHERE {" AND ".join(manual_where)}{manual_owner}{hidden_sql.format(pid="COALESCE(l.profile_id, lp.profile_id)")}
         """
-        params += manual_params + hidden_params
+        params += manual_params + manual_owner_params + hidden_params
     else:
         manual_rows = ""
 

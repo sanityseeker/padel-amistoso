@@ -3,6 +3,7 @@
 ### Fix
 
 - club ELO replays in played order, language code on display button, own name not a link
+- club manual ELO belongs to the profile, self-linked history no longer stays on a ghost profile
 
 ## v3.11.2 (2026-11-16)
 

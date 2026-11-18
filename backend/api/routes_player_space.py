@@ -2378,11 +2378,12 @@ def _get_player_clubs(profile_id: str) -> list[PlayerClubSummary]:
                 SELECT DISTINCT l.tournament_id, l.player_id
                   FROM player_elo_log l
                  WHERE l.is_manual = 1
-                   AND l.player_id IN (
-                       SELECT ps.player_id FROM player_secrets ps WHERE ps.profile_id = ?
-                       UNION
-                       SELECT ph.player_id FROM player_history ph WHERE ph.profile_id = ?
-                   )
+                   AND (l.profile_id = ?
+                        OR (l.profile_id IS NULL AND l.player_id IN (
+                            SELECT ps.player_id FROM player_secrets ps WHERE ps.profile_id = ?
+                            UNION
+                            SELECT ph.player_id FROM player_history ph WHERE ph.profile_id = ?
+                        )))
             ),
             scoped AS (
                 SELECT COALESCE(t.club_id, l.tournament_id) AS club_id,
@@ -2397,8 +2398,9 @@ def _get_player_clubs(profile_id: str) -> list[PlayerClubSummary]:
                    AND lp.player_id = l.player_id
              LEFT JOIN tournaments t
                     ON t.id = l.tournament_id
-                 WHERE t.club_id IS NOT NULL
-                    OR (l.is_manual = 1 AND t.id IS NULL)
+                 WHERE (t.club_id IS NOT NULL AND l.is_manual = 0)
+                    OR (l.is_manual = 1 AND t.id IS NULL
+                        AND (l.profile_id = ? OR l.profile_id IS NULL))
             ),
             latest AS (
                 SELECT s.club_id,
@@ -2422,7 +2424,7 @@ def _get_player_clubs(profile_id: str) -> list[PlayerClubSummary]:
                AND lt.rn = 1
           GROUP BY s.club_id
             """,
-            (profile_id, profile_id, profile_id, profile_id),
+            (profile_id, profile_id, profile_id, profile_id, profile_id, profile_id),
         ).fetchall()
 
     agg_by_club: dict[str, dict[str, float | int | None]] = {
@@ -3193,6 +3195,14 @@ async def link_participation(
             conn.execute(
                 "UPDATE player_secrets SET profile_id = ? WHERE tournament_id = ? AND passphrase = ?",
                 (identity.profile_id, resolved_tid, req.passphrase),
+            )
+            # A finished participation also has a durable history row, which a ghost profile
+            # (created for unlinked club participants) may already own.  It follows the link,
+            # or the history would stay with the ghost and this profile would see none of it.
+            conn.execute(
+                "UPDATE player_history SET profile_id = ?"
+                " WHERE entity_type = 'tournament' AND entity_id = ? AND player_id = ?",
+                (identity.profile_id, resolved_tid, row["player_id"]),
             )
         if previous["profile_id"] != identity.profile_id:
             mark_elo_dirty([previous["profile_id"], identity.profile_id], [resolved_tid], [row["player_id"]])

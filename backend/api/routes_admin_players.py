@@ -1118,6 +1118,7 @@ def _purge_profile_record(conn, profile_id: str, *, is_ghost: bool) -> None:
         conn.execute("UPDATE player_secrets SET profile_id = NULL WHERE profile_id = ?", (profile_id,))
 
     conn.execute("DELETE FROM player_history WHERE profile_id = ?", (profile_id,))
+    conn.execute("DELETE FROM player_elo_log WHERE is_manual = 1 AND profile_id = ?", (profile_id,))
     conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (profile_id,))
     conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (profile_id,))
     conn.execute("DELETE FROM player_tournament_path_cache WHERE profile_id = ?", (profile_id,))

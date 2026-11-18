@@ -2815,9 +2815,10 @@ def _record_club_elo_override(
     the match count, and lists it in the player's ELO history.  The club's own
     rating chain (:mod:`.club_elo`) starts the player's next club match from it.
 
-    A profile that has never played is logged under its profile id: no view
-    lists it (they join on tournament player ids), but the club chain still
-    starts the player's first club match from it.
+    The row is owned by the profile (``player_elo_log.profile_id``), so unlinking,
+    relinking or merging participations never moves the rating.  ``player_id`` is
+    only a legacy key: one of the profile's tournament players, or the profile id
+    for a profile that has never played.
     """
     with get_db() as conn:
         player_ids = _profile_player_ids(conn, profile_id)
@@ -2831,12 +2832,15 @@ def _record_club_elo_override(
             SELECT COALESCE(l.club_elo_after, l.elo_after) AS elo
               FROM player_elo_log l
          LEFT JOIN tournaments t ON t.id = l.tournament_id
-             WHERE l.sport = ? AND l.player_id IN ({placeholders})
-               AND (t.club_id = ? OR (l.is_manual = 1 AND l.tournament_id = ?))
+             WHERE l.sport = ?
+               AND ((l.is_manual = 0 AND t.club_id = ? AND l.player_id IN ({placeholders}))
+                    OR (l.is_manual = 1 AND l.tournament_id = ?
+                        AND (l.profile_id = ?
+                             OR (l.profile_id IS NULL AND l.player_id IN ({placeholders})))))
           ORDER BY l.updated_at DESC, l.match_order DESC
              LIMIT 1
             """,
-            [sport, *log_ids, club_id, club_id],
+            [sport, club_id, *log_ids, club_id, profile_id, *log_ids],
         ).fetchone()
     if latest is not None:
         before = float(latest["elo"])

@@ -429,13 +429,16 @@ def _last_club_row(
 
 def _latest_manual_rating(conn, club_id: str, sport: str, profile_id: str):
     """The profile's latest manual club rating row (``elo_after``, ``updated_at``), or None."""
+    # Rows carry their owner; only rows written before that column existed (and not
+    # backfilled) are resolved through the profile's tournament players.
     log_ids = [*_profile_player_ids(conn, profile_id), profile_id]
     placeholders = ",".join("?" for _ in log_ids)
     return conn.execute(
         f"SELECT elo_after, updated_at FROM player_elo_log"
-        f" WHERE tournament_id = ? AND is_manual = 1 AND sport = ? AND player_id IN ({placeholders})"
+        f" WHERE tournament_id = ? AND is_manual = 1 AND sport = ?"
+        f" AND (profile_id = ? OR (profile_id IS NULL AND player_id IN ({placeholders})))"
         f" ORDER BY updated_at DESC LIMIT 1",
-        [club_id, sport, *log_ids],
+        [club_id, sport, profile_id, *log_ids],
     ).fetchone()
 
 
@@ -474,11 +477,12 @@ def _replay_club(club_id: str) -> bool:
         if not match_rows:
             return False
         manual_rows = conn.execute(
-            "SELECT player_id, sport, elo_after, updated_at FROM player_elo_log WHERE tournament_id = ? AND is_manual = 1",
+            "SELECT player_id, profile_id, sport, elo_after, updated_at FROM player_elo_log"
+            " WHERE tournament_id = ? AND is_manual = 1",
             (club_id,),
         ).fetchall()
         tournament_profiles = _tournament_profile_map(conn, club_id)
-        manual_profiles = _manual_profile_map(conn, {r["player_id"] for r in manual_rows})
+        manual_profiles = _manual_profile_map(conn, {r["player_id"] for r in manual_rows if r["profile_id"] is None})
         start_counts = _start_match_counts(conn, club_id)
         start_elos = _start_ratings(conn, club_id)
 
@@ -520,7 +524,7 @@ def _replay_club(club_id: str) -> bool:
 
     for _sort_key, kind, item in events:
         if kind == "manual":
-            profile_id = manual_profiles.get(item["player_id"])
+            profile_id = item["profile_id"] or manual_profiles.get(item["player_id"])
             if profile_id is not None:
                 rating[(item["sport"], profile_id)] = float(item["elo_after"])
             continue
@@ -674,9 +678,10 @@ def _tournament_profile_map(conn, club_id: str) -> dict[tuple[str, str], str]:
 
 
 def _manual_profile_map(conn, player_ids: set[str]) -> dict[str, str]:
-    """Map manual-row ``player_id`` values to profiles.
+    """Map legacy manual-row ``player_id`` values (rows without ``profile_id``) to profiles.
 
-    A manual row names one of the profile's tournament players, or the profile
+    Rows carry their profile in ``player_elo_log.profile_id``; this is only the fallback
+    for rows the migration could not backfill.  Such a row names one of the profile's tournament players, or the profile
     id itself when the profile has never played (see
     ``routes_clubs._record_club_elo_override``).  Going through the player ids
     means a merged profile's manual ratings follow its tournament players.

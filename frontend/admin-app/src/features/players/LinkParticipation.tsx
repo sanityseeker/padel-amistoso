@@ -42,7 +42,8 @@ export function LinkParticipation({
   const chosen = others.find((r) => r.player_id === pid) ?? null;
   const link = useAdminMutation({
     request: () => write(`/admin/player-profiles/${profileId}/link/${tid}/${pid}`),
-    invalidate,
+    // Cards built before the link have no history for this profile.
+    invalidate: [...invalidate, ['admin', 'card']],
     success: 'Participation linked',
     onSuccess: () => {
       setAsking(false);

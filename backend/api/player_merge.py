@@ -68,6 +68,12 @@ def reassign_profile_data(conn: sqlite3.Connection, primary_id: str, secondary_i
         "UPDATE player_history SET profile_id = ? WHERE profile_id = ?",
         (primary_id, secondary_id),
     )
+    # Manual club ratings belong to the profile: the primary keeps them.  Rows written
+    # before ``profile_id`` existed and keyed on the secondary's own id are claimed too.
+    conn.execute(
+        "UPDATE player_elo_log SET profile_id = ? WHERE is_manual = 1 AND (profile_id = ? OR (profile_id IS NULL AND player_id = ?))",
+        (primary_id, secondary_id, secondary_id),
+    )
     # Community and club ELO will be fully recomputed by the caller.
     conn.execute("DELETE FROM profile_community_elo WHERE profile_id = ?", (secondary_id,))
     conn.execute("DELETE FROM profile_club_elo WHERE profile_id = ?", (secondary_id,))

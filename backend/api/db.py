@@ -1014,6 +1014,30 @@ def init_db() -> None:
             conn.execute("ALTER TABLE player_elo_log ADD COLUMN club_matches_after INTEGER")
         if "club_identity" not in elo_log_cols:
             conn.execute("ALTER TABLE player_elo_log ADD COLUMN club_identity TEXT")
+        # Owner of a manual club rating row.  A manual rating belongs to the profile, not to
+        # whichever tournament participation it was keyed on, so unlinking, relinking or merging
+        # participations never moves it.  NULL on match rows.
+        if "profile_id" not in elo_log_cols:
+            conn.execute("ALTER TABLE player_elo_log ADD COLUMN profile_id TEXT")
+        # Backfill manual rows written before the column existed (idempotent): the profile
+        # whose id or linked tournament player id the row was keyed on.
+        conn.execute(
+            """
+            UPDATE player_elo_log SET profile_id = COALESCE(
+                (SELECT pp.id FROM player_profiles pp WHERE pp.id = player_elo_log.player_id),
+                (SELECT ps.profile_id FROM player_secrets ps
+                  WHERE ps.player_id = player_elo_log.player_id AND ps.profile_id IS NOT NULL LIMIT 1),
+                (SELECT ph.profile_id FROM player_history ph
+                  WHERE ph.player_id = player_elo_log.player_id AND ph.entity_type = 'tournament'
+                    AND ph.profile_id IS NOT NULL LIMIT 1)
+            )
+            WHERE is_manual = 1 AND profile_id IS NULL
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_player_elo_log_manual_profile"
+            " ON player_elo_log (profile_id, sport) WHERE is_manual = 1"
+        )
         # A player's latest club row, read when rating each new club match.
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_player_elo_log_club_identity"
