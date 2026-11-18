@@ -1,3 +1,9 @@
+## v3.12.0 (2026-11-18)
+
+### Feat
+
+- pair cards, history length choice, bulk club tiers, re-rate a tournament from club ratings
+
 ## v3.11.3 (2026-11-18)
 
 ### Fix
