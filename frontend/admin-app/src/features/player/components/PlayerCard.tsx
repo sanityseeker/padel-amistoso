@@ -22,9 +22,13 @@ export function PlayerCard({
   useLocale();
   const elo = eloOf(space, sport);
   const delta = recentDelta(space, sport);
-  const series = historyOf(space, sport)
-    .slice(-20)
-    .map((m) => Math.round(m.elo_after));
+  // The rating before the first shown match comes first, so two matches plot as three points.
+  const shownHistory = historyOf(space, sport).slice(-20);
+  const series = shownHistory.length
+    ? [shownHistory[0].elo_before, ...shownHistory.map((m) => m.elo_after)].map((v) =>
+        Math.round(v),
+      )
+    : [];
   return (
     <Paper variant="court-panel" p="lg" data-testid="player-card">
       <Stack gap="md">

@@ -150,6 +150,14 @@ def _elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collectio
         # rewrite the ELO history's chronology with the moment it ran.
         log_ts, _elo_ts = get_tournament_elo_timestamps(tournament_id, sport)
 
+        # Replay in the order the matches were played (the order the incremental
+        # scoring rated them), not the structural order.  Readers sort the log by
+        # ``updated_at`` (ISO strings, compared as text by SQLite), so the stored
+        # chain only stays continuous if the replay uses the same order.
+        indexed = list(enumerate(all_matches))
+        indexed.sort(key=lambda im: (log_ts.get(getattr(im[1], "id", "")) or _match_timestamp(im[1]), im[0]))
+        all_matches = [m for _i, m in indexed]
+
         # Reset and re-seed with those pre-tournament values
         reset_tournament_elos(tournament_id, sport)
         reset_tournament_elo_logs(tournament_id, sport)

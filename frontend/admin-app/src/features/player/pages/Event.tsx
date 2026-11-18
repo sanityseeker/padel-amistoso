@@ -24,6 +24,7 @@ import { usePlayerSpace } from '../context';
 import { EntryPaymentBlock, EntryPaymentStatus } from '../payments';
 import type { PathRound, PlayerMatch } from '../../../player/types';
 import { useEventData, usesCourts } from '../eventData';
+import { EventSelfIds } from '../EventSelfIds';
 import { MatchActions } from '../MatchActions';
 import { MatchContacts, useMatchContacts } from '../MatchContacts';
 import { Notice } from '../../../ui/Notice';
@@ -341,115 +342,117 @@ function EventView({ kind, id }: { kind: string; id: string }) {
       ),
     );
   return (
-    <Stack gap="xl" {...sportProps(entry.sport)}>
-      {/* Header, then the one notice that needs attention (none once the event is finished: the
+    <EventSelfIds data={data} playerId={entry.player_id}>
+      <Stack gap="xl" {...sportProps(entry.sport)}>
+        {/* Header, then the one notice that needs attention (none once the event is finished: the
           status badge says so). */}
-      <Stack gap="md">
-        {head}
-        {banner && notice(banner, 'event-banner')}
-      </Stack>
-      {data && (
-        <Announcements
-          notes={data.tv}
-          testId="event-announcements"
-          wrap={(title, body) => (
-            <HubSection
-              section="announcements"
-              id={ANNOUNCEMENTS_ANCHOR}
-              title={title}
-              state={sections}
-            >
-              {body}
-            </HubSection>
-          )}
-        />
-      )}
-      <EntryPaymentBlock entry={entry} />
-      {failure && <ErrorState error={failure} retry={() => void event.refetch()} />}
-      {!failure && !data && <Loading />}
-      {data && (
-        <>
-          {data.finished && !earlier && standingsBlock}
-          {section(tx('Up next'), upNext, true, 'event-up-next')}
-          {later}
-          <OrganizerInfo
+        <Stack gap="md">
+          {head}
+          {banner && notice(banner, 'event-banner')}
+        </Stack>
+        {data && (
+          <Announcements
             notes={data.tv}
-            testId="event-custom-info"
+            testId="event-announcements"
             wrap={(title, body) => (
-              <HubSection section="info" id={INFO_ANCHOR} title={title} state={sections}>
+              <HubSection
+                section="announcements"
+                id={ANNOUNCEMENTS_ANCHOR}
+                title={title}
+                state={sections}
+              >
                 {body}
               </HubSection>
             )}
           />
-          {/* Overview first: where you stand. Then each round's story in Played. */}
-          {ranked && (
-            <HubSection section="path" title={tx('Your tournament')} state={sections}>
-              <TournamentPath
-                entry={entry}
-                inProgress={inProgress}
-                results={results}
-                onSelect={showRound}
-                onShowStandings={standings.length > 0 ? showStandings : undefined}
-              />
-            </HubSection>
-          )}
-          {playedNow.length > 0 && (
-            <PlayedList
-              testId="event-played"
-              onPlayer={openPlayer}
-              items={playedNow}
-              title={earlier ? tx('Play-offs') : undefined}
-              path={earlier ? pathRounds?.filter((r) => r.stage === 'playoff') : pathRounds}
-              wrap={(title, summary, list) => (
-                <HubSection section="played" title={title} aside={summary} state={sections}>
-                  {list}
+        )}
+        <EntryPaymentBlock entry={entry} />
+        {failure && <ErrorState error={failure} retry={() => void event.refetch()} />}
+        {!failure && !data && <Loading />}
+        {data && (
+          <>
+            {data.finished && !earlier && standingsBlock}
+            {section(tx('Up next'), upNext, true, 'event-up-next')}
+            {later}
+            <OrganizerInfo
+              notes={data.tv}
+              testId="event-custom-info"
+              wrap={(title, body) => (
+                <HubSection section="info" id={INFO_ANCHOR} title={title} state={sections}>
+                  {body}
                 </HubSection>
               )}
             />
-          )}
-          {earlier && (standings.length > 0 || playedEarlier.length > 0) && (
-            <HubSection section="earlier" title={earlierTitle} state={sections}>
-              <Stack gap="md" data-testid="event-earlier-stage">
-                {standingsBlock}
-                {playedEarlier.length > 0 && (
-                  <Stack gap="sm">
-                    <PlayedList
-                      testId="event-played-earlier"
-                      onPlayer={openPlayer}
-                      items={playedEarlier}
-                      titleOrder={3}
-                      path={pathRounds?.filter((r) => r.stage !== 'playoff')}
-                    />
-                  </Stack>
+            {/* Overview first: where you stand. Then each round's story in Played. */}
+            {ranked && (
+              <HubSection section="path" title={tx('Your tournament')} state={sections}>
+                <TournamentPath
+                  entry={entry}
+                  inProgress={inProgress}
+                  results={results}
+                  onSelect={showRound}
+                  onShowStandings={standings.length > 0 ? showStandings : undefined}
+                />
+              </HubSection>
+            )}
+            {playedNow.length > 0 && (
+              <PlayedList
+                testId="event-played"
+                onPlayer={openPlayer}
+                items={playedNow}
+                title={earlier ? tx('Play-offs') : undefined}
+                path={earlier ? pathRounds?.filter((r) => r.stage === 'playoff') : pathRounds}
+                wrap={(title, summary, list) => (
+                  <HubSection section="played" title={title} aside={summary} state={sections}>
+                    {list}
+                  </HubSection>
                 )}
-              </Stack>
-            </HubSection>
-          )}
-          {noMatches &&
-            (data?.tv.hide_schedule ? (
-              <EmptyState title={tx('The organizer has not published the schedule yet.')} />
-            ) : (
-              <EmptyState title={tx('Your court is waiting')}>
-                {tx('Your organizer will publish pairings here when the next round is ready.')}
-              </EmptyState>
-            ))}
-        </>
-      )}
-      {!data?.finished && !earlier && standingsBlock}
-      {!data?.finished && (
-        <HubSection section="notifications" title={tx('Notifications')} state={sections}>
-          <PushToggle tid={id} token={event.token} />
-        </HubSection>
-      )}
-      {fullView}
-      <PlayerCardModal
-        tid={id}
-        playerId={cardId}
-        stage={cardStage}
-        onClose={closeCard}
-        autoClose={false}
-        source={playerCardSource}
-      />
-    </Stack>
+              />
+            )}
+            {earlier && (standings.length > 0 || playedEarlier.length > 0) && (
+              <HubSection section="earlier" title={earlierTitle} state={sections}>
+                <Stack gap="md" data-testid="event-earlier-stage">
+                  {standingsBlock}
+                  {playedEarlier.length > 0 && (
+                    <Stack gap="sm">
+                      <PlayedList
+                        testId="event-played-earlier"
+                        onPlayer={openPlayer}
+                        items={playedEarlier}
+                        titleOrder={3}
+                        path={pathRounds?.filter((r) => r.stage !== 'playoff')}
+                      />
+                    </Stack>
+                  )}
+                </Stack>
+              </HubSection>
+            )}
+            {noMatches &&
+              (data?.tv.hide_schedule ? (
+                <EmptyState title={tx('The organizer has not published the schedule yet.')} />
+              ) : (
+                <EmptyState title={tx('Your court is waiting')}>
+                  {tx('Your organizer will publish pairings here when the next round is ready.')}
+                </EmptyState>
+              ))}
+          </>
+        )}
+        {!data?.finished && !earlier && standingsBlock}
+        {!data?.finished && (
+          <HubSection section="notifications" title={tx('Notifications')} state={sections}>
+            <PushToggle tid={id} token={event.token} />
+          </HubSection>
+        )}
+        {fullView}
+        <PlayerCardModal
+          tid={id}
+          playerId={cardId}
+          stage={cardStage}
+          onClose={closeCard}
+          autoClose={false}
+          source={playerCardSource}
+        />
+      </Stack>
+    </EventSelfIds>
   );
 }

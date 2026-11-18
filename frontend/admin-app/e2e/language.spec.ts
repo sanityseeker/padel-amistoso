@@ -210,3 +210,26 @@ test('a stored Spanish choice paints Spanish first, with its texts preloaded by 
   await expect(page.locator('link[rel="modulepreload"][href*="/es-"]')).toHaveCount(1);
   await expect(page.locator('link[rel="modulepreload"][href*="/ru-"]')).toHaveCount(0);
 });
+
+test('the display button shows the current language code and follows the choice', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto('/events');
+  const display = page
+    .getByRole('button', { name: /^(Preferences|Preferencias|Настройки):/ })
+    .first();
+  await expect(display).toContainText('EN');
+  await chooseLanguage(page, 'Español');
+  await expect(display).toContainText('ES');
+  await chooseLanguage(page, 'Русский');
+  await expect(display).toContainText('RU');
+  await page.reload();
+  await expect(display).toContainText('RU');
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBeTruthy();
+  const box = (await display.boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.x + box.width).toBeLessThanOrEqual(360);
+});

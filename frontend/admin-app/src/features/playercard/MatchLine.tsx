@@ -33,7 +33,11 @@ function Names({
       {people.map((p, i) => (
         <Fragment key={`${i}:${p.name}`}>
           {i > 0 && separator}
-          <PlayerName name={p.name} onOpen={onOpen && p.id ? () => onOpen(p.id!) : undefined} />
+          <PlayerName
+            name={p.name}
+            id={p.id ?? undefined}
+            onOpen={onOpen && p.id ? () => onOpen(p.id!) : undefined}
+          />
         </Fragment>
       ))}
     </>

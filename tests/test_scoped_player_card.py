@@ -182,6 +182,11 @@ class TestScopeFilter:
         assert card["stats"][0]["matches"] == 2
         assert card["stats"][0]["wins"] == 2
 
+    def test_elo_history_starts_with_the_rating_before_the_first_match(self, client, world) -> None:
+        card = _card(client, f"?club_id={world['club_a']}&sport=padel")
+        # Two rated matches plot as three points: the start, then each result.
+        assert card["stats"][0]["elo_history"] == [1000.0, 1010.0, 1010.0]
+
     def test_club_scope_lists_unlisted_club_events_for_a_signed_in_viewer(self, client, world) -> None:
         card = _card(client, f"?club_id={world['club_a']}")
         assert "Event t_a_hidden" in _events(card)

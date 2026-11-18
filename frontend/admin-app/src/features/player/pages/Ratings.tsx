@@ -71,19 +71,29 @@ export default function Ratings() {
               <Suspense fallback={<Skeleton h={240} />}>
                 <EloChart
                   label={tx('{value1} ELO trend', { value1: sport })}
-                  data={history.map((m, i) => {
-                    const opponents = opponentsOf(m);
-                    return {
-                      match: String(i + 1),
-                      elo: Math.round(m.elo_after),
-                      delta: Math.round(m.elo_delta ?? m.elo_after - m.elo_before),
-                      title: m.is_manual
-                        ? tx('Manual adjustment')
-                        : m.tournament_name || m.tournament_id,
-                      score: m.is_manual ? '' : scoreOf(m),
-                      opponent: opponents.length ? `${tx('vs')} ${opponents.join(' & ')}` : '',
-                    };
-                  })}
+                  data={[
+                    {
+                      match: '0',
+                      elo: Math.round(history[0].elo_before),
+                      delta: 0,
+                      title: tx('Starting rating'),
+                      score: '',
+                      opponent: '',
+                    },
+                    ...history.map((m, i) => {
+                      const opponents = opponentsOf(m);
+                      return {
+                        match: String(i + 1),
+                        elo: Math.round(m.elo_after),
+                        delta: Math.round(m.elo_delta ?? m.elo_after - m.elo_before),
+                        title: m.is_manual
+                          ? tx('Manual adjustment')
+                          : m.tournament_name || m.tournament_id,
+                        score: m.is_manual ? '' : scoreOf(m),
+                        opponent: opponents.length ? `${tx('vs')} ${opponents.join(' & ')}` : '',
+                      };
+                    }),
+                  ]}
                 />
               </Suspense>
               <Text size="xs" c="dimmed" mt="md">

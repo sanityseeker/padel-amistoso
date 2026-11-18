@@ -369,11 +369,16 @@ def build_scoped_card(
         linked = _linked_profiles(conn, pairs) if pairs else {}
 
     by_sport: dict[str, CardSportStats] = {}
+    elo_steps: dict[str, list[tuple[float | None, float]]] = {}
     for log in logs:
         stats = by_sport.setdefault(log["sport"], CardSportStats(sport=log["sport"]))
         if log["elo_after"] is not None:
             stats.elo = round(float(log["elo_after"]), 1)
             stats.elo_history.append(round(float(log["elo_after"]), 1))
+            before = log.get("elo_before")
+            elo_steps.setdefault(log["sport"], []).append(
+                (round(float(before), 1) if before is not None else None, round(float(log["elo_after"]), 1))
+            )
 
     round_cache: dict[str, dict[str, tuple[int, str]]] = {}
     shown: list[dict[str, Any]] = []
@@ -429,8 +434,13 @@ def build_scoped_card(
                 row["matches"] += 1
                 row["wins"] += 1 if outcome == "W" else 0
 
-    for stats in by_sport.values():
-        stats.elo_history = stats.elo_history[-ELO_HISTORY_LIMIT:]
+    for sport, stats in by_sport.items():
+        # Trim first, then prepend the rating before the first shown row, so a
+        # 2-match card still plots its first change (3 points).
+        steps = elo_steps.get(sport, [])[-ELO_HISTORY_LIMIT:]
+        stats.elo_history = [after for _before, after in steps]
+        if steps and steps[0][0] is not None:
+            stats.elo_history.insert(0, steps[0][0])
     if scope.kind == "club":
         _apply_club_board(profile_id, scope, by_sport)
     recent = [CardMatch(**{k: v for k, v in e.items() if k in CardMatch.model_fields}) for e in reversed(shown)]

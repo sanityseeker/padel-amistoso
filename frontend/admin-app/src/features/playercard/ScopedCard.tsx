@@ -115,6 +115,7 @@ function People({
           <Text size="sm" fw={600} truncate component="div" miw={0}>
             <PlayerName
               name={r.name}
+              id={r.profile_id ?? undefined}
               onOpen={onProfile && r.profile_id ? () => onProfile(r.profile_id!) : undefined}
             />
           </Text>
@@ -156,6 +157,7 @@ export function ScopedCardBody({
               <Text fw={600} component="div" miw={0}>
                 <PlayerName
                   name={m.name}
+                  id={m.player_id}
                   onOpen={m.has_profile && onMember ? () => onMember(m.player_id) : undefined}
                 />
               </Text>

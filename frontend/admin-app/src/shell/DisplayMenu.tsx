@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Button,
   Popover,
   SegmentedControl,
@@ -125,7 +124,7 @@ export function DisplayPanel({ maxWidth = '14rem' }: { maxWidth?: number | strin
   );
 }
 
-// The header trigger: a sliders icon (44 px) when `compact`, otherwise the sliders and the language code.
+// The header trigger: the sliders and the language code (EN / ES / RU), always visible; `compact` is the 44 px phone size.
 // Not a gear: that already means Admin and tournament settings.
 // The full value ("English · Auto") stays in the accessible name. It opens an anchored popover.
 export function DisplayButton({ compact = false }: { compact?: boolean }) {
@@ -135,9 +134,23 @@ export function DisplayButton({ compact = false }: { compact?: boolean }) {
     <Popover position="bottom-end" width="16rem" shadow="md" withinPortal>
       <Popover.Target>
         {compact ? (
-          <ActionIcon size="touch" style={{ flexShrink: 0 }} aria-label={name} title={label.long}>
-            <IconAdjustmentsHorizontal size={20} />
-          </ActionIcon>
+          <Button
+            variant="subtle"
+            color="gray"
+            h="var(--tap-lg)"
+            px={8}
+            style={{ flexShrink: 0 }}
+            leftSection={<IconAdjustmentsHorizontal size={20} />}
+            styles={{
+              section: { marginInlineEnd: 4 },
+              label: { fontSize: 'var(--mantine-font-size-xs)' },
+            }}
+            aria-label={name}
+            title={label.long}
+            data-testid="display-button"
+          >
+            {label.short}
+          </Button>
         ) : (
           <Button
             variant="subtle"
@@ -147,6 +160,7 @@ export function DisplayButton({ compact = false }: { compact?: boolean }) {
             leftSection={<IconAdjustmentsHorizontal size={17} />}
             aria-label={name}
             title={label.long}
+            data-testid="display-button"
           >
             {label.short}
           </Button>

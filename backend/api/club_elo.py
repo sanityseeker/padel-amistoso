@@ -336,6 +336,7 @@ def _rate_newest_match(club_id: str, tid: str, data: dict, match: Match, sport: 
 
         profiles = {r["player_id"]: r["profile_id"] for r in _get_linked_profiles(tid, conn)}
         start_counts = _start_match_counts(conn, club_id, tournament_id=tid)
+        start_elos = _start_ratings(conn, club_id, tournament_id=tid)
         identities: dict[str, str] = {}
         ratings: dict[str, float] = {}
         counts: dict[str, int] = {}
@@ -351,7 +352,11 @@ def _rate_newest_match(club_id: str, tid: str, data: dict, match: Match, sport: 
                 if manual is not None and manual["updated_at"] > last["updated_at"]:
                     rating = float(manual["elo_after"])
             else:
-                rating = float(manual["elo_after"]) if manual is not None else float(row["elo_before"])
+                rating = (
+                    float(manual["elo_after"])
+                    if manual is not None
+                    else start_elos.get((tid, sport, player_id), float(row["elo_before"]))
+                )
                 count = start_counts.get((tid, sport, player_id), 0)
             identities[player_id], ratings[player_id], counts[player_id] = identity, rating, count
 
@@ -475,6 +480,7 @@ def _replay_club(club_id: str) -> bool:
         tournament_profiles = _tournament_profile_map(conn, club_id)
         manual_profiles = _manual_profile_map(conn, {r["player_id"] for r in manual_rows})
         start_counts = _start_match_counts(conn, club_id)
+        start_elos = _start_ratings(conn, club_id)
 
     # Group log rows per match.
     matches: dict[tuple[str, str, str], dict] = {}
@@ -534,7 +540,7 @@ def _replay_club(club_id: str) -> bool:
             chain = (sport, identity)
             if chain not in played:
                 played.add(chain)
-                rating.setdefault(chain, float(row["elo_before"]))
+                rating.setdefault(chain, start_elos.get((tid, sport, player_id), float(row["elo_before"])))
                 count[chain] = start_counts.get((tid, sport, player_id), 0)
             identities[player_id], ratings[player_id], counts[player_id] = identity, rating[chain], count[chain]
 
@@ -694,6 +700,31 @@ def _manual_profile_map(conn, player_ids: set[str]) -> dict[str, str]:
     for row in linked:
         mapping[row["player_id"]] = row["profile_id"]
     return mapping
+
+
+def _start_ratings(conn, club_id: str, tournament_id: str | None = None) -> dict[tuple[str, str, str], float]:
+    """``{(tournament_id, sport, player_id): rating before the tournament}``.
+
+    The seed of a player's first club match. It is the tournament's stored
+    pre-tournament rating, never a match row's ``elo_before``: that value already
+    contains the effect of earlier matches of the same main chain.
+    """
+    tournament_filter = " AND pe.tournament_id = ?" if tournament_id else ""
+    params = (club_id, tournament_id) if tournament_id else (club_id,)
+    rows = conn.execute(
+        f"""
+        SELECT pe.tournament_id, pe.sport, pe.player_id, pe.elo_before
+          FROM player_elo pe
+          JOIN tournaments t ON t.id = pe.tournament_id
+         WHERE t.club_id = ?{tournament_filter}
+        """,
+        params,
+    ).fetchall()
+    return {
+        (r["tournament_id"], r["sport"], r["player_id"]): float(r["elo_before"])
+        for r in rows
+        if r["elo_before"] is not None
+    }
 
 
 def _start_match_counts(conn, club_id: str, tournament_id: str | None = None) -> dict[tuple[str, str, str], int]:

@@ -269,6 +269,7 @@ export function PlayerCardModal({
                           <Text fw={600} truncate component="div" miw={0}>
                             <PlayerName
                               name={m.name}
+                              id={m.player_id}
                               onOpen={canWiden ? () => openMember(m.player_id) : undefined}
                             />
                           </Text>

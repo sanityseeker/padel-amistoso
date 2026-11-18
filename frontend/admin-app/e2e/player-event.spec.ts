@@ -234,6 +234,14 @@ test('the event page lists Up next first, then Played', async ({ page, request }
   await expect(row.getByTestId('played-own')).toContainText('Ana');
   await expect(row.getByTestId('played-own').getByText('You', { exact: true })).toBeVisible();
   await expect(row.getByTestId('played-other')).not.toContainText('Ana');
+  // The viewer's own name is plain text; every other name still opens a card.
+  await expect(
+    played.getByRole('button', { name: 'Open profile for Ana', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    next.getByTestId('player-match').getByRole('button', { name: 'Open profile for Ana' }),
+  ).toHaveCount(0);
+  await expect(row.getByTestId('played-other').getByTestId('player-name').first()).toBeVisible();
   // The round's rank comes from the path, on the row itself.
   await expect(row.getByTestId('played-rank')).toContainText(/^#\d+/);
 });
@@ -789,6 +797,8 @@ test('a pinned announcement and the custom information show on the event page an
   ).toBeTruthy();
 
   await page.goto('/player');
+  // The card has no Information link any more: the event page shows the text.
+  await expect(page.getByTestId('active-tournament-info')).toHaveCount(0);
   const badge = page.getByTestId('active-tournament').getByTestId('active-tournament-announcement');
   await expect(badge).toHaveText('Announcement');
   // The card shows the badge only, never the text.

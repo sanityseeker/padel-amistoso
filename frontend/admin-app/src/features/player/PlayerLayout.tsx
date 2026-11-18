@@ -22,6 +22,7 @@ import { hubSportsOf, type Sport } from './stats';
 import classes from './Player.module.css';
 import { Notice } from '../../ui/Notice';
 import { PageContainer } from '../../ui/PageContainer';
+import { SelfIdsProvider } from '../../ui/PlayerName';
 
 const SECTIONS = [
   { to: '/player', label: 'Hub', icon: IconHome, end: true },
@@ -280,7 +281,9 @@ export function PlayerLayout() {
           withAll={section.to !== '/player/ratings'}
         />
       )}
-      <Outlet context={context} />
+      <SelfIdsProvider ids={[space.profile.id, ...liveEntries.map((e) => e.player_id)]}>
+        <Outlet context={context} />
+      </SelfIdsProvider>
     </Stack>
   );
   return (
