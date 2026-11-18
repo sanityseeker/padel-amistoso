@@ -50,7 +50,12 @@ export function PlayerCard({
         <Group align="flex-end" gap="sm">
           <Text variant="score-xl">{elo != null ? Math.round(elo) : '-'}</Text>
           {series.length > 1 && (
-            <Badge color={delta >= 0 ? 'success' : 'red'} variant={delta >= 0 ? 'filled' : 'light'}>
+            <Badge
+              color={delta >= 0 ? 'success' : 'red'}
+              variant={delta >= 0 ? 'filled' : 'light'}
+              title={tx('Last 5 rated matches')}
+              aria-label={`${tx('Last 5 rated matches')}: ${delta > 0 ? '+' : ''}${delta.toFixed(1)}`}
+            >
               {delta > 0 ? '+' : ''}
               {delta.toFixed(1)}
             </Badge>

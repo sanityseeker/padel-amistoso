@@ -14,13 +14,14 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..auth.deps import get_current_user, get_current_user_optional, require_admin
 from ..auth.models import User, UserRole
+from .community_elo_summary import CommunityEloSummaryOut, build_summary
 from .db import get_db, get_shared_club_ids
-from .leaderboard_cache import invalidate_cards_after_scope_change
+from .leaderboard_cache import etag_for, invalidate_cards_after_scope_change
 from .state import _tournaments
 
 router = APIRouter(prefix="/api/communities", tags=["communities"])
@@ -138,6 +139,47 @@ def list_communities(user: User | None = Depends(get_current_user_optional)) -> 
                 rows = sorted(merged.values(), key=lambda r: (r["name"] or "").lower())
 
     return [CommunityOut(**dict(r), is_builtin=(r["id"] == DEFAULT_COMMUNITY_ID)) for r in rows]
+
+
+@router.get("/{community_id}/elo-summary", response_model=CommunityEloSummaryOut)
+def community_elo_summary(
+    community_id: str,
+    request: Request,
+    response: Response,
+    sport: str = Query(default="all", pattern=r"^(padel|tennis|all)$"),
+    date_from: str | None = Query(default=None, alias="from", max_length=40),
+    date_to: str | None = Query(default=None, alias="to", max_length=40),
+    club_id: str | None = Query(default=None, max_length=64),
+    season_id: str | None = Query(default=None, max_length=64),
+    user: User | None = Depends(get_current_user_optional),
+):
+    """Rating points gained and lost in the community's clubs, from played matches only.
+
+    Organizer accounts only (a Hub profile token or no login gets 403).  A global
+    admin sees every club; other organizers see the clubs they can edit, and the
+    rest are counted in ``clubs_hidden``.
+    """
+    from .routes_clubs import is_club_editor  # noqa: PLC0415  (routes_clubs imports this module)
+
+    if user is None:
+        raise HTTPException(403, "Organizer login required")
+    is_admin = user.role == UserRole.ADMIN
+    summary = build_summary(
+        community_id,
+        sport=sport,
+        date_from=date_from,
+        date_to=date_to,
+        club_id=club_id,
+        season_id=season_id,
+        can_see_club=lambda club: is_admin or is_club_editor(club, user),
+    )
+    payload = summary.model_dump()
+    tag = etag_for(payload)
+    headers = {"ETag": tag, "Cache-Control": "private, no-cache"}
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers=headers)
+    response.headers.update(headers)
+    return payload
 
 
 @router.get("/{community_id}", response_model=CommunityOut)

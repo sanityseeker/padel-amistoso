@@ -10,6 +10,7 @@ import { ClubEvents } from './ClubEvents';
 import { ClubPlayers } from './ClubPlayers';
 import { ClubSeasons } from './ClubSeasons';
 import { ClubSettings } from './ClubSettings';
+import { CommunitySummary } from './communitySummary/CommunitySummaryPage';
 import { ClubTiers } from './ClubTiers';
 
 // One club: its seasons, skill tiers, player roster and settings.
@@ -57,6 +58,7 @@ function Club({ id }: { id: string }) {
           <Tabs.Tab value="seasons">{tx('Seasons')}</Tabs.Tab>
           <Tabs.Tab value="tiers">{tx('Skill tiers')}</Tabs.Tab>
           <Tabs.Tab value="players">{tx('Players')}</Tabs.Tab>
+          <Tabs.Tab value="ratings">{tx('Rating summary')}</Tabs.Tab>
           <Tabs.Tab value="settings">{tx('Settings')}</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="events">
@@ -70,6 +72,9 @@ function Club({ id }: { id: string }) {
         </Tabs.Panel>
         <Tabs.Panel value="players">
           <ClubPlayers clubId={club.id} />
+        </Tabs.Panel>
+        <Tabs.Panel value="ratings">
+          <CommunitySummary communityId={club.community_id} fixedClubId={club.id} />
         </Tabs.Panel>
         <Tabs.Panel value="settings">
           <ClubSettings club={club} isAdmin={user?.role === 'admin'} />

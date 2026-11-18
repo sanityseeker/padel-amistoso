@@ -193,9 +193,7 @@ export function CareerStats({ entries }: { entries: Entry[] }) {
   return (
     <Stack gap="md">
       <Paper p="md" data-testid="career-stats">
-        <Text variant="eyebrow" mb="xs">
-          {tx('Career stats')}
-        </Text>
+        <Text variant="eyebrow">{tx('Career stats')}</Text>
         {bySport.length > 1 ? (
           <Stack gap="lg">
             {bySport.map(([sport, list]) => {

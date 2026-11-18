@@ -16,6 +16,7 @@ import {
   ClubPage,
   ClubPathPage,
   ClubsPage,
+  CommunitySummaryPage,
   EventsApp,
   Hub,
   InfoPage,
@@ -111,6 +112,7 @@ export const createAppRouter = () =>
             { path: 'lobby/:id', element: <LobbyPage /> },
             { path: 'clubs', element: <ClubsPage /> },
             { path: 'clubs/:id', element: <ClubPage /> },
+            { path: 'communities/:id', element: <CommunitySummaryPage /> },
             {
               path: 'players',
               element: (

@@ -351,6 +351,45 @@ test('clubs: club page, tiers, settings and community rename', async ({ page, re
   ).toBeVisible();
 });
 
+test('community rating summary: opens from the communities row and lists a club', async ({
+  page,
+  request,
+}) => {
+  const headers = await adminHeaders(request);
+  const stamp = Date.now();
+  const community = await (
+    await request.post('/api/communities', { headers, data: { name: `Sum Community ${stamp}` } })
+  ).json();
+  const club = await (
+    await request.post('/api/clubs', {
+      headers,
+      data: { name: `Sum Club ${stamp}`, community_id: community.id },
+    })
+  ).json();
+  const { id } = await createTournament(request, 'mex', `Sum ${stamp}`, {
+    community_id: community.id,
+    club_id: club.id,
+  });
+  await scoreRound(request, id, [[16, 8]]);
+  await loginAdmin(page);
+  await page.goto('/admin/clubs');
+  const row = page.getByRole('row').filter({ hasText: `Sum Community ${stamp}` });
+  await row.getByRole('link', { name: 'Rating summary' }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/communities/${community.id}$`));
+  await expect(page.getByRole('heading', { name: 'Rating summary', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('summary-note')).toContainText('Only rating changes from played');
+  const entry = page.getByTestId('summary-club').filter({ hasText: `Sum Club ${stamp}` });
+  await expect(entry).toBeVisible();
+  await expect(entry.getByText('Points gained').first()).toBeVisible();
+  await entry.getByRole('button', { name: /Show players/ }).click();
+  await expect(entry.getByText(/Unlinked players/)).toBeVisible();
+  // The season picker only appears once a club is chosen.
+  await expect(page.getByRole('combobox', { name: 'Season' })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Club', exact: true }).click();
+  await page.getByRole('option', { name: `Sum Club ${stamp}` }).click();
+  await expect(page.getByRole('combobox', { name: 'Season' })).toBeVisible();
+});
+
 test('users: delete an account; the invite needs mail so it explains the error', async ({
   page,
   request,

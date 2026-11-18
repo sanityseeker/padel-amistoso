@@ -37,6 +37,11 @@ export const ClubsPage = lazyWithPreload(() =>
 export const ClubPage = lazyWithPreload(() =>
   import('../features/organization/ClubPage').then((m) => ({ default: m.ClubPage })),
 );
+export const CommunitySummaryPage = lazyWithPreload(() =>
+  import('../features/organization/communitySummary/CommunitySummaryPage').then((m) => ({
+    default: m.CommunitySummaryPage,
+  })),
+);
 export const UsersPage = lazyWithPreload(() =>
   import('../features/organization/UsersPage').then((m) => ({ default: m.UsersPage })),
 );
@@ -63,6 +68,7 @@ const BY_PREFIX: [prefix: string, pages: Preloadable[]][] = [
   ['/admin/t/', [TournamentPage]],
   ['/admin/new', [NewTournamentPage]],
   ['/admin/lobby/', [LobbyPage]],
+  ['/admin/communities/', [CommunitySummaryPage]],
   ['/admin/clubs/', [ClubPage]],
   ['/admin/clubs', [ClubsPage]],
   ['/admin/players', [PlayersPage]],

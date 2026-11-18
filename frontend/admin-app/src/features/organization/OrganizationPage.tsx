@@ -24,6 +24,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
+import { preloadProps } from '../../app/routes';
 import { write } from '../../api';
 import { useAuth } from '../../auth';
 import { ErrorState, Loading, useOverview } from '../../components';
@@ -192,33 +193,46 @@ export function OrganizationPage() {
                           {(tournaments.data ?? []).filter((t) => t.community_id === c.id).length}
                         </Table.Td>
                         <Table.Td>
-                          {canManage(c) && (
-                            <Menu position="bottom-end" withinPortal>
-                              <Menu.Target>
-                                <ActionIcon aria-label={tx('Options for {name}', { name: c.name })}>
-                                  <IconDots size={18} />
-                                </ActionIcon>
-                              </Menu.Target>
-                              <Menu.Dropdown>
-                                <Menu.Item
-                                  leftSection={<IconPencil size={15} />}
-                                  onClick={() => open({ kind: 'rename', community: c }, c.name)}
-                                >
-                                  {tx('Rename')}
-                                </Menu.Item>
-                                <Menu.Item
-                                  color="red"
-                                  leftSection={<IconTrash size={15} />}
-                                  onClick={() => {
-                                    remove.reset();
-                                    setDeleting(c);
-                                  }}
-                                >
-                                  {tx('Delete')}
-                                </Menu.Item>
-                              </Menu.Dropdown>
-                            </Menu>
-                          )}
+                          <Group gap="xs" justify="flex-end" wrap="nowrap">
+                            <Button
+                              component={Link}
+                              to={`/admin/communities/${c.id}`}
+                              size="compact-sm"
+                              variant="default"
+                              {...preloadProps(`/admin/communities/${c.id}`)}
+                            >
+                              {tx('Rating summary')}
+                            </Button>
+                            {canManage(c) && (
+                              <Menu position="bottom-end" withinPortal>
+                                <Menu.Target>
+                                  <ActionIcon
+                                    aria-label={tx('Options for {name}', { name: c.name })}
+                                  >
+                                    <IconDots size={18} />
+                                  </ActionIcon>
+                                </Menu.Target>
+                                <Menu.Dropdown>
+                                  <Menu.Item
+                                    leftSection={<IconPencil size={15} />}
+                                    onClick={() => open({ kind: 'rename', community: c }, c.name)}
+                                  >
+                                    {tx('Rename')}
+                                  </Menu.Item>
+                                  <Menu.Item
+                                    color="red"
+                                    leftSection={<IconTrash size={15} />}
+                                    onClick={() => {
+                                      remove.reset();
+                                      setDeleting(c);
+                                    }}
+                                  >
+                                    {tx('Delete')}
+                                  </Menu.Item>
+                                </Menu.Dropdown>
+                              </Menu>
+                            )}
+                          </Group>
                         </Table.Td>
                       </Table.Tr>
                     ))}
