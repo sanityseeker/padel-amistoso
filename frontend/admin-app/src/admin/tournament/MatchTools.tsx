@@ -117,7 +117,7 @@ export function MatchTools({
   );
 }
 
-// PATCH /tournaments/{tid}/match-comment, as the legacy admin does (an empty text clears it).
+// PATCH /tournaments/{tid}/match-comment (an empty text clears it).
 export function CommentDialog({
   tid,
   match,

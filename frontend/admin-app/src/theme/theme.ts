@@ -1,17 +1,17 @@
 import { createTheme, rem } from '@mantine/core';
 import { components } from './components';
 import classes from './components.module.css';
-import { darkRamp, gray, legacyColors, palette } from './palette';
+import { darkRamp, gray, baseColors, palette } from './palette';
 import { fontStacks } from './tokens';
 
-// Source palette: frontend/theme.css, "Hardcourt Nights". Role tokens (ball, rank, court-panel...) are
-// added in tokens.ts and never replace a legacy value, so e2e/theme.spec.ts parity keeps passing.
+// Source palette: palette.ts, "Hardcourt Nights". Role tokens (ball, rank, court-panel...) are
+// added in tokens.ts and never replace a base value.
 export const theme = createTheme({
   primaryColor: 'court',
   primaryShade: { light: 6, dark: 4 },
   autoContrast: true,
   luminanceThreshold: 0.18,
-  black: legacyColors.light.text,
+  black: baseColors.light.text,
   white: '#ffffff',
   colors: {
     ...palette,

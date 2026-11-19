@@ -503,24 +503,3 @@ def test_tournament_winners_helper_mexicano_fallback():
     p = Player(name="X")
     assert tournament_winners(SimpleNamespace(champion=lambda: [p])) == [[p]]
     assert tournament_winners(SimpleNamespace(champion=lambda: None)) is None
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Static frontend assertions
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-def _frontend(name: str) -> str:
-    from pathlib import Path
-
-    return (Path(__file__).resolve().parent.parent / "frontend" / name).read_text(encoding="utf-8")
-
-
-def test_multi_winner_frontend_wiring():
-    assert 'id="po-num-winners"' in _frontend("index.html") and 'id="po-third-place"' in _frontend("index.html")
-    assert "num_winners" in _frontend("admin-gp.js") and "_gpReadWinnerControls('gp')" in _frontend("admin-gp.js")
-    assert "_gpReadWinnerControls('po')" in _frontend("admin-create.js")
-    assert "status.winners" in _frontend("tv.js")
-    i18n = _frontend("i18n.js")
-    for key in ("txt_num_winners", "txt_winner_word", "txt_winners_word", "txt_third_place_label"):
-        assert i18n.count(f'"{key}"') == 2, key  # en + es

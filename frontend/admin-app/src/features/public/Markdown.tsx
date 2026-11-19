@@ -2,8 +2,8 @@ import { Fragment, type ReactNode } from 'react';
 import { Anchor, List, Stack, Text, Title } from '@mantine/core';
 
 // The organizer's description and message are Markdown. This renderer builds React elements only
-// (never HTML), so nothing the organizer types can inject markup or script. It covers what the
-// legacy page showed: headings, paragraphs, bullet and numbered lists, bold, italic, code, links.
+// (never HTML), so nothing the organizer types can inject markup or script. It covers
+// headings, paragraphs, bullet and numbered lists, bold, italic, code, links.
 const SAFE_URL = /^(https?:\/\/|mailto:|\/)/i;
 
 function inline(text: string): ReactNode[] {

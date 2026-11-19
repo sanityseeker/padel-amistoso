@@ -15,14 +15,6 @@ declare global {
 }
 window.__bootId = Math.random().toString(36).slice(2);
 
-// This tab now counts as a started browser session. The old vanilla pages (still served for the
-// no-build fallback) apply a cold-start redirect unless this flag is set.
-try {
-  sessionStorage.setItem('amistoso-session-active', '1');
-} catch {
-  /* Storage unavailable: those pages simply apply their cold-start rule. */
-}
-
 // After a deploy the previous build's hashed chunks are gone. Reload once into the
 // new build instead of leaving a blank screen; the guard prevents a reload loop.
 const CHUNK_RELOAD_KEY = 'amistoso-chunk-reload';

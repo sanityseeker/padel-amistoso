@@ -1,6 +1,6 @@
 """Public Events directory: the ``/events`` page + ``GET /api/public-events``.
 
-Covers the page routes (``/events`` serves public.html, bare ``/tv`` and
+Covers the page routes (``/events`` serves the React shell, bare ``/tv`` and
 ``/register`` redirect there, the alias routes are unchanged, club subdomains
 collapse the directories onto ``/``) and the API exposure rules: the merged
 list must show exactly what the two old public lists showed — no private
@@ -64,15 +64,6 @@ def _create_club(client: TestClient, headers: dict, slug: str | None = None) -> 
 
 
 class TestEventsRoutes:
-    def test_events_falls_back_to_public_html_without_build(self, client, monkeypatch, tmp_path):
-        import backend.api as api_module
-
-        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing-build")
-        r = client.get("/events")
-        assert r.status_code == 200
-        assert 'id="tv-root"' in r.text
-        assert "/tv.js" in r.text
-
     @pytest.mark.parametrize("path", ["/tv", "/register"])
     def test_bare_directories_redirect_to_events(self, client, path):
         r = client.get(path, follow_redirects=False)
@@ -85,14 +76,12 @@ class TestEventsRoutes:
         assert r.headers["location"] == "/events?tid=abc&x=1"
 
     def test_alias_routes_unchanged(self, client, tmp_path, monkeypatch):
-        # Without a React build the public pages fall back to the legacy ones (see test_public_spa_routes).
+        # Without a React build the alias routes still answer, with the "not built" notice.
         monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing")
-        tv = client.get("/tv/summer-cup", follow_redirects=False)
-        assert tv.status_code == 200
-        assert 'id="tv-root"' in tv.text
-        reg = client.get("/register/summer-cup", follow_redirects=False)
-        assert reg.status_code == 200
-        assert 'id="reg-root"' in reg.text
+        for path in ("/tv/summer-cup", "/register/summer-cup"):
+            response = client.get(path, follow_redirects=False)
+            assert response.status_code == 200
+            assert "The web app is not built" in response.text
 
     def test_legacy_short_routes_still_land_on_events(self, client):
         r = client.get("/t", follow_redirects=True)
@@ -107,11 +96,14 @@ class TestEventsRoutes:
         assert r.headers["location"] == "/"
 
     def test_club_subdomain_alias_routes_fall_through(self, client, auth_headers, tmp_path, monkeypatch):
-        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing")
+        (tmp_path / "index.html").write_text('<html><head></head><body><div id="react-test"></div></body></html>')
+        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path)
         _create_club(client, auth_headers, slug="padelclub")
         r = client.get("/tv/some-alias", headers={"host": "padelclub.example.com"}, follow_redirects=False)
         assert r.status_code == 200
-        assert 'id="tv-root"' in r.text
+        assert 'id="react-test"' in r.text
+        # The alias route is the plain shell, not the club landing page.
+        assert 'name="amistoso-club"' not in r.text
 
 
 # ── GET /api/public-events ───────────────────────────────────────────────────

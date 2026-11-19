@@ -15,8 +15,7 @@ const RESERVED = new Set([
   'demo',
 ]);
 
-// Port of getClubSubdomain() in frontend/shared.js: purely hostname based, so it
-// can be evaluated synchronously (the header needs it on first paint).
+// Purely hostname based, so it can be evaluated synchronously (the header needs it on first paint).
 export function getClubSubdomain(host = window.location.hostname): string | null {
   const name = (host || '').toLowerCase();
   if (!name || name === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(name)) return null;

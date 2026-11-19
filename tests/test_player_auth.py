@@ -794,7 +794,7 @@ class TestPlayerSecretsEndpoints:
         assert r.content[:4] == b"\x89PNG"
 
     def test_qr_code_encodes_tv_url(self, client, auth_headers):
-        """QR must encode /tv path, not /public.html."""
+        """QR must encode the /tv path."""
         tid = _create_gp(client, auth_headers)
         secrets = _get_secrets(client, tid, auth_headers)
         pid = next(iter(secrets.keys()))
@@ -813,7 +813,6 @@ class TestPlayerSecretsEndpoints:
         assert len(decoded) == 1
         qr_url = decoded[0].text
         assert qr_url.startswith(f"{origin}/tv/{tid}"), f"QR should use /tv/{{tid}} path, got: {qr_url}"
-        assert "public.html" not in qr_url, f"QR should not use public.html, got: {qr_url}"
         assert f"player_token={token}" in qr_url
 
     def test_qr_code_nonexistent_player_returns_404(self, client, auth_headers):

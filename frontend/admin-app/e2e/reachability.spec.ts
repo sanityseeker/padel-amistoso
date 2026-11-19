@@ -86,14 +86,12 @@ for (const size of WIDTHS) {
     }
     await expect(page).toHaveURL(new RegExp(`/admin/t/${id}$`));
 
-    // Per-tournament actions: TV view and Advanced admin on the workspace.
+    // Per-tournament actions: TV view on the workspace.
     await page.getByRole('button', { name: 'Workspace menu' }).click();
     await expect(page.getByRole('menuitem', { name: 'TV view' })).toHaveAttribute('href', /\/tv/);
-    // The legacy admin is no longer linked from the app: every capability has a React home.
-    await expect(page.getByRole('menuitem', { name: 'Advanced admin' })).toHaveCount(0);
     await page.keyboard.press('Escape');
 
-    // Info and Legacy admin: dock footer, rail menu or Menu sheet.
+    // Info: dock footer, rail menu or Menu sheet.
     const quiet = async (label: string, href: string) => {
       if (phone) {
         const sheet = await openMenuSheet();
@@ -114,7 +112,6 @@ for (const size of WIDTHS) {
       }
     };
     await quiet('Info', '/admin/info');
-    await expect(page.getByRole('link', { name: 'Legacy admin' })).toHaveCount(0);
 
     // Display (language and theme) and the account items.
     await openDisplay(page);

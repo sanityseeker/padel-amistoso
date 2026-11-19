@@ -18,7 +18,7 @@ const serverHome = () => {
 // The not-found page. The server serves the app shell with a 404 status for unknown addresses and
 // tells it where home is (a club subdomain goes back to its landing page, anything else to the apex).
 // `?m=` carries a reason (a deleted event) and `?to=` a same-site path to go to; with either known
-// destination the page counts down and leaves, like the legacy page did.
+// destination the page counts down and leaves.
 export function NotFound() {
   useLocale();
   const [params] = useSearchParams();

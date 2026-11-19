@@ -1,83 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import { chooseSize, chooseTheme, createTournament, loginAdmin, openDisplay } from './helpers';
-import { resolve } from 'node:path';
-
-// Compare against the actual legacy source, so future palette drift is caught
-// without repeating the React implementation as expected values.
-const source = readFileSync(resolve(process.cwd(), '../theme.css'), 'utf8');
-function legacy(mode: 'light' | 'dark', name: string) {
-  const block = source.match(
-    mode === 'light' ? /:root\s*\{([\s\S]*?)\n\}/ : /html\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/,
-  )?.[1];
-  const value = block?.match(new RegExp(`--color-${name}:\\s*([^;]+);`))?.[1].trim();
-  if (!value) throw new Error(`Legacy color missing: ${mode}/${name}`);
-  return value;
-}
-
-test('React surfaces and semantic tokens match the legacy light and dark palettes', async ({
-  page,
-}) => {
-  await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/admin');
-  await page.getByRole('heading', { name: 'Welcome back' }).waitFor();
-  for (const mode of ['light', 'dark'] as const) {
-    if (mode === 'dark') await chooseTheme(page, 'Dark');
-    await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', mode);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', mode);
-    const tokens = await page.evaluate(() => {
-      const css = getComputedStyle(document.documentElement);
-      return Object.fromEntries(
-        [
-          'bg',
-          'surface',
-          'surface-2',
-          'border',
-          'text',
-          'muted',
-          'primary',
-          'primary-hover',
-          'primary-active',
-          'success',
-          'warning',
-          'error',
-          'tennis',
-          'gold',
-        ].map((key) => [key, css.getPropertyValue(`--app-${key}`).trim()]),
-      );
-    });
-    for (const [app, original] of Object.entries({
-      bg: 'bg',
-      surface: 'surface',
-      'surface-2': 'surface-2',
-      border: 'border',
-      text: 'text',
-      muted: 'text-muted',
-      primary: 'primary',
-      'primary-hover': 'primary-hover',
-      'primary-active': 'primary-active',
-      success: 'success',
-      warning: 'warning',
-      error: 'error',
-      tennis: 'sport-tennis',
-      gold: 'yellow',
-    })) {
-      expect(tokens[app]).toBe(legacy(mode, original));
-    }
-    const rgb = (hex: string) =>
-      `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
-    await expect(page.locator('body')).toHaveCSS('background-color', rgb(legacy(mode, 'bg')));
-    await expect(page.locator('.login-card')).toHaveCSS(
-      'background-color',
-      rgb(legacy(mode, 'surface')),
-    );
-  }
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.mouse.move(0, 0);
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-    .toBeTruthy();
-});
 
 test('theme selection persists across Events, Admin and the Player Hub', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
@@ -251,40 +173,6 @@ test('brand fonts, radius, role tokens and legacy token names are applied', asyn
   expect(styles.tapLg).toBe('44px');
   expect(styles.radiusCard).toBe('0.75rem');
   expect(styles.space4).toBe('1rem');
-});
-
-test('role tokens exist in both schemes and match frontend/theme.css', async ({ page }) => {
-  await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/admin');
-  await page.getByRole('heading', { name: 'Welcome back' }).waitFor();
-  const names = [
-    'ball',
-    'on-ball',
-    'ball-ink',
-    'focus',
-    'court-panel',
-    'rank-1',
-    'rank-2',
-    'rank-3',
-  ];
-  for (const mode of ['light', 'dark'] as const) {
-    if (mode === 'dark') await chooseTheme(page, 'Dark');
-    await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', mode);
-    const tokens = await page.evaluate(
-      (list) =>
-        Object.fromEntries(
-          list.map((n) => [
-            n,
-            getComputedStyle(document.documentElement).getPropertyValue(`--color-${n}`).trim(),
-          ]),
-        ),
-      names,
-    );
-    for (const name of names) {
-      expect(tokens[name]).not.toBe('');
-      expect(tokens[name]).toBe(legacy(mode, name));
-    }
-  }
 });
 
 test('Cyrillic and Latin names are drawn by the same font and weight', async ({

@@ -1,8 +1,8 @@
 import type { MantineColorsTuple } from '@mantine/core';
 
-// Source: frontend/theme.css — "Hardcourt Nights", day court / night session.
+// "Hardcourt Nights", day court / night session.
 // Keep semantic values here; components and CSS consume tokens, not hex colors.
-export const legacyColors = {
+export const baseColors = {
   light: {
     bg: '#eff2f6',
     surface: '#fafbfc',

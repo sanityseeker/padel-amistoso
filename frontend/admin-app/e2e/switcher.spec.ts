@@ -265,7 +265,6 @@ test.describe('phone', () => {
     await expect(sheet.getByRole('link', { name: 'Player profiles' })).toBeVisible();
     await expect(sheet.getByRole('link', { name: 'Users' })).toBeVisible();
     await expect(sheet.getByRole('link', { name: 'Info' })).toHaveAttribute('href', '/admin/info');
-    await expect(sheet.getByRole('link', { name: 'Legacy admin' })).toHaveCount(0);
     await expect(sheet.getByRole('button', { name: 'Change password' })).toBeVisible();
     // Language and theme are inline in the sheet: no second drawer.
     await expect(sheet.getByRole('radiogroup', { name: 'Language' })).toBeVisible();

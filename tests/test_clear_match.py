@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 import backend.api.db as db_mod
 from backend.api import state as state_mod
@@ -266,13 +265,3 @@ class TestClubClear:
         assert n == 0
         board = client.get(f"/api/tournaments/{tid}/mex/status").json()["leaderboard"]
         assert all(e["total_points"] == 0 for e in board)
-
-
-@pytest.mark.parametrize(
-    "key", ["txt_match_clear_btn", "txt_match_clear_title", "txt_match_clear_confirm", "txt_match_clear_done"]
-)
-def test_clear_i18n_keys_exist_in_both_languages(key):
-    from pathlib import Path
-
-    src = (Path(__file__).resolve().parents[1] / "frontend" / "i18n.js").read_text()
-    assert src.count(f'"{key}"') == 2

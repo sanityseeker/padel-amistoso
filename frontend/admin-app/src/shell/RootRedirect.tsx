@@ -4,7 +4,7 @@ import { hostClubSlug, readMeta } from '../features/public/meta';
 import { NotFound } from './NotFound';
 import { hasAdminToken, isDemoInstance, lastPage } from './env';
 
-// Legacy cold-start rule (frontend/index.html): organizers go to admin, everyone
+// Cold-start rule: organizers go to admin, everyone
 // else to the page they used last, defaulting to Events. The installed PWA opens
 // on "/" (manifest start_url), so anonymous visitors never see an admin login wall.
 const ClubLanding = lazy(() =>

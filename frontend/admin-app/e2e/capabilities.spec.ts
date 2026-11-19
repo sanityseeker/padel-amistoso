@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { adminHeaders, loginAdmin, fillNames } from './helpers';
 
-// Admin capabilities that the legacy admin had and the React admin gained in the parity pass:
+// Admin capabilities:
 // fixed teams and the team builder, the group draw preview, Mexicano creation options, the lobby
 // participant filter and convert panel, own default community, the demo login, club pins, the Info
 // page and the lobby QR code.

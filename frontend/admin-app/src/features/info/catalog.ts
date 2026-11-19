@@ -1,4 +1,4 @@
-// Generated once from the legacy admin's Info tab (index.html + i18n.js): the structure of the page and
+// The Info guide: the structure of the page and
 // its English and Spanish text. The strings are first-party HTML fragments (<strong>, <code>, <em>, <li>),
 // rendered inside Mantine's Typography, never user input.
 export interface InfoPara {

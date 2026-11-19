@@ -220,7 +220,7 @@ async def flush_elo_after_request(request: Request, call_next):
 # When the request arrives for ``{label}.{AMISTOSO_DOMAIN}``:
 #
 # - ``admin.amistoso.club``   → 301 redirect to the apex (admin lives at ``/``)
-# - ``{slug}.amistoso.club`` + path ``/`` → ``club.html`` if the slug resolves
+# - ``{slug}.amistoso.club`` + path ``/`` → the React club landing page if the slug resolves
 #
 # - ``{slug}.amistoso.club`` + ``/events`` (or bare ``/tv`` / ``/register``)
 #   → 302 to ``/`` — the club page already is that club's event directory
@@ -332,15 +332,14 @@ def _serve_404_page(request: Request) -> HTMLResponse:
     """Return the 404 page with the host-aware home URL injected.
 
     The React shell renders the page (its ``*`` route) when a build exists, with the home URL in
-    ``<meta name="amistoso-home">``; without a build the legacy ``404.html`` is used.
+    ``<meta name="amistoso-home">``; without a build it is a plain page with a home link.
     """
     home = escape(_home_url_for(request), quote=True)
     spa = _spa_index()
     if spa is not None:
         html = _inject_head(spa[0], f'<meta name="amistoso-home" content="{home}">')
         return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
-    html = _read_frontend_text("404.html") or "<h1>404 Not Found</h1>"
-    html = html.replace("__HOME_URL__", home)
+    html = f'<!doctype html><html lang="en"><body><h1>404 Not Found</h1><p><a href="{home}">Home</a></p></body></html>'
     return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
 
 
@@ -402,8 +401,8 @@ async def subdomain_router(request: Request, call_next):
             return RedirectResponse(url=target, status_code=302)
         return await call_next(request)
     # Known club: the club page already is that club's event directory, so the
-    # generic directories (/events and the legacy bare /tv, /register) go to
-    # the root. Serve club.html only on the root GET; let everything else
+    # generic directories (/events and the old bare /tv, /register) go to
+    # the root. Serve the club landing only on the root GET; let everything else
     # (API calls, /admin, /tv/{slug}, static assets) fall through to the apex
     # routes.
     if request.method == "GET" and request.url.path in _CLUB_DIRECTORY_PATHS:
@@ -416,11 +415,7 @@ async def subdomain_router(request: Request, call_next):
         # configured domain (not a hostname guess) decided that this host is a club.
         html = _inject_head(spa[0], f'<meta name="amistoso-club" content="{escape(label, quote=True)}">')
         return Response(content=html, media_type="text/html", headers={"Cache-Control": "no-cache"})
-    return Response(
-        content=_read_frontend_text("club.html") or "<h1>Club page not found</h1>",
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache"},
-    )
+    return _no_build_response()
 
 
 # Register routers
@@ -503,8 +498,8 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
 ADMIN_BUILD_DIR = FRONTEND_DIR / "admin-app" / "dist"
 
 
-# Vite emits content-hashed files under a dedicated prefix, avoiding collisions
-# with the existing public, player, club, and legacy admin assets.
+# Vite emits content-hashed files under a dedicated prefix, apart from the
+# root-level PWA files (manifest, service worker, icons).
 @app.get("/admin-assets/{asset_path:path}", include_in_schema=False)
 async def serve_admin_asset(asset_path: str) -> Response:
     directory = (ADMIN_BUILD_DIR / "admin-assets").resolve()
@@ -542,28 +537,6 @@ def _content_etag(filename: str) -> str | None:
     return f'"e{hashlib.md5(text.encode()).hexdigest()[:12]}"'  # noqa: S324
 
 
-def _serve_js_file(filename: str, request: Request | None = None) -> Response:
-    """Serve a JS file from the frontend directory with ETag-based caching."""
-    etag = _content_etag(filename)
-    if etag and request and request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})
-    headers: dict[str, str] = {"Cache-Control": "public, max-age=300, must-revalidate"}
-    if etag:
-        headers["ETag"] = etag
-    return Response(content=_read_frontend_text(filename), media_type="application/javascript", headers=headers)
-
-
-def _serve_css_file(filename: str, request: Request | None = None) -> Response:
-    """Serve a CSS file from the frontend directory with ETag-based caching."""
-    etag = _content_etag(filename)
-    if etag and request and request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})
-    headers: dict[str, str] = {"Cache-Control": "public, max-age=300, must-revalidate"}
-    if etag:
-        headers["ETag"] = etag
-    return Response(content=_read_frontend_text(filename), media_type="text/css", headers=headers)
-
-
 def _serve_png_file(filename: str, request: Request | None = None) -> Response:
     """Serve a PNG file from the frontend directory with ETag-based caching."""
     etag = _content_etag(filename)
@@ -575,17 +548,17 @@ def _serve_png_file(filename: str, request: Request | None = None) -> Response:
     return Response(content=_read_frontend_bytes(filename), media_type="image/png", headers=headers)
 
 
-def _html_page(filename: str, fallback: str) -> Response:
-    """Serve a frontend HTML page uncached.
+_NO_BUILD_HTML = (
+    '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Torneos</title></head><body>'
+    "<h1>The web app is not built</h1>"
+    "<p>Run <code>npm ci &amp;&amp; npm run build</code> in <code>frontend/admin-app</code>, then reload.</p>"
+    "</body></html>"
+)
 
-    On the demo instance the root ``<html>`` element gets a ``demo-instance``
-    class so CSS can hide core-only surfaces (communities, clubs) from the
-    first paint, without waiting for ``/api/config``.
-    """
-    content = _read_frontend_text(filename) or fallback
-    if config.DEMO_INSTANCE:
-        content = content.replace('<html lang="en">', '<html lang="en" class="demo-instance">', 1)
-    return Response(content=content, media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+def _no_build_response() -> Response:
+    """The page every SPA route serves when ``frontend/admin-app/dist`` is missing."""
+    return Response(content=_NO_BUILD_HTML, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
 _HTML_OPEN_TAG_RE = re.compile(r"<html\b([^>]*)>", re.IGNORECASE)
@@ -697,18 +670,14 @@ def _spa_index() -> tuple[str, str] | None:
     return cached
 
 
-def _spa_response(
-    request: Request,
-    legacy_page: str = "index.html",
-    legacy_fallback: str = "<h1>Frontend not found</h1>",
-) -> Response:
+def _spa_response(request: Request) -> Response:
     """Serve the React shell for any SPA path (no-cache + ETag, demo class injected).
 
-    Falls back to the matching legacy page when the Vite build is missing.
+    Without a Vite build this is the "frontend not built" notice.
     """
     spa = _spa_index()
     if spa is None:
-        return _html_page(legacy_page, legacy_fallback)
+        return _no_build_response()
     html, etag = spa
     headers = {"Cache-Control": "no-cache", "ETag": etag}
     if request.headers.get("if-none-match") == etag:
@@ -727,49 +696,6 @@ async def serve_frontend(request: Request) -> Response:
 async def serve_admin_spa(rest: str, request: Request) -> Response:
     """Deep links into the React admin (``/admin/t/<id>``, ``/admin/clubs`` ...)."""
     return _spa_response(request)
-
-
-# ── Legacy (vanilla-JS) pages, kept under one prefix as an escape hatch ──────────
-# The React SPA owns /admin, /events and /player; the original pages stay reachable
-# at /legacy/* until every workflow is ported.
-
-
-@app.get("/legacy", include_in_schema=False)
-async def serve_legacy_root() -> RedirectResponse:
-    return RedirectResponse(url="/legacy/admin", status_code=302)
-
-
-@app.get("/legacy/admin")
-async def serve_legacy_admin() -> Response:
-    """Keep advanced workflows available during the React admin migration."""
-    return _html_page("index.html", "<h1>Frontend not found</h1>")
-
-
-def _permanent_redirect(request: Request, target: str) -> RedirectResponse:
-    """308 to a fixed in-site path, keeping the query string.
-
-    ``target`` is always a literal path chosen by the caller, never request input, so
-    this cannot become an open redirect. 308 keeps the method and the ``?tab=``,
-    ``?invite_token=`` ... query intact.
-    """
-    if request.url.query:
-        target += f"?{request.url.query}"
-    return RedirectResponse(url=target, status_code=308)
-
-
-@app.get("/legacy-admin", include_in_schema=False)
-async def redirect_legacy_admin(request: Request) -> RedirectResponse:
-    return _permanent_redirect(request, "/legacy/admin")
-
-
-@app.get("/legacy-events", include_in_schema=False)
-async def redirect_legacy_events(request: Request) -> RedirectResponse:
-    return _permanent_redirect(request, "/legacy/events")
-
-
-@app.get("/legacy-player", include_in_schema=False)
-async def redirect_legacy_player(request: Request) -> RedirectResponse:
-    return _permanent_redirect(request, "/legacy/player")
 
 
 def _redirect_to_events(request: Request) -> RedirectResponse:
@@ -792,19 +718,13 @@ async def serve_events(request: Request) -> Response:
         if params:
             target += "?" + urlencode(params)
         return RedirectResponse(url=target, status_code=302)
-    return _spa_response(request, "public.html", "<h1>Events page not found</h1>")
+    return _spa_response(request)
 
 
 @app.get("/events/{rest:path}", include_in_schema=False)
 async def serve_events_spa(rest: str, request: Request) -> Response:
     """Client-side routes under ``/events``."""
-    return _spa_response(request, "public.html", "<h1>Events page not found</h1>")
-
-
-@app.get("/legacy/events")
-async def serve_legacy_events() -> Response:
-    """Original directory retained alongside the tournament TV templates."""
-    return _html_page("public.html", "<h1>Events page not found</h1>")
+    return _spa_response(request)
 
 
 @app.get("/tv")
@@ -815,16 +735,10 @@ async def serve_tv_root(request: Request) -> Response:
 
 @app.get("/tv/{rest:path}", include_in_schema=False)
 async def serve_tv(rest: str, request: Request) -> Response:
-    """Spectator / TV view: the React shell, or the legacy page when there is no build."""
+    """Spectator / TV view (the React shell)."""
     if not rest.strip("/"):
         return _redirect_to_events(request)
-    return _spa_response(request, "public.html", "<h1>TV page not found</h1>")
-
-
-@app.get("/legacy/tv/{slug}", include_in_schema=False)
-async def serve_legacy_tv(slug: str) -> Response:
-    """The original vanilla TV page, kept reachable while the React one settles in."""
-    return _html_page("public.html", "<h1>TV page not found</h1>")
+    return _spa_response(request)
 
 
 @app.get("/t")
@@ -845,16 +759,10 @@ async def serve_register(request: Request) -> Response:
 
 @app.get("/register/{rest:path}", include_in_schema=False)
 async def serve_register_alias(rest: str, request: Request) -> Response:
-    """Public sign-up: the React shell, or the legacy page when there is no build."""
+    """Public sign-up (the React shell)."""
     if not rest.strip("/"):
         return _redirect_to_events(request)
-    return _spa_response(request, "register.html", "<h1>Registration page not found</h1>")
-
-
-@app.get("/legacy/register/{alias}", include_in_schema=False)
-async def serve_legacy_register(alias: str) -> Response:
-    """The original vanilla sign-up page, kept reachable while the React one settles in."""
-    return _html_page("register.html", "<h1>Registration page not found</h1>")
+    return _spa_response(request)
 
 
 @app.get("/club/{rest:path}", include_in_schema=False)
@@ -862,16 +770,7 @@ async def serve_club_path(rest: str, request: Request) -> Response:
     """Club landing page by path (``/club/<slug>``), for hosts without subdomains."""
     if not rest.strip("/"):
         return _redirect_to_events(request)
-    if _spa_index() is None:
-        # The legacy landing page reads the club from the hostname, so it cannot serve a path route.
-        return _serve_404_page(request)
     return _spa_response(request)
-
-
-@app.get("/legacy/club", include_in_schema=False)
-async def serve_legacy_club() -> Response:
-    """The original club landing page (it reads the club slug from the subdomain)."""
-    return _html_page("club.html", "<h1>Club page not found</h1>")
 
 
 @app.get("/r")
@@ -889,7 +788,7 @@ async def serve_player(request: Request) -> Response:
     # The Player Hub is a core-site feature: demo-instance visitors go to Events.
     if config.DEMO_INSTANCE:
         return _redirect_to_events(request)
-    return _spa_response(request, "player.html", "<h1>Player Hub not found</h1>")
+    return _spa_response(request)
 
 
 @app.get("/player/{rest:path}", include_in_schema=False)
@@ -897,207 +796,7 @@ async def serve_player_spa(rest: str, request: Request) -> Response:
     """Client-side routes under ``/player``."""
     if config.DEMO_INSTANCE:
         return _redirect_to_events(request)
-    return _spa_response(request, "player.html", "<h1>Player Hub not found</h1>")
-
-
-@app.get("/legacy/player")
-async def serve_legacy_player(request: Request) -> Response:
-    """Keep detailed player tools available during the React migration."""
-    if config.DEMO_INSTANCE:
-        return _redirect_to_events(request)
-    return _html_page("player.html", "<h1>Player Hub not found</h1>")
-
-
-@app.get("/shared.js")
-async def serve_shared_js(request: Request) -> Response:
-    """Serve the shared JS utilities used by index.html and public.html (TV view)."""
-    return _serve_js_file("shared.js", request)
-
-
-@app.get("/auth.js")
-async def serve_auth_js(request: Request) -> Response:
-    """Serve the authentication module used by index.html."""
-    return _serve_js_file("auth.js", request)
-
-
-@app.get("/admin-utils.js")
-async def serve_admin_utils_js(request: Request) -> Response:
-    """Serve admin UI utilities (theme, language, schema helpers)."""
-    return _serve_js_file("admin-utils.js", request)
-
-
-@app.get("/admin-tournaments.js")
-async def serve_admin_tournaments_js(request: Request) -> Response:
-    """Serve admin tournament list and navigation logic."""
-    return _serve_js_file("admin-tournaments.js", request)
-
-
-@app.get("/admin-create.js")
-async def serve_admin_create_js(request: Request) -> Response:
-    """Serve admin tournament creation panel logic."""
-    return _serve_js_file("admin-create.js", request)
-
-
-@app.get("/admin-gp.js")
-async def serve_admin_gp_js(request: Request) -> Response:
-    """Serve Group+Playoff and Pure Playoff render logic and score actions."""
-    return _serve_js_file("admin-gp.js", request)
-
-
-@app.get("/admin-mex.js")
-async def serve_admin_mex_js(request: Request) -> Response:
-    """Serve Mexicano render logic and pairing proposals."""
-    return _serve_js_file("admin-mex.js", request)
-
-
-@app.get("/admin-export.js")
-async def serve_admin_export_js(request: Request) -> Response:
-    """Serve the tournament HTML/PDF export (results and in-progress snapshots)."""
-    return _serve_js_file("admin-export.js", request)
-
-
-@app.get("/admin-player-codes.js")
-async def serve_admin_player_codes_js(request: Request) -> Response:
-    """Serve player codes panel and in-tournament player management."""
-    return _serve_js_file("admin-player-codes.js", request)
-
-
-@app.get("/admin-tv-email.js")
-async def serve_admin_tv_email_js(request: Request) -> Response:
-    """Serve TV display settings, email controls, and tournament alias/banner."""
-    return _serve_js_file("admin-tv-email.js", request)
-
-
-@app.get("/admin-registration.js")
-async def serve_admin_registration_js(request: Request) -> Response:
-    """Serve registration lobby management and answers panel."""
-    return _serve_js_file("admin-registration.js", request)
-
-
-@app.get("/admin-convert.js")
-async def serve_admin_convert_js(request: Request) -> Response:
-    """Serve convert-from-registration flow."""
-    return _serve_js_file("admin-convert.js", request)
-
-
-@app.get("/admin-collaborators.js")
-async def serve_admin_collaborators_js(request: Request) -> Response:
-    """Serve collaborator management for tournaments and registrations."""
-    return _serve_js_file("admin-collaborators.js", request)
-
-
-@app.get("/admin-settings-panel.js")
-async def serve_admin_settings_panel_js(request: Request) -> Response:
-    """Serve the unified per-tournament Settings card orchestrator."""
-    return _serve_js_file("admin-settings-panel.js", request)
-
-
-@app.get("/admin-lobby-settings-panel.js")
-async def serve_admin_lobby_settings_panel_js(request: Request) -> Response:
-    """Serve the unified per-lobby (registration) Settings card orchestrator."""
-    return _serve_js_file("admin-lobby-settings-panel.js", request)
-
-
-@app.get("/admin-payments.js")
-async def serve_admin_payments_js(request: Request) -> Response:
-    """Serve the shared payments panel island (lobbies + tournaments)."""
-    return _serve_js_file("admin-payments.js", request)
-
-
-@app.get("/admin-players.js")
-async def serve_admin_players_js(request: Request) -> Response:
-    """Serve Player Hub admin management."""
-    return _serve_js_file("admin-players.js", request)
-
-
-@app.get("/admin-communities.js")
-async def serve_admin_communities_js(request: Request) -> Response:
-    """Serve community management panel."""
-    return _serve_js_file("admin-communities.js", request)
-
-
-@app.get("/admin-clubs.js")
-async def serve_admin_clubs_js(request: Request) -> Response:
-    """Serve club & season management panel."""
-    return _serve_js_file("admin-clubs.js", request)
-
-
-@app.get("/admin-clubs-settings-panel.js")
-async def serve_admin_clubs_settings_panel_js(request: Request) -> Response:
-    """Serve the unified per-club Settings card orchestrator."""
-    return _serve_js_file("admin-clubs-settings-panel.js", request)
-
-
-@app.get("/admin-subdomain-context.js")
-async def serve_admin_subdomain_context_js(request: Request) -> Response:
-    """Serve the admin subdomain context banner script."""
-    return _serve_js_file("admin-subdomain-context.js", request)
-
-
-@app.get("/club.js")
-async def serve_club_js(request: Request) -> Response:
-    """Serve the per-club public landing-page JavaScript."""
-    return _serve_js_file("club.js", request)
-
-
-@app.get("/theme.css")
-async def serve_theme_css(request: Request) -> Response:
-    """Serve the shared design-token stylesheet loaded before all other sheets."""
-    return _serve_css_file("theme.css", request)
-
-
-@app.get("/club.css")
-async def serve_club_css(request: Request) -> Response:
-    """Serve the per-club public landing-page stylesheet."""
-    return _serve_css_file("club.css", request)
-
-
-@app.get("/tv.js")
-async def serve_tv_js(request: Request) -> Response:
-    """Serve the TV view JavaScript for public.html."""
-    return _serve_js_file("tv.js", request)
-
-
-@app.get("/admin.css")
-async def serve_admin_css(request: Request) -> Response:
-    """Serve the admin panel stylesheet for index.html."""
-    return _serve_css_file("admin.css", request)
-
-
-@app.get("/tv.css")
-async def serve_tv_css(request: Request) -> Response:
-    """Serve the TV view stylesheet for public.html."""
-    return _serve_css_file("tv.css", request)
-
-
-@app.get("/register.js")
-async def serve_register_js(request: Request) -> Response:
-    """Serve the registration page JavaScript."""
-    return _serve_js_file("register.js", request)
-
-
-@app.get("/register.css")
-async def serve_register_css(request: Request) -> Response:
-    """Serve the registration page stylesheet."""
-    return _serve_css_file("register.css", request)
-
-
-@app.get("/player.js")
-async def serve_player_js(request: Request) -> Response:
-    """Serve the Player Hub JavaScript."""
-    return _serve_js_file("player.js", request)
-
-
-@app.get("/player.css")
-async def serve_player_css(request: Request) -> Response:
-    """Serve the Player Hub stylesheet."""
-    return _serve_css_file("player.css", request)
-
-
-@app.get("/i18n.js")
-async def serve_i18n_js(request: Request) -> Response:
-    """Serve the translation catalog used by the frontend i18n runtime."""
-    return _serve_js_file("i18n.js", request)
+    return _spa_response(request)
 
 
 @app.get("/manifest.json")

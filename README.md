@@ -829,8 +829,8 @@ Then open <http://localhost:8000>.
 The admin at `/` and `/admin`, the Player Hub at `/player`, public Events at `/events`,
 the TV screen at `/tv/{slug}`, sign-up at `/register/{slug}`, and the club page at `/club/{slug}`
 use **React, TypeScript, Vite, and Mantine**. They call the FastAPI API and
-use the same SQLite database. The original vanilla-JS pages stay in the repository as a
-fallback. FastAPI serves them under `/legacy/*`. No link in the React app points to them.
+use the same SQLite database. FastAPI serves the built app from `frontend/admin-app/dist`;
+without a build, every page shows a short "not built" notice.
 
 For frontend development, run the Python server above, then in another terminal:
 
@@ -847,20 +847,18 @@ run `npm run build` in `frontend/admin-app`. Docker builds it automatically.
 The development proxy forwards public-page links to FastAPI as well.
 
 React colors are defined in the `frontend/admin-app/src/theme/` folder (`palette.ts`,
-`tokens.ts`, `resolver.ts`). They use the **Hardcourt Nights** palette from
-`frontend/theme.css`: court blue,
+`tokens.ts`, `resolver.ts`). They use the **Hardcourt Nights** palette: court blue,
 cool concrete surfaces, Penn-ball green, and semantic success/warning/error
 colors. Mantine components use the `court`, `tennis`, `success`, `warning`, and
 `danger` palettes; custom CSS uses the shared `--app-*` tokens. Headers and login
-screens include a light/dark toggle. The `amistoso-theme` preference is shared
-with legacy pages, and the older `padel-theme` key is migrated. With no saved
-preference, the UI follows the OS. Browser tests compare the React tokens with
-the actual legacy stylesheet in both modes.
+screens include a light/dark toggle. The preference is stored as `amistoso-theme`,
+and the older `padel-theme` key is migrated. With no saved
+preference, the UI follows the OS.
 
 An **EN / ES / RU** language selector sits beside the theme button in React headers
 and login screens. React uses i18next, `src/i18n.ts`, and `src/locales/es.json` and `ru.json`.
-The English text is the translation key. The `amistoso-lang`
-preference is shared with legacy pages, with migration from `padel-lang`.
+The English text is the translation key. The preference is stored as
+`amistoso-lang`, with migration from `padel-lang`.
 Language changes update the interface without resetting forms or sessions.
 Dates and amounts follow the selected locale; event names and API enum values
 remain unchanged.
@@ -920,7 +918,7 @@ data/
   padel.db          – auto-generated SQLite database (tournaments, users, players)
 frontend/
   admin-app/        – React + TypeScript + Vite + Mantine app (admin, Player Hub, Events, TV, sign-up, club page)
-  index.html, player.html, public.html, register.html, club.html – original pages (fallback, served under /legacy/*)
+  manifest.json, service-worker.js, *.png – PWA manifest, service worker and icons
 tests/
   pytest suite against the real app via FastAPI's TestClient — see tests/conftest.py for fixtures
 ```

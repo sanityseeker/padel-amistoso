@@ -4,8 +4,7 @@ export const isDemoInstance = () => document.documentElement.classList.contains(
 
 export const ADMIN_TOKEN_KEY = 'padel-auth-token';
 
-// Mirrors hasAdminSession() in frontend/shared.js. Only presence is checked here;
-// the admin provider validates the token with /auth/me.
+// Only presence is checked here; the admin provider validates the token with /auth/me.
 export function hasAdminToken(): boolean {
   try {
     return Boolean(

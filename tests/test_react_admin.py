@@ -23,11 +23,14 @@ def test_built_admin_is_served_without_html_cache(client, react_build, path):
     assert response.headers["cache-control"] == "no-cache"
 
 
-def test_missing_build_falls_back_to_existing_admin(client, tmp_path, monkeypatch):
+@pytest.mark.parametrize("path", ["/", "/admin", "/admin/t/x", "/events", "/player", "/tv/x", "/register/x", "/club/x"])
+def test_missing_build_serves_the_not_built_notice(client, tmp_path, monkeypatch, path):
     monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing")
-    response = client.get("/admin")
+    monkeypatch.setattr(api_module.config, "DEMO_INSTANCE", False)
+    response = client.get(path)
     assert response.status_code == 200
-    assert 'id="auth-dialog"' in response.text
+    assert "The web app is not built" in response.text
+    assert response.headers["cache-control"] == "no-cache"
 
 
 def test_built_assets_are_served_with_immutable_cache(client, react_build):
@@ -52,13 +55,6 @@ def test_asset_request_without_build_returns_404(client, tmp_path, monkeypatch):
     assert client.get("/admin-assets/app.js").status_code == 404
 
 
-def test_advanced_view_keeps_existing_ui(client, react_build):
-    response = client.get("/legacy/admin")
-    assert response.status_code == 200
-    assert 'id="auth-dialog"' in response.text
-    assert 'id="react-test"' not in response.text
-
-
 @pytest.mark.parametrize(
     "path",
     [
@@ -74,7 +70,6 @@ def test_account_recovery_is_served_by_the_spa(client, react_build, path):
     response = client.get(path)
     assert response.status_code == 200
     assert 'id="react-test"' in response.text
-    assert 'id="auth-dialog"' not in response.text
     assert response.headers["cache-control"] == "no-cache"
 
 
@@ -85,7 +80,7 @@ def test_demo_recovery_links_are_served_by_the_spa(client, react_build, monkeypa
 
 
 def test_demo_instance_serves_the_spa_with_the_demo_class(client, react_build, monkeypatch):
-    # The React login page has the one-click sandbox start, so the demo no longer needs the legacy page.
+    # The React login page has the one-click sandbox start.
     monkeypatch.setattr(api_module.config, "DEMO_INSTANCE", True)
     for path in ("/admin", "/admin/new"):
         response = client.get(path)
@@ -118,12 +113,6 @@ def test_events_demo_page_keeps_html_class_and_noindex(client, react_build, monk
     assert response.headers["X-Robots-Tag"] == "noindex"
 
 
-def test_legacy_events_keep_original_template(client, react_build):
-    response = client.get("/legacy/events")
-    assert response.status_code == 200
-    assert 'id="tv-root"' in response.text
-
-
 @pytest.mark.parametrize("key", ["tid", "t"])
 def test_old_tournament_links_reach_tv_and_preserve_player_token(client, key):
     response = client.get(f"/events?{key}=summer-cup&player_token=example&x=1", follow_redirects=False)
@@ -131,19 +120,7 @@ def test_old_tournament_links_reach_tv_and_preserve_player_token(client, key):
     assert response.headers["location"] == "/tv/summer-cup?player_token=example&x=1"
 
 
-def test_detailed_player_tools_keep_existing_ui(client, react_build):
-    response = client.get("/legacy/player")
-    assert response.status_code == 200
-    assert 'id="react-test"' not in response.text
-    assert "/player.js" in response.text
-
-
-def test_player_hub_falls_back_without_build(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", tmp_path / "missing")
-    assert "/player.js" in client.get("/player").text
-
-
-@pytest.mark.parametrize("path", ["/player", "/legacy/player"])
+@pytest.mark.parametrize("path", ["/player", "/player/anything"])
 def test_player_hub_stays_unavailable_on_demo(client, react_build, monkeypatch, path):
     monkeypatch.setattr(api_module.config, "DEMO_INSTANCE", True)
     response = client.get(path, follow_redirects=False)
@@ -216,77 +193,3 @@ def test_real_build_keeps_a_demo_injectable_html_tag():
     if not index.is_file():
         pytest.skip("frontend/admin-app has not been built")
     assert 'class="demo-instance"' in api_module._mark_demo_instance(index.read_text())
-
-
-# ── /legacy/* consolidation ─────────────────────────────────────────────────
-
-
-def test_legacy_root_redirects_to_legacy_admin(client):
-    response = client.get("/legacy", follow_redirects=False)
-    assert response.status_code == 302
-    assert response.headers["location"] == "/legacy/admin"
-
-
-@pytest.mark.parametrize(
-    ("old", "new"),
-    [
-        ("/legacy-admin", "/legacy/admin"),
-        ("/legacy-events", "/legacy/events"),
-        ("/legacy-player", "/legacy/player"),
-    ],
-)
-def test_old_legacy_paths_redirect_permanently(client, old, new):
-    response = client.get(old, follow_redirects=False)
-    assert response.status_code == 308
-    assert response.headers["location"] == new
-
-
-def test_old_legacy_redirect_preserves_the_query_string(client):
-    response = client.get("/legacy-admin?tab=info&invite_token=abc%20def", follow_redirects=False)
-    assert response.status_code == 308
-    assert response.headers["location"] == "/legacy/admin?tab=info&invite_token=abc%20def"
-
-
-@pytest.mark.parametrize("old", ["/legacy-admin", "/legacy-events", "/legacy-player"])
-def test_old_legacy_redirect_cannot_be_pointed_elsewhere(client, old):
-    # The target is a fixed path plus the query, so a crafted query or Host never changes the destination.
-    response = client.get(old + "?next=https://evil.example/&//evil.example", follow_redirects=False)
-    assert response.headers["location"].startswith("/legacy/")
-    assert not response.headers["location"].startswith("//")
-
-
-def test_legacy_pages_are_served_unchanged_by_the_react_build(client, react_build):
-    assert 'id="auth-dialog"' in client.get("/legacy/admin").text
-    assert 'id="tv-root"' in client.get("/legacy/events").text
-    assert "/player.js" in client.get("/legacy/player").text
-
-
-def test_demo_legacy_player_redirects_to_events(client, react_build, monkeypatch):
-    monkeypatch.setattr(api_module.config, "DEMO_INSTANCE", True)
-    response = client.get("/legacy/player", follow_redirects=False)
-    assert response.status_code == 302
-    assert response.headers["location"] == "/events"
-    old = client.get("/legacy-player", follow_redirects=False)
-    assert old.status_code == 308
-    assert old.headers["location"] == "/legacy/player"
-
-
-@pytest.mark.parametrize("page", ["/legacy/admin", "/legacy/events", "/legacy/player"])
-def test_legacy_pages_keep_the_support_footer(client, react_build, page):
-    html = client.get(page).text
-    assert 'class="support-links' in html
-    assert "https://ko-fi.com/torneosamistosos" in html
-    assert "https://github.com/sanityseeker/padel-amistoso" in html
-
-
-def test_legacy_admin_skips_the_cold_start_redirect(client, react_build):
-    html = client.get("/legacy/admin").text
-    assert "window.location.pathname.indexOf('/legacy') === 0" in html
-
-
-def test_legacy_header_tags_itself():
-    from pathlib import Path
-
-    shared = (Path(api_module.FRONTEND_DIR) / "shared.js").read_text()
-    assert "window.location.pathname.indexOf('/legacy/') === 0" in shared
-    assert 'class="badge public-legacy-badge"' in shared

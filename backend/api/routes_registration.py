@@ -403,8 +403,8 @@ def _answer_matches_condition(cond: FilterConditionDef, value: str | None, quest
     """Return True when a registrant's *value* for one question satisfies *cond*.
 
     A missing/empty answer fails every operator. This mirrors the client-side
-    evaluation in ``admin-registration.js`` (``_regEvalCondition``) — keep both
-    in sync.
+    evaluation in ``frontend/admin-app/src/features/lobbies/filter.ts``
+    (``matches``) — keep both in sync.
     """
     if not value:
         return False

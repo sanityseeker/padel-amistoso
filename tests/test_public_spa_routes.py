@@ -1,7 +1,7 @@
 """Routing of the React public pages: the spectator screen, sign-up, club landing and 404 page.
 
-Each route serves the React shell when a build exists and falls back to the legacy page (or the legacy 404
-page) when there is none. The shell is static: these routes never put tournament, lobby or player data into
+Each route serves the React shell when a build exists and a "not built" notice (or a plain 404 page) when
+there is none. The shell is static: these routes never put tournament, lobby or player data into
 the HTML, so private tournaments, unlisted lobbies and player secrets stay behind the API's own checks.
 """
 
@@ -117,31 +117,21 @@ def test_the_public_pages_do_not_touch_the_admin_token():
             assert not re.search(r"\bapi<|\bwrite<|\bupload<", source), path
 
 
-def test_legacy_pages_stay_reachable_with_a_build(client, react_build):
-    assert 'id="tv-root"' in client.get("/legacy/tv/some-alias").text
-    assert 'id="reg-root"' in client.get("/legacy/register/some-alias").text
-    assert 'id="club-root"' in client.get("/legacy/club").text
-
-
 # ── Without a build ─────────────────────────────────────────────────────────
 
 
-def test_missing_build_falls_back_to_the_legacy_public_pages(client, no_build):
-    assert 'id="tv-root"' in client.get("/tv/some-alias").text
-    assert 'id="reg-root"' in client.get("/register/some-alias").text
-    assert 'id="club-root"' in client.get("/legacy/club").text
+def test_missing_build_serves_the_not_built_notice_on_public_pages(client, no_build):
+    for path in ("/tv/some-alias", "/register/some-alias", "/club/anything"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "The web app is not built" in response.text
 
 
-def test_club_path_route_without_a_build_is_a_404(client, no_build):
-    # The legacy landing page reads the club from the hostname, so it has no path form.
-    response = client.get("/club/anything")
-    assert response.status_code == 404
-
-
-def test_missing_build_serves_the_legacy_404_page(client, no_build):
-    response = client.get("/no/such/page")
+def test_missing_build_serves_a_plain_404_page_with_the_home_link(client, no_build):
+    response = client.get("/no/such/page", headers={"host": "example.com"})
     assert response.status_code == 404
     assert "404" in response.text and 'id="react-test"' not in response.text
+    assert 'href="http://example.com/"' in response.text
 
 
 # ── The 404 page ────────────────────────────────────────────────────────────
@@ -173,11 +163,11 @@ def test_known_club_subdomain_serves_the_shell_with_the_slug(client, react_build
     assert response.headers["cache-control"] == "no-cache"
 
 
-def test_club_subdomain_without_a_build_serves_the_legacy_landing_page(client, no_build, auth_headers):
+def test_club_subdomain_without_a_build_serves_the_not_built_notice(client, no_build, auth_headers):
     _club(client, auth_headers, "myclub")
     response = client.get("/", headers={"host": "myclub.example.com"})
     assert response.status_code == 200
-    assert 'id="club-root"' in response.text
+    assert "The web app is not built" in response.text
 
 
 def test_unknown_club_subdomain_is_the_404_shell_pointing_at_the_apex(client, react_build):

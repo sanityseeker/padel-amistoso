@@ -107,7 +107,7 @@ export const sortTbdLast = (matches: Match[]) =>
 export const isTbd = (m: Pick<Match, 'team1' | 'team2'>) =>
   !m.team1?.join('').trim() || !m.team2?.join('').trim();
 
-/** The scoring context of a match shown in one section, exactly as the legacy page chose it. */
+/** The scoring context of a match shown in one section. */
 export function ctxOf(kind: TvMeta['type'], playoffs: boolean): Ctx {
   if (kind === 'group_playoff') return playoffs ? 'gp-playoff' : 'gp-group';
   if (kind === 'playoff') return 'po-playoff';

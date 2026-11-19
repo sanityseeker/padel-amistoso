@@ -11,7 +11,7 @@ import type {
 } from '../../types';
 import type { TournamentPrefix } from './query';
 
-// Scoring contexts, the same ones the legacy admin uses (admin-gp.js _SCORE_ENDPOINTS).
+// Scoring contexts.
 export type Ctx = 'gp-group' | 'gp-playoff' | 'mex' | 'mex-playoff' | 'po-playoff';
 
 export interface TournamentPageData {
@@ -173,7 +173,7 @@ export interface ReviewItem {
   kind: ReviewKind;
 }
 
-// Same rules as the legacy review queue (admin-gp.js _gpGetReviewItemKind), plus parked off-format scores.
+// Review-queue rules, including parked off-format scores.
 export function reviewItems(matches: Match[], settings: TvSettings): ReviewItem[] {
   const items: ReviewItem[] = [];
   for (const match of matches) {

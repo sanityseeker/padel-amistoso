@@ -1,9 +1,9 @@
 import type { CSSVariablesResolver } from '@mantine/core';
-import { legacyColors } from './palette';
+import { baseColors } from './palette';
 import { roleTokens, sharedTokens } from './tokens';
 
-function themeCssTokens(mode: keyof typeof legacyColors) {
-  const c = legacyColors[mode];
+function themeCssTokens(mode: keyof typeof baseColors) {
+  const c = baseColors[mode];
   const shade = mode === 'light' ? 'oklch(0.2 0.02 240 / ' : 'oklch(0.05 0.03 240 / ';
   const alpha = mode === 'light' ? [0.08, 0.12, 0.16, 0.2] : [0.5, 0.6, 0.7, 0.65];
   return {
@@ -62,8 +62,8 @@ function themeCssTokens(mode: keyof typeof legacyColors) {
   };
 }
 
-function schemeVariables(mode: keyof typeof legacyColors) {
-  const c = legacyColors[mode];
+function schemeVariables(mode: keyof typeof baseColors) {
+  const c = baseColors[mode];
   const vars: Record<string, string> = {};
   for (const [key, value] of Object.entries(c))
     vars[
@@ -75,7 +75,7 @@ function schemeVariables(mode: keyof typeof legacyColors) {
     ...themeCssTokens(mode),
     ...role,
     '--app-primary-light': `color-mix(in srgb, ${c.primary} ${mode === 'light' ? '11%' : '14%'}, transparent)`,
-    '--app-shadow': `0 8px 24px color-mix(in srgb, ${legacyColors.dark.bg} ${mode === 'light' ? '8%' : '45%'}, transparent)`,
+    '--app-shadow': `0 8px 24px color-mix(in srgb, ${baseColors.dark.bg} ${mode === 'light' ? '8%' : '45%'}, transparent)`,
     '--app-court-line': role['--color-court-line'],
     '--mantine-color-body': c.bg,
     '--mantine-color-text': c.text,
@@ -128,11 +128,11 @@ function schemeVariables(mode: keyof typeof legacyColors) {
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {
     ...sharedTokens,
-    '--app-hero-bg': legacyColors.dark.surface,
-    '--app-hero-text': legacyColors.dark.text,
-    '--app-hero-muted': legacyColors.dark.muted,
-    '--app-ball': legacyColors.dark.tennis,
-    '--app-on-ball': legacyColors.light.text,
+    '--app-hero-bg': baseColors.dark.surface,
+    '--app-hero-text': baseColors.dark.text,
+    '--app-hero-muted': baseColors.dark.muted,
+    '--app-ball': baseColors.dark.tennis,
+    '--app-on-ball': baseColors.light.text,
   },
   light: schemeVariables('light'),
   dark: schemeVariables('dark'),

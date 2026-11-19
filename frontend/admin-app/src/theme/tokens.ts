@@ -1,4 +1,4 @@
-import { legacyColors } from './palette';
+import { baseColors } from './palette';
 
 export const fontStacks = {
   display: "'Geologica', 'Onest', system-ui, sans-serif",
@@ -6,8 +6,7 @@ export const fontStacks = {
   mono: "'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace",
 } as const;
 
-// Scheme-independent tokens, named exactly like frontend/theme.css so legacy CSS
-// (footer, chips, display button) can be pasted without renaming.
+// Scheme-independent tokens.
 export const sharedTokens: Record<string, string> = {
   '--font-display': fontStacks.display,
   '--font-body': fontStacks.body,
@@ -70,17 +69,16 @@ export const sharedTokens: Record<string, string> = {
   '--motion-ease': 'cubic-bezier(0.2, 0.8, 0.2, 1)',
 };
 
-// Role tokens added by the "Baseline" design. They sit next to the legacy palette and never replace it;
-// frontend/theme.css carries the same values (e2e/theme.spec.ts checks both stay in sync).
+// Role tokens added by the "Baseline" design. They sit next to the base palette and never replace it.
 // Optic ball yellow-green is the single signal color: "live" or "your turn", never decoration.
 export const roleTokens = {
   light: {
     '--color-ball': '#d6f23a',
     '--color-on-ball': '#0d1520',
     '--color-ball-ink': '#4a6b00',
-    '--color-focus': legacyColors.light.primary,
-    '--color-nav-ink': legacyColors.light.muted,
-    '--color-nav-ink-active': legacyColors.light.text,
+    '--color-focus': baseColors.light.primary,
+    '--color-nav-ink': baseColors.light.muted,
+    '--color-nav-ink-active': baseColors.light.text,
     '--color-court-panel': '#0f3a66',
     '--color-court-line': 'rgba(255, 255, 255, 0.28)',
     '--color-rank-1': '#b89000',
@@ -88,23 +86,23 @@ export const roleTokens = {
     '--color-rank-3': '#a4622c',
     // Text on the bronze place mark: white on the darker light-mode bronze, ink on the lighter dark one.
     '--color-on-rank-3': '#ffffff',
-    '--color-status-await': legacyColors.light.warning,
-    '--color-status-dispute': legacyColors.light.error,
+    '--color-status-await': baseColors.light.warning,
+    '--color-status-dispute': baseColors.light.error,
   },
   dark: {
     '--color-ball': '#d8f550',
     '--color-on-ball': '#07101c',
     '--color-ball-ink': '#d8f550',
     '--color-focus': '#d8f550',
-    '--color-nav-ink': legacyColors.dark.muted,
-    '--color-nav-ink-active': legacyColors.dark.text,
+    '--color-nav-ink': baseColors.dark.muted,
+    '--color-nav-ink-active': baseColors.dark.text,
     '--color-court-panel': '#0b2440',
     '--color-court-line': 'rgba(142, 166, 190, 0.35)',
     '--color-rank-1': '#d4a800',
     '--color-rank-2': '#9aa7b5',
     '--color-rank-3': '#c27a3e',
     '--color-on-rank-3': '#07101c',
-    '--color-status-await': legacyColors.dark.warning,
-    '--color-status-dispute': legacyColors.dark.error,
+    '--color-status-await': baseColors.dark.warning,
+    '--color-status-dispute': baseColors.dark.error,
   },
 } as const;

@@ -15,11 +15,6 @@
     <script>
       (function () {
         try {
-          var t = localStorage.getItem('amistoso-theme') || localStorage.getItem('padel-theme');
-          if (!t) t = window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light';
-          document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
-        } catch (_) {}
-        try {
           var storedScale = localStorage.getItem('amistoso-ui-scale');
           var s = storedScale;
           if (storedScale === '90') s = '85';

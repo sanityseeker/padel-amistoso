@@ -1440,7 +1440,7 @@ def _build_club_player_card(
     history_by_sport: dict[str, list[float]] = {"padel": [], "tennis": []}
     round_info_cache: dict[str, dict[str, tuple[int, str]]] = {}
     for log in raw_logs:
-        # The shared card row (player_card), in this endpoint's own field list (legacy club.js reads it).
+        # The shared card row (player_card), in this endpoint's own field list.
         entry = match_entry_from_log(log, round_info_cache)
         row = {key: entry[key] for key in _CLUB_CARD_MATCH_FIELDS}
         if log.get("tournament_public") == 0 and not unlisted_aliases:

@@ -1,25 +1,11 @@
 // Service worker — optimal caching for performance + freshness.
 // The backend appends a hash of the React build to this name and fills SPA_ASSETS
 // with the hashed /admin-assets/* files (see _render_service_worker in backend/api).
-const CACHE_NAME = 'amistoso-v120';
+const CACHE_NAME = 'amistoso-v121';
 const STATIC_ASSETS = [
-  '/shared.js', '/auth.js', '/i18n.js', '/manifest.json',
-  '/admin-utils.js', '/admin-tournaments.js', '/admin-create.js',
-  '/admin-gp.js', '/admin-mex.js', '/admin-export.js', '/admin-player-codes.js',
-  '/admin-tv-email.js', '/admin-registration.js', '/admin-convert.js',
-  '/admin-collaborators.js', '/admin-settings-panel.js',
-  '/admin-lobby-settings-panel.js', '/admin-payments.js', '/admin-players.js',
-  '/admin-communities.js', '/admin-clubs-settings-panel.js',
-  '/admin-clubs.js', '/admin-subdomain-context.js',
-  '/tv.js', '/register.js', '/player.js', '/club.js',
-  '/theme.css', '/admin.css', '/tv.css', '/register.css', '/player.css',
-  '/club.css',
+  '/manifest.json',
   '/icon-192.png', '/icon-192-maskable.png', '/icon-512.png',
   '/icon-512-maskable.png', '/404.png',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/petite-vue@0.4.1/dist/petite-vue.iife.js',
-  'https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js',
-  'https://cdn.jsdelivr.net/npm/dompurify@3.3.3/dist/purify.min.js',
 ];
 const SHELL = ['/', '/events', '/player', '/admin'];
 const SPA_ASSETS = [/*__SPA_ASSETS__*/];
@@ -99,7 +85,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets (JS, manifest, icons): stale-while-revalidate
+  // Static assets (manifest, icons): stale-while-revalidate
   // — serve instantly from cache, refresh in background for next load.
   event.respondWith(
     caches.match(request).then((cached) => {

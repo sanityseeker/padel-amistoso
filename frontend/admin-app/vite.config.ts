@@ -34,18 +34,14 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: Object.fromEntries(
-      [
-        '/api',
-        '/legacy',
-        '/manifest.json',
-        '/service-worker.js',
-        '^/[^/]+\\.(?:js|css|png|ico|json)$',
-      ].map((path) => [
-        path,
-        // Preserve the browser-facing Host so FastAPI's same-origin CSRF
-        // validation works without weakening the backend's allowed origins.
-        { target: 'http://127.0.0.1:8000', changeOrigin: false },
-      ]),
+      ['/api', '/manifest.json', '/service-worker.js', '^/[^/]+\\.(?:js|css|png|ico|json)$'].map(
+        (path) => [
+          path,
+          // Preserve the browser-facing Host so FastAPI's same-origin CSRF
+          // validation works without weakening the backend's allowed origins.
+          { target: 'http://127.0.0.1:8000', changeOrigin: false },
+        ],
+      ),
     ),
   },
 });

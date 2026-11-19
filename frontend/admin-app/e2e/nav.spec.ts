@@ -46,11 +46,6 @@ test('the login offers password recovery and no separate account help', async ({
   await expect(page).toHaveURL(/\/admin\/account\/forgot$/);
 });
 
-test('React boot marks the browser session as started', async ({ page }) => {
-  await page.goto('/events');
-  expect(await page.evaluate(() => sessionStorage.getItem('amistoso-session-active'))).toBe('1');
-});
-
 test('switching Events, Player Hub and Admin never reloads the document', async ({ page }) => {
   await loginAdmin(page);
   const boot = await page.evaluate(() => window.__bootId);

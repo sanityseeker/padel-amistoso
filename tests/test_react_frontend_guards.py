@@ -138,32 +138,3 @@ def test_no_mantine_class_selectors_outside_the_theme() -> None:
         if MANTINE_SELECTOR.search(line)
     ]
     assert offenders == [], f"`.mantine-*` selectors belong in src/theme only: {offenders}"
-
-
-# ---- No links to the old interface -------------------------------------------------------------
-# The vanilla pages are still served under /legacy/* (and as the no-build fallback), but nothing in
-# the React app may send a user there: no href, redirect target, menu item, command or help text.
-# No exceptions are needed today. If one is ever justified, add the file to LEGACY_PATH_EXCEPTIONS
-# with the reason, so the exception is visible in review.
-
-LEGACY_PATH = re.compile(r"/legacy(?![\w-]*\.)(?=[/\"'`?#\s)]|$)|/legacy-(?:admin|events|player)\b")
-LEGACY_PATH_EXCEPTIONS: dict[str, str] = {}
-
-
-def test_react_app_never_links_to_the_legacy_interface() -> None:
-    offenders = [
-        f"{rel}:{number}: {line.strip()}"
-        for path in SRC.rglob("*")
-        if path.suffix in {".ts", ".tsx", ".json", ".css"}
-        for rel in [str(path.relative_to(SRC))]
-        if rel not in LEGACY_PATH_EXCEPTIONS
-        for number, line in enumerate(path.read_text().splitlines(), start=1)
-        if LEGACY_PATH.search(line)
-    ]
-    assert offenders == [], f"the React app must not link to the old interface: {offenders}"
-
-
-def test_pwa_manifest_and_service_worker_do_not_point_at_legacy_pages() -> None:
-    frontend = SRC.parent.parent
-    for name in ("manifest.json", "service-worker.js"):
-        assert "/legacy" not in (frontend / name).read_text(), name

@@ -17,8 +17,8 @@ try {
 }
 const THEME_KEY = 'amistoso-theme';
 const storedScheme = localStorageColorSchemeManager({ key: THEME_KEY });
-// "Auto" is stored as an absent key, which is what the legacy pages expect
-// (an unset key follows the OS), so it is never written as a literal value.
+// "Auto" is stored as an absent key (an unset key follows the OS), so it is never written as a
+// literal value.
 let onRemoved: ((event: StorageEvent) => void) | null = null;
 export const colorSchemeManager: MantineColorSchemeManager = {
   ...storedScheme,

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A FastAPI + vanilla-JS web app for running padel/tennis tournaments (Group+Playoff,
+A FastAPI + React web app for running padel/tennis tournaments (Group+Playoff,
 Mexicano, and Direct Playoffs formats), registration lobbies, a Player Hub with an ELO
 rating system, and live TV/spectator views. Single-process app: in-memory tournament
 state persisted to SQLite (`data/padel.db`) after every mutation. See `README.md` for
@@ -60,9 +60,9 @@ section.
   - `player_secrets.py` — passphrase/QR generation for player self-scoring auth.
 - `api/` — FastAPI layer. `__init__.py` builds the `app`, wires middleware, and — this
   is the important bit — serves the React shell (`_spa_response`) and the `/admin-assets/`
-  files. It serves the legacy pages by hardcoded per-file routes (`/admin-mex.js`,
-  `/theme.css`, etc.), not a generic static-files mount. **A new top-level React section
-  needs a route here** (see Frontend). A new legacy file needs its own route too, or it 404s.
+  files. The root PWA files (`/manifest.json`, `/service-worker.js`, icons, `/404.png`) have
+  hardcoded per-file routes, not a generic static-files mount. **A new top-level React section
+  needs a route here** (see Frontend). A new root-level file needs its own route too, or it 404s.
   - `state.py` — in-memory tournament state (the source of truth while running) +
     version counter for SSE/polling clients; persists to SQLite on every mutation.
   - `db.py` — SQLite connection/schema management (`get_db()`, `init_db()`).
@@ -95,7 +95,7 @@ section.
   - `rate_limit.py`, `leaderboard_cache.py`, `push_events.py`, `push.py` — supporting
     infra for the above.
   - The app also has middleware for **subdomain routing**: `{club-slug}.{domain}` serves
-    `club.html` directly (resolved against the `clubs` table), `admin.{domain}` redirects
+    the React club landing page (resolved against the `clubs` table), `admin.{domain}` redirects
     to the apex — see the `subdomain_router` middleware in `api/__init__.py`.
 - `auth/` — JWT (`pyjwt`, HS256) + bcrypt user auth, independent of player passphrase
   auth. `deps.py` has the `get_current_user` FastAPI dependency; `store.py` persists
@@ -109,16 +109,14 @@ section.
 One React SPA serves `/` (redirects), `/events`, `/player`, `/admin/*` (including the public
 `/admin/info` guide and the demo instance's login) with **React + TypeScript + Vite +
 Mantine** in `frontend/admin-app/`. Run `npm ci` and `npm run dev` there (port 5173, API proxy
-to 8000), or `npm run build` to produce `dist/`. FastAPI serves the built shell with `no-cache`
+to 8000), or `npm run build` to produce `dist/`; without a build every SPA route serves a short "not built"
+notice (`_no_build_response`). FastAPI serves the built shell with `no-cache`
 + ETag (the demo instance gets the `demo-instance` class on `<html>`) and hashed
 `/admin-assets/` files; Docker builds it in a Node stage. API contracts and SQLite storage are
 unchanged. **A new top-level SPA section needs a FastAPI route**: `backend/api/__init__.py` has
 `_spa_response(request)` plus catch-alls for `/admin/{rest:path}`, `/player/{rest:path}` and
 `/events/{rest:path}`; any other prefix 404s until added there. Old `/admin#/...` hash links
-are mapped at boot (`shell/hashMigration.ts`; `/player#token=...` is never touched). Nothing in
-the React app or in any link the backend generates (e-mails, QR codes, redirects) points at the old
-UI any more; it is only reachable by typing `/legacy/*` (see below).
-`tests/test_react_frontend_guards.py` fails if `/legacy` appears in `src/`. Browser checks:
+are mapped at boot (`shell/hashMigration.ts`; `/player#token=...` is never touched). Browser checks:
 `npm run test:e2e` (isolated temporary database; port 8011, plus a demo instance on 8012).
 
 `frontend/admin-app/src/` layout:
@@ -172,33 +170,22 @@ tournaments and unlisted/closed registrations stay absent.
 `src/features/tv`, `src/features/register` and `src/features/club` are the public spectator screen (`/tv/:slug`),
 sign-up (`/register/:slug`) and club landing (`{club}.{domain}/` and `/club/:slug`); `shell/NotFound.tsx` is the 404 page.
 All are anonymous: they use `publicApi` or `playerApi` with an explicit token and never read `padel-auth-token`.
-`backend/api/__init__.py` serves each through `_spa_response` (legacy page when there is no build): `/tv/{rest:path}`,
+`backend/api/__init__.py` serves each through `_spa_response`: `/tv/{rest:path}`,
 `/register/{rest:path}`, `/club/{rest:path}`; the `subdomain_router` middleware serves the shell with
 `<meta name="amistoso-club" content="slug">` for a known club, and `_serve_404_page` serves it with status 404 and
 `<meta name="amistoso-home">`. The TV page names its tournament to the one shell SSE connection with
 `shell/followTournament.ts` (it never opens its own stream). TV type uses the `--fs-tv-*` tokens and `size="tv"`
-(theme/tokens.ts); the TV route hides the app header and keeps the Ko-fi + GitHub footer, as the legacy page did.
+(theme/tokens.ts); the TV route hides the app header and keeps the Ko-fi + GitHub footer.
 Own-score actions on the TV page reuse `features/player/MatchActions` and `ScoreSheet` with the tournament token
-(`useTvPlayer`, stored under the legacy `padel-player-<tid>` key). Tests: `e2e/tv|register|club|notfound.spec.ts`,
+(`useTvPlayer`, stored under the older `padel-player-<tid>` key). Tests: `e2e/tv|register|club|notfound.spec.ts`,
 `tests/test_public_spa_routes.py`.
-
-The legacy pages (vanilla JS, HTML, CSS, no build step) are the no-build fallback. Do not add features to them.
-FastAPI serves them at `/legacy/admin`, `/legacy/events`, `/legacy/player`, `/legacy/tv/{slug}`,
-`/legacy/register/{alias}` and `/legacy/club` (`/legacy` -> `/legacy/admin`; old `/legacy-*` paths 308 there).
-**Nothing links to them**: the React app has no `/legacy` link, demo onboarding and invite / password-reset links
-land on `/admin/...` React routes, and `manifest.json` / `service-worker.js` start and cache the React shell.
-They are not deleted. Removing them is a separate decision. The files are `index.html` and `admin-*.js` (admin),
-`player.html`/`player.js`, `public.html`/`tv.js`, `register.html`/`register.js` and `club.html`/`club.js`.
-Shared files: `shared.js`, `auth.js`, `i18n.js`, `theme.css`. `tests/test_static_assets.py` and
-`tests/js/legacy_language.mjs` guard them.
 
 It's a working PWA (`manifest.json` + `service-worker.js`, cache-first static/
 network-first HTML). Any new or renamed static file must be added to `service-worker.js`
 `STATIC_ASSETS`/`SHELL` with `CACHE_NAME` bumped, or clients on a stale cache won't see it. `SPA_PREFIXES` lists the
 React sections (`/admin /player /events /tv /register /club`).
 
-`react-plan.md` (repo root, untracked) is the status document for the React migration. `refresh-plan.md` is the
-old Petite-Vue plan. It applies to the legacy pages only.
+`react-plan.md` (repo root, untracked) is the status document for the React migration.
 
 ### Data model / persistence
 
@@ -220,7 +207,7 @@ old Petite-Vue plan. It applies to the legacy pages only.
   cut across multiple `routes_*.py` files). Check `tests/conftest.py` for shared fixtures
   before adding new ones.
 - `tests/test_static_assets.py` guards frontend-serving concerns: compression, ETag/304
-  behavior, and the legacy pages. `tests/test_react_frontend_guards.py` and
+  behavior, the service-worker templating and the manifest. `tests/test_react_frontend_guards.py` and
   `tests/test_public_spa_routes.py` guard the React shell and its routes.
 
 ## Project-specific conventions (from `.github/copilot-instructions.md`)
