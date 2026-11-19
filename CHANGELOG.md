@@ -1,3 +1,9 @@
+## v3.13.1 (2026-11-19)
+
+### Fix
+
+- tests pass without a React build and run with no skips
+
 ## v3.13.0 (2026-11-19)
 
 ### Feat
