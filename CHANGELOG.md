@@ -1,3 +1,13 @@
+## v3.13.0 (2026-11-19)
+
+### Feat
+
+- Hub ratings per community with a match-change badge
+
+### Refactor
+
+- remove the legacy vanilla-JS frontend
+
 ## v3.12.2 (2026-11-19)
 
 ### Fix
