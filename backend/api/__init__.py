@@ -332,14 +332,19 @@ def _serve_404_page(request: Request) -> HTMLResponse:
     """Return the 404 page with the host-aware home URL injected.
 
     The React shell renders the page (its ``*`` route) when a build exists, with the home URL in
-    ``<meta name="amistoso-home">``; without a build it is a plain page with a home link.
+    ``<meta name="amistoso-home">``; without a build it is a plain page with the same meta tag
+    and a home link.
     """
     home = escape(_home_url_for(request), quote=True)
+    home_meta = f'<meta name="amistoso-home" content="{home}">'
     spa = _spa_index()
     if spa is not None:
-        html = _inject_head(spa[0], f'<meta name="amistoso-home" content="{home}">')
+        html = _inject_head(spa[0], home_meta)
         return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
-    html = f'<!doctype html><html lang="en"><body><h1>404 Not Found</h1><p><a href="{home}">Home</a></p></body></html>'
+    html = (
+        f'<!doctype html><html lang="en"><head><meta charset="utf-8">{home_meta}</head>'
+        f'<body><h1>404 Not Found</h1><p><a href="{home}">Home</a></p></body></html>'
+    )
     return HTMLResponse(content=html, status_code=404, headers={"Cache-Control": "no-cache"})
 
 

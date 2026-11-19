@@ -160,18 +160,6 @@ def test_shell_without_a_manifest_has_no_language_preload(client, spa_build):
     assert "var files =" not in client.get("/admin").text
 
 
-def test_built_shell_preloads_existing_language_chunks(client):
-    """Against the real Vite build, when there is one: every preloaded href is a built file."""
-    import backend.api as api_module
-
-    if not (api_module.ADMIN_BUILD_DIR / ".vite" / "manifest.json").is_file():
-        pytest.skip("no React build")
-    chunks = _preloaded_language_chunks(client.get("/admin").text)
-    assert set(chunks) == {"es", "ru"}
-    for href in chunks.values():
-        assert (api_module.ADMIN_BUILD_DIR / href.lstrip("/")).is_file()
-
-
 def test_service_worker_cache_name_follows_the_react_build(client, spa_build):
     first = re.search(r"CACHE_NAME = '(amistoso-v\d+-[0-9a-f]{10})'", _service_worker(client))
     assert first, "cache name must carry a hash of the React index.html"

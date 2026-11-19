@@ -188,8 +188,7 @@ def test_demo_class_is_injected_on_nested_spa_paths(client, react_build, monkeyp
     assert 'class="demo-instance"' in client.get("/admin/t/x").text
 
 
-def test_real_build_keeps_a_demo_injectable_html_tag():
-    index = api_module.ADMIN_BUILD_DIR / "index.html"
-    if not index.is_file():
-        pytest.skip("frontend/admin-app has not been built")
+def test_shell_source_keeps_a_demo_injectable_html_tag():
+    # Vite copies the <html> tag of the source page into the build unchanged.
+    index = api_module.FRONTEND_DIR / "admin-app" / "index.html"
     assert 'class="demo-instance"' in api_module._mark_demo_instance(index.read_text())

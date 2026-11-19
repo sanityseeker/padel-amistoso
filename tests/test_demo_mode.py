@@ -372,6 +372,16 @@ class TestDemoInstanceHtmlClass:
     """The demo instance stamps <html class="demo-instance"> so CSS hides
     community/club UI from first paint; the core site never gets it."""
 
+    @pytest.fixture(autouse=True)
+    def _shell_build(self, tmp_path, monkeypatch):
+        # A built shell, so the checks do not depend on whether frontend/admin-app was built.
+        import backend.api as api_module
+
+        build = tmp_path / "react-dist"
+        build.mkdir()
+        (build / "index.html").write_text('<!doctype html><html lang="en"><head></head><body></body></html>')
+        monkeypatch.setattr(api_module, "ADMIN_BUILD_DIR", build)
+
     @pytest.mark.parametrize("path", DEMO_PAGES)
     def test_demo_instance_pages_get_class(self, client, demo_instance, path):
         r = client.get(path)

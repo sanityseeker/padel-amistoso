@@ -101,10 +101,18 @@ def _link_by(how: str, client, auth_headers, profile_id: str, tid: str, player_i
         raise AssertionError(how)
 
 
-@pytest.mark.parametrize("how", ["admin", "self", "ghost_merge", "hub_merge"])
-@pytest.mark.parametrize("finished", [False, True], ids=["running", "finished"])
-@pytest.mark.parametrize("club", [True, False], ids=["club", "no-club"])
+# Ghost profiles are made by the club roster sync, so a ghost merge needs a club.
+_LINK_CASES = [
+    pytest.param(club, how, id=f"{'club' if club else 'no-club'}-{how}")
+    for club in (True, False)
+    for how in ("admin", "self", "ghost_merge", "hub_merge")
+    if club or how != "ghost_merge"
+]
+
+
+@pytest.mark.parametrize(("club", "how"), _LINK_CASES)
 class TestSoloLinkedAfterStart:
+    @pytest.mark.parametrize("finished", [False, True], ids=["running", "finished"])
     def test_history_before_the_link_is_listed_in_every_scope(self, client, auth_headers, club, finished, how):
         if club:
             _make_club("hl")
@@ -120,8 +128,6 @@ class TestSoloLinkedAfterStart:
         _play_rounds(client, auth_headers, tid, "Alice", rounds=1)
         if finished:
             assert client.post(f"/api/tournaments/{tid}/mex/finish", headers=auth_headers).status_code == 200
-        if how == "ghost_merge" and not club:
-            pytest.skip("ghost profiles are made by the club roster sync")
         _link_by(how, client, auth_headers, alice, tid, ids["Alice"])
 
         expected = ROUNDS_BEFORE_LINK + 1
@@ -137,11 +143,8 @@ class TestSoloLinkedAfterStart:
                 ).fetchall()
             assert [r["club_identity"] for r in rows] == [alice] * expected
 
-    def test_matches_after_the_link_are_added(self, client, auth_headers, club, finished, how):
-        if finished:
-            pytest.skip("a finished tournament has no later matches")
-        if how == "ghost_merge" and not club:
-            pytest.skip("ghost profiles are made by the club roster sync")
+    def test_matches_after_the_link_are_added(self, client, auth_headers, club, how):
+        # Running tournaments only: a finished one has no later matches.
         if club:
             _make_club("hl")
         alice = _insert_profile("Alice")
