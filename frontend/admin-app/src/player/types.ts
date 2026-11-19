@@ -81,6 +81,8 @@ export interface Space {
   elo_history: EloMatch[];
   player_communities: { id: string; name: string }[];
   player_clubs: { id: string; name: string; community_id: string }[];
+  /** Per sport: total rating change of every rated match in the scope (manual adjustments left out). */
+  elo_change?: Partial<Record<'padel' | 'tennis', number>>;
 }
 export interface Session {
   profile: Profile;

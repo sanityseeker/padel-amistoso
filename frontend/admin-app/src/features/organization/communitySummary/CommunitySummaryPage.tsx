@@ -5,7 +5,6 @@ import {
   Collapse,
   Group,
   Paper,
-  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -242,7 +241,6 @@ export function CommunitySummary({
 }) {
   useLocale();
   const { communities, clubs } = useOverview();
-  const [sport, setSport] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [pickedClub, setPickedClub] = useState<string | null>(null);
@@ -256,29 +254,19 @@ export function CommunitySummary({
     enabled: !!club,
   });
 
-  const params = new URLSearchParams({ sport });
+  const params = new URLSearchParams({ sport: 'all' });
   // A season fixes the club and wins over the dates, so the dates are not sent with it.
   if (season) params.set('season_id', season);
   else if (from) params.set('from', from);
   if (!season && to) params.set('to', nextDay(to));
   if (club) params.set('club_id', club);
   const summary = useQuery({
-    queryKey: [
-      'admin',
-      'community-elo-summary',
-      communityId,
-      sport,
-      from,
-      to,
-      club ?? '',
-      season ?? '',
-    ],
+    queryKey: ['admin', 'community-elo-summary', communityId, from, to, club ?? '', season ?? ''],
     queryFn: () => api<CommunityEloSummary>(`/communities/${communityId}/elo-summary?${params}`),
   });
 
   const communityName = communities.data?.find((c) => c.id === communityId)?.name;
   const data = summary.data;
-  const sports = SPORTS.filter((s) => sport === 'all' || sport === s);
   return (
     <Stack gap="lg" data-testid="community-summary">
       {!fixedClubId && (
@@ -291,16 +279,6 @@ export function CommunitySummary({
       )}
       <Paper variant="row" p="md">
         <Stack gap="sm">
-          <SegmentedControl
-            aria-label={tx('Sport')}
-            value={sport}
-            onChange={setSport}
-            data={[
-              { value: 'all', label: tx('All') },
-              { value: 'padel', label: tx('Padel') },
-              { value: 'tennis', label: tx('Tennis') },
-            ]}
-          />
           <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="sm">
             <TextInput
               type="date"
@@ -370,9 +348,12 @@ export function CommunitySummary({
             </EmptyState>
           ) : (
             <>
-              {sports.map((s) => {
+              {SPORTS.map((s) => {
                 const totals = data.totals[s];
-                if (!totals || !data.clubs.some((c) => c.sport === s)) return null;
+                // With one club the sport total repeats that club's block, which can also list
+                // its players, so the total shows only when it adds up several clubs.
+                const clubCount = data.clubs.filter((c) => c.sport === s).length;
+                if (!totals || clubCount < 2) return null;
                 return (
                   <Section key={s} title={sportLabel(s)}>
                     <Totals totals={totals} sport={s} />

@@ -9,9 +9,10 @@ import { StandingsTable } from '../../tournaments';
 import type { Sport } from '../stats';
 import { playerCardSource, ProfileCardModal, type ProfileCardTarget } from '../../playercard';
 
-export const useLeaderboard = (scopeQuery: string) =>
+export const useLeaderboard = (scopeQuery: string, enabled = true) =>
   useQuery({
     queryKey: ['player', 'leaderboard', scopeQuery],
+    enabled,
     queryFn: () => playerApi<Board>(`/player-profile/leaderboard${scopeQuery}`),
     // Switching community keeps the current table until the new one arrives: no skeleton, no jump.
     placeholderData: (previous) => previous,

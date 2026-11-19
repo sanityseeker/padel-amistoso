@@ -1,5 +1,15 @@
 import { lazy, Suspense, useCallback, useState } from 'react';
-import { Group, Paper, SimpleGrid, Skeleton, Stack, Text, Title, useMatches } from '@mantine/core';
+import {
+  Button,
+  Group,
+  Paper,
+  SimpleGrid,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+  useMatches,
+} from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
 import { EmptyState, HistoryLimit, PageHeader, useHistoryLimit } from '../../../ui';
 import { FormGuide } from '../components/FormGuide';
@@ -7,7 +17,7 @@ import { EloInfoButton } from '../../info/EloInfo';
 import { Leaderboard } from '../components/Leaderboard';
 import { ResultRow, scoreOf } from '../components/ResultRow';
 import { usePlayerSpace } from '../context';
-import { formOf, historyOf, opponentsOf } from '../stats';
+import { formOf, historyOf, matchHistoryOf, opponentsOf } from '../stats';
 import { PlayerCardModal, playerCardSource } from '../../playercard';
 
 const EloChart = lazy(() => import('../charts/EloChart'));
@@ -16,18 +26,42 @@ const EloChart = lazy(() => import('../charts/EloChart'));
 export default function Ratings() {
   const gap = useMatches({ base: 'md', sm: 'xl' });
   const locale = useLocale();
-  const { space, scopeQuery, sport } = usePlayerSpace();
+  const { space, scope, scopeQuery, sport, setScope } = usePlayerSpace();
   const history = historyOf(space, sport);
   const [choice, setChoice] = useHistoryLimit();
   // The Hub already holds its latest 50 rating changes (the chart's); "All" shows those.
   const shown = choice === 'all' ? Infinity : Number(choice);
   const recent = history.slice().reverse();
-  const now = history.length ? history[history.length - 1].elo_after : 0;
-  const change = history.length ? Math.round(now - history[0].elo_before) : 0;
+  // The trend line and its change count rated matches only: a manual club rating is a starting
+  // value, not a result (the Recent results list still shows it).
+  const trend = matchHistoryOf(space, sport);
+  const now = trend.length ? trend[trend.length - 1].elo_after : 0;
+  const change = Math.round(trend.reduce((sum, m) => sum + m.elo_delta, 0));
   const visible = recent.slice(0, shown);
   // A tap on a name in a result opens that player's card from that event (it can widen to its scope).
   const [card, setCard] = useState<{ tid: string; playerId: string } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
+  // Each community keeps its own rating chain: the trend and the leaderboard need one picked.
+  if (!scope && space.player_communities.length > 0)
+    return (
+      <Stack gap={gap}>
+        <PageHeader title={tx('Ratings')} named dense actions={<EloInfoButton />} />
+        <EmptyState
+          title={tx('Pick a community')}
+          action={
+            <Group gap="xs" justify="center">
+              {space.player_communities.map((c) => (
+                <Button key={c.id} variant="light" onClick={() => setScope(`community:${c.id}`)}>
+                  {c.name}
+                </Button>
+              ))}
+            </Group>
+          }
+        >
+          {tx('Each community keeps its own rating, trend and leaderboard.')}
+        </EmptyState>
+      </Stack>
+    );
   return (
     <Stack gap={gap}>
       <PageHeader
@@ -39,7 +73,7 @@ export default function Ratings() {
       />
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl" style={{ alignItems: 'start' }}>
         <Stack gap="xl">
-          {history.length > 1 ? (
+          {trend.length > 0 ? (
             <Paper p="lg">
               <Group justify="space-between" align="flex-start" mb="sm">
                 <Stack gap={2}>
@@ -54,7 +88,7 @@ export default function Ratings() {
                       {change}
                     </Text>
                     <Text size="xs" c="dimmed">
-                      {tx('over {n} rating changes', { n: history.length })}
+                      {tx('over {n} rating changes', { n: trend.length })}
                     </Text>
                   </Group>
                 </Stack>
@@ -66,13 +100,13 @@ export default function Ratings() {
                   data={[
                     {
                       match: '0',
-                      elo: Math.round(history[0].elo_before),
+                      elo: Math.round(trend[0].elo_before),
                       delta: 0,
                       title: tx('Starting rating'),
                       score: '',
                       opponent: '',
                     },
-                    ...history.map((m, i) => {
+                    ...trend.map((m, i) => {
                       const opponents = opponentsOf(m);
                       return {
                         match: String(i + 1),

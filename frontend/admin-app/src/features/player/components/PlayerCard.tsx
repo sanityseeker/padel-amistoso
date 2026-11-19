@@ -3,7 +3,7 @@ import { Avatar, Badge, Group, Paper, Skeleton, Stack, Text } from '@mantine/cor
 import { t as tx, useLocale } from '../../../i18n';
 import { profileInitials } from '../../../player/session';
 import type { Space } from '../../../player/types';
-import { eloOf, historyOf, recentDelta, type Sport } from '../stats';
+import { eloOf, matchHistoryOf, scopeDelta, type Sport } from '../stats';
 
 const PlayerSparkline = lazy(() => import('../charts/PlayerSparkline'));
 
@@ -13,17 +13,21 @@ export function PlayerCard({
   sport,
   rank,
   scopeName,
+  showScope = false,
 }: {
   space: Space;
   sport: Sport;
   rank: number | null;
   scopeName: string;
+  /** Name the community under the sport (several community cards side by side). */
+  showScope?: boolean;
 }) {
   useLocale();
   const elo = eloOf(space, sport);
-  const delta = recentDelta(space, sport);
+  const delta = scopeDelta(space, sport);
   // The rating before the first shown match comes first, so two matches plot as three points.
-  const shownHistory = historyOf(space, sport).slice(-20);
+  // Manual club ratings are left out, like in the badge: they are not results.
+  const shownHistory = matchHistoryOf(space, sport).slice(-20);
   const series = shownHistory.length
     ? [shownHistory[0].elo_before, ...shownHistory.map((m) => m.elo_after)].map((v) =>
         Math.round(v),
@@ -43,6 +47,7 @@ export function PlayerCard({
               </Text>
               <Text size="xs" opacity={0.75}>
                 {tx(sport === 'padel' ? 'Padel' : 'Tennis')} {tx('rating')}
+                {showScope ? ` · ${scopeName}` : ''}
               </Text>
             </Stack>
           </Group>
@@ -53,8 +58,8 @@ export function PlayerCard({
             <Badge
               color={delta >= 0 ? 'success' : 'red'}
               variant={delta >= 0 ? 'filled' : 'light'}
-              title={tx('Last 5 rated matches')}
-              aria-label={`${tx('Last 5 rated matches')}: ${delta > 0 ? '+' : ''}${delta.toFixed(1)}`}
+              title={tx('All rated matches')}
+              aria-label={`${tx('All rated matches')}: ${delta > 0 ? '+' : ''}${delta.toFixed(1)}`}
             >
               {delta > 0 ? '+' : ''}
               {delta.toFixed(1)}

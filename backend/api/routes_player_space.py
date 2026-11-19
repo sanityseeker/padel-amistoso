@@ -272,6 +272,9 @@ class PlayerSpaceResponse(BaseModel):
     """Non-builtin communities the player has participated in (id + name, matches > 0)."""
     player_clubs: list[PlayerClubSummary] = Field(default_factory=list)
     """Clubs where this profile has rated matches (with per-sport ELO + matches)."""
+    elo_change: dict[str, float] = Field(default_factory=dict)
+    """Per sport: the sum of the rating changes of every rated match in the scope (manual
+    adjustments left out), the Hub card's change badge."""
 
 
 class PlayerPathRound(BaseModel):
@@ -2058,16 +2061,17 @@ def get_leaderboard(
 
     Returns rated players for each sport, sorted by ELO descending.
     Includes both Player Hub members and unlinked tournament participants.
-    Scoped to a club (members only), a community, or all communities (when no scope is
-    provided — the global aggregate view).  ``community_id`` accepts both
-    ``None`` and the empty string for the all-communities view.
+    Scoped to a club (members only) or one community.  There is no all-communities board:
+    each community keeps its own rating chain, so mixing them would rank players on numbers
+    from different chains.  Without a scope (``None`` or the empty string) the board is the
+    built-in open community's.
     """
     if identity is None:
         raise HTTPException(401, "Profile authentication required")
     if club_id:
         # A club board is for the club's visible members (403 otherwise; 404 for an unknown club).
         require_club_card_access(_get_club(club_id), creds)
-    scope_community = community_id or ""
+    scope_community = community_id or "open"
     padel = _leaderboard_for_sport("padel", scope_community, club_id=club_id)
     tennis = _leaderboard_for_sport("tennis", scope_community, club_id=club_id)
     available_communities = _leaderboard_available_communities()
@@ -2101,7 +2105,9 @@ def _leaderboard_available_communities() -> list[LeaderboardCommunityRef]:
     return [LeaderboardCommunityRef(id=r["id"], name=r["name"]) for r in rows]
 
 
-def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | None = None) -> list[LeaderboardEntry]:
+def _leaderboard_for_sport(
+    sport: str, community_id: str = "open", club_id: str | None = None
+) -> list[LeaderboardEntry]:
     """Build a ranked leaderboard for a single sport within a community.
 
     For club-scoped leaderboards, derives matches and latest ELO live from
@@ -2113,9 +2119,10 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
     are still excluded from the public leaderboard because matches = 0.
 
     Otherwise combines community-scoped profile ELOs with unlinked tournament
-    participant ELOs. When *community_id* is an empty string, all communities
-    are aggregated.
+    participant ELOs.  There is no all-communities board: each community keeps
+    its own chain.
     """
+    community_id = community_id or "open"
     if club_id:
         # Same cached rows, projection and order as the public club leaderboard.
         ensure_club_roster_synced(club_id)
@@ -2134,111 +2141,57 @@ def _leaderboard_for_sport(sport: str, community_id: str = "", club_id: str | No
             for e in project_club_board(club_rows, sport)
         ]
 
-    all_communities = community_id == ""
     with get_db() as conn:
-        # 1) Players with Hub profiles — read from profile_community_elo
-        if all_communities:
-            # The "open" row is always up-to-date via mirroring: it holds the
-            # cumulative ELO and total match count across all communities.
-            # Fall back to MAX(elo)/MAX(matches) for players who pre-date mirroring.
-            snapshot_rows = conn.execute(
-                "SELECT pce.profile_id AS profile_id, pp.name, pp.is_ghost,"
-                "       COALESCE(MAX(CASE WHEN pce.community_id = 'open' THEN pce.elo END), MAX(pce.elo)) AS elo,"
-                "       COALESCE(MAX(CASE WHEN pce.community_id = 'open' THEN pce.matches END), MAX(pce.matches)) AS matches,"
-                "       NULL AS tier_name"
-                " FROM profile_community_elo pce"
-                " JOIN player_profiles pp ON pp.id = pce.profile_id"
-                " WHERE pce.sport = ? AND pce.matches > 0"
-                " GROUP BY pce.profile_id",
-                (sport,),
-            ).fetchall()
-            # The 'open' snapshot mirrors the player's *latest community chain*
-            # (seeded from their prior count), not a cross-community total, so
-            # overlay the live log-derived count / latest rating where available.
-            live = get_live_profile_elo_stats(scope=RatingScope(), conn=conn)
-            profile_rows = []
-            for r in snapshot_rows:
-                stats = live.get(r["profile_id"], {}).get(sport)
-                row = dict(r)
-                if stats is not None:
-                    row["matches"] = stats["matches"]
-                    if stats["elo"] is not None:
-                        row["elo"] = stats["elo"]
-                if row["matches"] > 0:
-                    profile_rows.append(row)
-        else:
-            # Live-derive matches + latest ELO from player_elo_log filtered by
-            # community, mirroring the club-scoped branch above, so a community's
-            # match counts stay consistent with (and never smaller than) the club
-            # rosters nested inside it.  The snapshot ``pce.elo`` is only a
-            # fallback for players with no logged matches (tier/manual seeds).
-            stats = scope_stats(conn, RatingScope(community_id=community_id, sport=sport))
-            base = conn.execute(
-                "SELECT pce.profile_id AS profile_id, pce.elo AS elo, pp.name AS name, pp.is_ghost AS is_ghost,"
-                "       ct.name AS tier_name"
-                "  FROM profile_community_elo pce"
-                "  JOIN player_profiles pp ON pp.id = pce.profile_id"
-                "  LEFT JOIN club_tiers ct ON ct.id = pce.tier_id"
-                " WHERE pce.community_id = ? AND pce.sport = ?",
-                (community_id, sport),
-            ).fetchall()
-            profile_rows = []
-            for r in base:
-                st = stats.get((r["profile_id"], sport))
-                if st is None or st.matches <= 0:
-                    continue
-                row = dict(r)
-                row["matches"] = st.matches
-                row["elo"] = st.elo if st.elo is not None else r["elo"]
-                profile_rows.append(row)
+        # 1) Players with Hub profiles.  Live-derive matches + latest ELO from player_elo_log filtered by
+        # community, mirroring the club-scoped branch above, so a community's
+        # match counts stay consistent with (and never smaller than) the club
+        # rosters nested inside it.  The snapshot ``pce.elo`` is only a
+        # fallback for players with no logged matches (tier/manual seeds).
+        stats = scope_stats(conn, RatingScope(community_id=community_id, sport=sport))
+        base = conn.execute(
+            "SELECT pce.profile_id AS profile_id, pce.elo AS elo, pp.name AS name, pp.is_ghost AS is_ghost,"
+            "       ct.name AS tier_name"
+            "  FROM profile_community_elo pce"
+            "  JOIN player_profiles pp ON pp.id = pce.profile_id"
+            "  LEFT JOIN club_tiers ct ON ct.id = pce.tier_id"
+            " WHERE pce.community_id = ? AND pce.sport = ?",
+            (community_id, sport),
+        ).fetchall()
+        profile_rows = []
+        for r in base:
+            st = stats.get((r["profile_id"], sport))
+            if st is None or st.matches <= 0:
+                continue
+            row = dict(r)
+            row["matches"] = st.matches
+            row["elo"] = st.elo if st.elo is not None else r["elo"]
+            profile_rows.append(row)
 
         # 2) Unlinked tournament participants: aggregate from player_elo + player_secrets
-        #    Exclude player_ids already linked to a profile to avoid duplicates.
-        if all_communities:
-            unlinked_rows = conn.execute(
-                # elo_after from the tournament with the most matches (latest cumulative state)
-                "SELECT ps.player_name AS name,"
-                "       MAX(pe.elo_after) FILTER (WHERE pe.matches_played = sub.max_matches) AS elo,"
-                "       sub.max_matches AS matches"
-                " FROM player_elo pe"
-                " JOIN player_secrets ps ON ps.tournament_id = pe.tournament_id"
-                "   AND ps.player_id = pe.player_id"
-                " JOIN (SELECT ps2.player_name, MAX(pe2.matches_played) AS max_matches"
-                "       FROM player_elo pe2"
-                "       JOIN player_secrets ps2 ON ps2.tournament_id = pe2.tournament_id"
-                "         AND ps2.player_id = pe2.player_id"
-                "       WHERE pe2.sport = ? AND pe2.matches_played > 0 AND ps2.profile_id IS NULL"
-                "       GROUP BY ps2.player_name) sub ON sub.player_name = ps.player_name"
-                " WHERE pe.sport = ? AND pe.matches_played > 0 AND ps.profile_id IS NULL"
-                " GROUP BY ps.player_name"
-                " HAVING sub.max_matches > 0",
-                (sport, sport),
-            ).fetchall()
-        else:
-            # Deterministic per-community: pick the elo_after from the
-            # tournament with the most matches for that name in this community.
-            unlinked_rows = conn.execute(
-                "SELECT ps.player_name AS name,"
-                "       MAX(pe.elo_after) FILTER (WHERE pe.matches_played = sub.max_matches) AS elo,"
-                "       sub.max_matches AS matches"
-                " FROM player_elo pe"
-                " JOIN player_secrets ps ON ps.tournament_id = pe.tournament_id"
-                "   AND ps.player_id = pe.player_id"
-                " JOIN tournaments t ON t.id = pe.tournament_id"
-                " JOIN (SELECT ps2.player_name, MAX(pe2.matches_played) AS max_matches"
-                "       FROM player_elo pe2"
-                "       JOIN player_secrets ps2 ON ps2.tournament_id = pe2.tournament_id"
-                "         AND ps2.player_id = pe2.player_id"
-                "       JOIN tournaments t2 ON t2.id = pe2.tournament_id"
-                "       WHERE pe2.sport = ? AND pe2.matches_played > 0"
-                "         AND ps2.profile_id IS NULL AND t2.community_id = ?"
-                "       GROUP BY ps2.player_name) sub ON sub.player_name = ps.player_name"
-                " WHERE pe.sport = ? AND pe.matches_played > 0"
-                "   AND ps.profile_id IS NULL AND t.community_id = ?"
-                " GROUP BY ps.player_name"
-                " HAVING sub.max_matches > 0",
-                (sport, community_id, sport, community_id),
-            ).fetchall()
+        #    Exclude player_ids already linked to a profile to avoid duplicates.  Pick the elo_after from the
+        # tournament with the most matches for that name in this community.
+        unlinked_rows = conn.execute(
+            "SELECT ps.player_name AS name,"
+            "       MAX(pe.elo_after) FILTER (WHERE pe.matches_played = sub.max_matches) AS elo,"
+            "       sub.max_matches AS matches"
+            " FROM player_elo pe"
+            " JOIN player_secrets ps ON ps.tournament_id = pe.tournament_id"
+            "   AND ps.player_id = pe.player_id"
+            " JOIN tournaments t ON t.id = pe.tournament_id"
+            " JOIN (SELECT ps2.player_name, MAX(pe2.matches_played) AS max_matches"
+            "       FROM player_elo pe2"
+            "       JOIN player_secrets ps2 ON ps2.tournament_id = pe2.tournament_id"
+            "         AND ps2.player_id = pe2.player_id"
+            "       JOIN tournaments t2 ON t2.id = pe2.tournament_id"
+            "       WHERE pe2.sport = ? AND pe2.matches_played > 0"
+            "         AND ps2.profile_id IS NULL AND t2.community_id = ?"
+            "       GROUP BY ps2.player_name) sub ON sub.player_name = ps.player_name"
+            " WHERE pe.sport = ? AND pe.matches_played > 0"
+            "   AND ps.profile_id IS NULL AND t.community_id = ?"
+            " GROUP BY ps.player_name"
+            " HAVING sub.max_matches > 0",
+            (sport, community_id, sport, community_id),
+        ).fetchall()
 
     # Merge both lists
     combined: list[dict] = []
@@ -2961,7 +2914,15 @@ def get_player_space(
         ),
         player_communities=_get_player_communities(identity.profile_id),
         player_clubs=_get_player_clubs(identity.profile_id),
+        elo_change=_scope_elo_change(identity.profile_id, scope),
     )
+
+
+def _scope_elo_change(profile_id: str, scope: RatingScope) -> dict[str, float]:
+    """Per sport, the total rating change of the profile's rated matches in *scope*."""
+    with get_db() as conn:
+        stats = scope_stats(conn, scope, profile_ids=[profile_id])
+    return {sport: round(st.change, 1) for (pid, sport), st in stats.items() if pid == profile_id}
 
 
 @router.get("/tournament-path/{entity_id}/{player_id}", response_model=TournamentPathResponse)

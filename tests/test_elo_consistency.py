@@ -113,27 +113,26 @@ class TestGlobalAndCommunityCounts:
         # Latest rating is the end of the most recent tournament (t3, community c1).
         assert stats["elo"] == get_tournament_elos("t3", "padel")["t3-p"]
 
-    def test_global_leaderboard_counts_all_communities(self, client):
-        profile = self._setup(client)
-        row = _lb_row("padel", "", "Nadal")
-        assert row is not None
-        assert row.matches == 10
-        assert row.elo == get_tournament_elos("t3", "padel")["t3-p"]
-        assert get_live_profile_elo_stats([profile])[profile]["padel"]["matches"] == row.matches
+    def test_no_all_communities_board(self, client):
+        # Each community keeps its own chain: a board without a scope is the open community's,
+        # never a mix of c1 and c2 (Nadal played only there).
+        self._setup(client)
+        assert _lb_row("padel", "", "Nadal") is None
+        assert _lb_row("padel", "open", "Nadal") is None
 
     def test_community_leaderboards_count_only_their_matches(self, client):
         self._setup(client)
         assert _lb_row("padel", "c1", "Nadal").matches == 7
         assert _lb_row("padel", "c2", "Nadal").matches == 3
 
-    def test_admin_list_and_detail_match_global_leaderboard(self, client, auth_headers):
+    def test_admin_list_and_detail_count_every_community(self, client, auth_headers):
         self._setup(client)
         listed = client.get("/api/admin/player-profiles?q=Nadal", headers=auth_headers).json()
         assert len(listed) == 1
         assert listed[0]["elo_padel_matches"] == 10
         detail = client.get(f"/api/admin/player-profiles/{listed[0]['id']}", headers=auth_headers).json()
         assert detail["elo_padel_matches"] == 10
-        assert round(detail["elo_padel"], 6) == round(_lb_row("padel", "", "Nadal").elo, 6)
+        assert round(detail["elo_padel"], 6) == round(get_tournament_elos("t3", "padel")["t3-p"], 6)
 
     def test_hub_headers_match_leaderboards(self, client):
         profile = self._setup(client)
@@ -429,7 +428,7 @@ class TestLeaderboardHistoryScopeParity:
         assert len(comm) == _lb_row("padel", "c1", "Pat").matches == 5
         assert {m["tournament_id"] for m in comm} <= {"t1", "t2"}
         glob = padel_rows("")
-        assert len(glob) == _lb_row("padel", "", "Pat").matches == 9
+        assert len(glob) == get_live_profile_elo_stats([w["pat"]])[w["pat"]]["padel"]["matches"] == 9
 
     def test_global_history_excludes_club_manual_rows(self, client, auth_headers):
         w = self._world(client)

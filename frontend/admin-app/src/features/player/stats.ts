@@ -31,6 +31,11 @@ export const historyOf = (space: Space, sport: Sport): EloMatch[] =>
     .slice()
     .reverse();
 
+/** Rated matches only, oldest first: a manual club rating is a starting value, not a change, so the
+    trend lines and their change figures leave it out. */
+export const matchHistoryOf = (space: Space, sport: Sport): EloMatch[] =>
+  historyOf(space, sport).filter((m) => !m.is_manual);
+
 export type FormResult = 'W' | 'L' | 'D';
 
 /** The result of a rated match for the player: from the score (sets won when it has sets), so a draw is
@@ -59,12 +64,11 @@ export const formOf = (space: Space, sport: Sport, n = 5): FormResult[] =>
     .slice(0, n)
     .map(resultOf);
 
-/** Rating change over the last `n` rated matches. */
-export const recentDelta = (space: Space, sport: Sport, n = 5): number =>
-  space.elo_history
-    .filter((m) => m.sport === sport)
-    .slice(0, n)
-    .reduce((sum, m) => sum + m.elo_delta, 0);
+/** Total rating change of every rated match in the scope (manual adjustments left out). The server
+    sums the whole scope; an older server falls back to the matches the Hub holds. */
+export const scopeDelta = (space: Space, sport: Sport): number =>
+  space.elo_change?.[sport] ??
+  matchHistoryOf(space, sport).reduce((sum, m) => sum + m.elo_delta, 0);
 
 export function careerOf(space: Space) {
   const finished = space.entries.filter((e) => e.status === 'finished');

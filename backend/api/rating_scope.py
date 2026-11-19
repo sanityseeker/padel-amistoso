@@ -77,10 +77,12 @@ class RatingScope(BaseModel):
 
 
 class ScopeStats(BaseModel):
-    """Match count and latest rating of one profile in one sport within a scope."""
+    """Match count, latest rating and total match change of one profile in one sport within a scope."""
 
     matches: int = 0
     elo: float | None = None
+    change: float = 0.0
+    """Sum of the rating changes of the rated matches; manual adjustments are left out."""
 
 
 def resolve_scope(
@@ -270,7 +272,8 @@ def scope_stats(
     rows = conn.execute(
         f"""{cte},
         agg AS (
-            SELECT profile_id, sport, SUM(CASE WHEN is_manual = 0 THEN 1 ELSE 0 END) AS matches
+            SELECT profile_id, sport, SUM(CASE WHEN is_manual = 0 THEN 1 ELSE 0 END) AS matches,
+                   SUM(CASE WHEN is_manual = 0 THEN COALESCE(elo_delta, 0) ELSE 0 END) AS change
               FROM scoped_log GROUP BY profile_id, sport
         ),
         latest AS (
@@ -279,13 +282,19 @@ def scope_stats(
                                       ORDER BY updated_at DESC, match_order DESC) AS rn
               FROM scoped_log
         )
-        SELECT a.profile_id AS profile_id, a.sport AS sport, a.matches AS matches, lt.elo_after AS elo
+        SELECT a.profile_id AS profile_id, a.sport AS sport, a.matches AS matches, a.change AS change,
+               lt.elo_after AS elo
           FROM agg a
      LEFT JOIN latest lt ON lt.profile_id = a.profile_id AND lt.sport = a.sport AND lt.rn = 1
         """,
         params,
     ).fetchall()
-    return {(r["profile_id"], r["sport"]): ScopeStats(matches=int(r["matches"] or 0), elo=r["elo"]) for r in rows}
+    return {
+        (r["profile_id"], r["sport"]): ScopeStats(
+            matches=int(r["matches"] or 0), elo=r["elo"], change=float(r["change"] or 0.0)
+        )
+        for r in rows
+    }
 
 
 def scoped_recent_logs(

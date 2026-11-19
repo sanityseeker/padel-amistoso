@@ -3749,6 +3749,28 @@ class TestResolvePassphrase:
 class TestLeaderboard:
     """GET /api/player-profile/leaderboard — members-only ELO leaderboard."""
 
+    @staticmethod
+    def _rate_in_open(profile_id: str, name: str, sport: str, elo: float, matches: int) -> None:
+        """Give a profile *matches* logged matches in the open community, ending at *elo*."""
+        tid = f"t-lb-{uuid.uuid4().hex[:8]}"
+        _insert_tournament(tid, name=f"{name} cup")
+        _insert_player_secret(tid, "p1", name, f"pp-{tid}", uuid.uuid4().hex, profile_id=profile_id)
+        now = datetime.now(timezone.utc).isoformat()
+        with db_mod.get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO profile_community_elo (profile_id, community_id, sport, elo, matches)"
+                " VALUES (?, 'open', ?, ?, ?)",
+                (profile_id, sport, elo, matches),
+            )
+            for idx in range(matches):
+                after = elo - (matches - 1 - idx)
+                conn.execute(
+                    "INSERT INTO player_elo_log (tournament_id, sport, match_id, player_id, match_order,"
+                    " elo_before, elo_after, elo_delta, match_payload, updated_at)"
+                    " VALUES (?, ?, ?, 'p1', ?, ?, ?, 1, '{}', ?)",
+                    (tid, sport, f"m{idx}", idx + 1, after - 1, after, now),
+                )
+
     def test_leaderboard_empty_when_no_rated_profiles(self, client: TestClient) -> None:
         res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
@@ -3759,23 +3781,8 @@ class TestLeaderboard:
     def test_leaderboard_returns_rated_padel_players_sorted(self, client: TestClient) -> None:
         p1 = _create_profile(client, name="Alice Padel", email="alice-lb@example.com")
         p2 = _create_profile(client, name="Bob Padel", email="bob-lb@example.com")
-        with db_mod.get_db() as conn:
-            conn.execute(
-                "UPDATE player_profiles SET elo_padel = 1200, elo_padel_matches = 5 WHERE id = ?",
-                (p1["profile"]["id"],),
-            )
-            conn.execute(
-                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1200, 5)",
-                (p1["profile"]["id"],),
-            )
-            conn.execute(
-                "UPDATE player_profiles SET elo_padel = 1300, elo_padel_matches = 3 WHERE id = ?",
-                (p2["profile"]["id"],),
-            )
-            conn.execute(
-                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1300, 3)",
-                (p2["profile"]["id"],),
-            )
+        self._rate_in_open(p1["profile"]["id"], "Alice Padel", "padel", 1200, 5)
+        self._rate_in_open(p2["profile"]["id"], "Bob Padel", "padel", 1300, 3)
 
         res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
@@ -3798,15 +3805,7 @@ class TestLeaderboard:
 
     def test_leaderboard_returns_tennis_players(self, client: TestClient) -> None:
         p1 = _create_profile(client, name="Tennis Player", email="tennis-lb@example.com")
-        with db_mod.get_db() as conn:
-            conn.execute(
-                "UPDATE player_profiles SET elo_tennis = 1100, elo_tennis_matches = 2 WHERE id = ?",
-                (p1["profile"]["id"],),
-            )
-            conn.execute(
-                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'tennis', 1100, 2)",
-                (p1["profile"]["id"],),
-            )
+        self._rate_in_open(p1["profile"]["id"], "Tennis Player", "tennis", 1100, 2)
 
         res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200
@@ -3895,15 +3894,7 @@ class TestLeaderboard:
 
     def test_leaderboard_profile_players_have_has_profile_true(self, client: TestClient) -> None:
         p1 = _create_profile(client, name="Profiled Player", email="profiled-lb@example.com")
-        with db_mod.get_db() as conn:
-            conn.execute(
-                "UPDATE player_profiles SET elo_padel = 1150, elo_padel_matches = 4 WHERE id = ?",
-                (p1["profile"]["id"],),
-            )
-            conn.execute(
-                "INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches) VALUES (?, 'open', 'padel', 1150, 4)",
-                (p1["profile"]["id"],),
-            )
+        self._rate_in_open(p1["profile"]["id"], "Profiled Player", "padel", 1150, 4)
 
         res = client.get("/api/player-profile/leaderboard", headers=_lb_headers())
         assert res.status_code == 200

@@ -244,6 +244,9 @@
   "Community leaderboard": "Clasificación de la comunidad",
   "No rated players in this scope yet.": "Todavía no hay jugadores con ELO en este ámbito.",
   "Return to player login": "Volver al acceso de jugadores",
+  "Open community": "Comunidad abierta",
+  "Pick a community": "Elige una comunidad",
+  "Each community keeps its own rating, trend and leaderboard.": "Cada comunidad tiene su propio rating, evolución y clasificación.",
   "All my communities": "Todas mis comunidades",
   "Log out of Player Hub": "Salir del área del jugador",
   "Player stats scope": "Ámbito de las estadísticas",
@@ -2094,6 +2097,6 @@
   "No rated matches yet.": "Aún no hay partidos puntuados.",
   "Rating changes appear here once matches are played in the clubs of this community.": "Los cambios de puntuación aparecen aquí cuando se juegan partidos en los clubes de esta comunidad.",
   "Only rating changes from played matches count. Ratings set by hand or by tier are not included.": "Solo cuentan los cambios de puntuación de partidos jugados. Las puntuaciones fijadas a mano o por nivel no se incluyen.",
-  "Last 5 rated matches": "Últimos 5 partidos puntuados",
+  "All rated matches": "Todos los partidos puntuados",
   "A season sets its own dates.": "Una temporada fija sus propias fechas."
 }

@@ -145,11 +145,13 @@ test('picking a community keeps the page where it was', async ({ page, request }
   const before = await page.evaluate(() => scrollY);
   expect(before).toBeGreaterThan(0);
   const top = (await picker.boundingBox())!.y;
-  const scoped = page.waitForResponse((r) => r.url().includes('community_id=south') && r.ok());
+  // With All my communities the Hub has already loaded South League for its rating card, so the
+  // pick may come from that cache without a new request.
   await picker.tap();
   await page.getByRole('option', { name: 'South League' }).tap();
-  await scoped;
   await expect(picker).toHaveValue('South League');
+  await expect(page.getByTestId('player-card')).toHaveCount(1);
+  await page.waitForLoadState('networkidle');
   // The bug sent the page back to the top; the picker stays where it was.
   expect(Math.abs((await page.evaluate(() => scrollY)) - before)).toBeLessThan(6);
   expect(Math.abs((await picker.boundingBox())!.y - top)).toBeLessThan(6);

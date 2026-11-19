@@ -379,13 +379,16 @@ test('the community picker heads every Hub page and the sport choice carries acr
     json.profile.elo_padel_matches = 3;
     json.profile.elo_tennis_matches = 2;
     json.player_communities = [{ id: 'north', name: 'North League' }];
+    json.elo_change = { padel: 0, tennis: 0 };
     await route.fulfill({ response, json });
   });
   await openHub(page, profile.access_token);
   const filters = page.getByTestId('hub-filters');
   await expect(filters.locator('input[aria-label="Player stats scope"]')).toBeVisible();
   await filters.getByText('Tennis', { exact: true }).click();
-  await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+  // All my communities: one card per community (North League and the open one), tennis only.
+  await expect(page.getByTestId('player-card')).toHaveCount(2);
+  await expect(page.getByTestId('player-card').first()).toContainText('Tennis rating');
 
   await page.goto('/player/ratings');
   await expect(filters.getByRole('radio', { name: 'Tennis' })).toBeChecked();
@@ -394,7 +397,7 @@ test('the community picker heads every Hub page and the sport choice carries acr
   // Profile does not split by sport, so only the community picker shows there.
   await expect(filters.getByRole('radio')).toHaveCount(0);
   await page.goto('/player');
-  await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+  await expect(page.getByTestId('player-card').first()).toContainText('Tennis rating');
 });
 
 // ---- Sport filter (Padel / Tennis / All) -----------------------------------------------------
