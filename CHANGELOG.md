@@ -1,3 +1,9 @@
+## v3.13.2 (2026-11-19)
+
+### Fix
+
+- one rating chain per community, also across concurrent events
+
 ## v3.13.1 (2026-11-19)
 
 ### Fix
