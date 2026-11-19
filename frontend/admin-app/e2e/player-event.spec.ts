@@ -793,17 +793,23 @@ test('a picked community scope narrows the active tournaments but keeps deep lin
 }) => {
   const { id } = await createTournament(request, 'mex', `Scope ${Date.now()}`);
   const { session } = await profileFor(request, id, 'Ana', 'scope');
-  await page.addInitScript(() =>
-    localStorage.setItem('padel-player-community', 'community:no-such-community'),
-  );
+  // A second community to choose from (the tournament is in the open one).
+  await page.route('**/api/player-profile/space?**', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.player_communities = [
+      { id: 'north', name: 'North League' },
+      { id: 'open', name: 'Open' },
+    ];
+    await route.fulfill({ response, json });
+  });
+  await page.addInitScript(() => localStorage.setItem('padel-player-community', 'community:north'));
   await openHub(page, session.access_token);
-  // The tournament is outside the picked community: the Hub hides it and offers to show it.
+  // The tournament is outside the picked community: the Hub hides it and offers its community.
   await expect(page.getByTestId('active-tournament')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show all communities' }).click();
+  await page.getByRole('button', { name: 'Open community' }).click();
   await expect(page.getByTestId('active-tournament')).toHaveCount(1);
-  await page.evaluate(() =>
-    localStorage.setItem('padel-player-community', 'community:no-such-community'),
-  );
+  await page.evaluate(() => localStorage.setItem('padel-player-community', 'community:north'));
   await page.goto('/player/matches');
   await expect(page.getByTestId('event-card')).toHaveCount(0);
   // Its own page still opens by link, and its push notifications stay on the profile page.
@@ -883,4 +889,22 @@ test('a pinned announcement and the custom information show on the event page an
   await expect(page.getByTestId('event-up-next')).toBeVisible();
   await expect(page.getByTestId('event-announcements')).toHaveCount(0);
   await expect(page.getByTestId('event-custom-info')).toHaveCount(0);
+});
+
+test('a saved scope the player no longer has falls back to their first community', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'mex', `Stale scope ${Date.now()}`);
+  const { session } = await profileFor(request, id, 'Ana', 'stale');
+  await page.addInitScript(() =>
+    localStorage.setItem('padel-player-community', 'community:no-such-community'),
+  );
+  await openHub(page, session.access_token);
+  // Ratings never mix communities, so the Hub never shows "all of them": it opens on the open one,
+  // where this tournament is.
+  await expect(page.getByTestId('active-tournament')).toHaveCount(1);
+  expect(await page.evaluate(() => localStorage.getItem('padel-player-community'))).toBe(
+    'community:open',
+  );
 });

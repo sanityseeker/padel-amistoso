@@ -274,7 +274,8 @@ test('a Ratings leaderboard row and a result name open the player card', async (
     .click();
   const card = page.getByRole('dialog');
   await expect(card.getByTestId('profile-player-card')).toBeVisible();
-  await expect(card.getByTestId('card-scope-label')).toHaveText('All events');
+  // The Hub always has a community picked (here the open one), and the card follows it.
+  await expect(card.getByTestId('card-scope-label')).toHaveText('Open');
   await expect(card.getByTestId('tv-card-match')).toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
@@ -378,7 +379,10 @@ test('the community picker heads every Hub page and the sport choice carries acr
     const json = await response.json();
     json.profile.elo_padel_matches = 3;
     json.profile.elo_tennis_matches = 2;
-    json.player_communities = [{ id: 'north', name: 'North League' }];
+    json.player_communities = [
+      { id: 'north', name: 'North League' },
+      { id: 'open', name: 'Open' },
+    ];
     json.elo_change = { padel: 0, tennis: 0 };
     await route.fulfill({ response, json });
   });
@@ -386,8 +390,11 @@ test('the community picker heads every Hub page and the sport choice carries acr
   const filters = page.getByTestId('hub-filters');
   await expect(filters.locator('input[aria-label="Player stats scope"]')).toBeVisible();
   await filters.getByText('Tennis', { exact: true }).click();
-  // All my communities: one card per community (North League and the open one), tennis only.
-  await expect(page.getByTestId('player-card')).toHaveCount(2);
+  // There is no all-communities view: the Hub opens on the first community, one card, tennis only.
+  await expect(filters.locator('input[aria-label="Player stats scope"]')).toHaveValue(
+    'North League',
+  );
+  await expect(page.getByTestId('player-card')).toHaveCount(1);
   await expect(page.getByTestId('player-card').first()).toContainText('Tennis rating');
 
   await page.goto('/player/ratings');

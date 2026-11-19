@@ -36,6 +36,19 @@ export const historyOf = (space: Space, sport: Sport): EloMatch[] =>
 export const matchHistoryOf = (space: Space, sport: Sport): EloMatch[] =>
   historyOf(space, sport).filter((m) => !m.is_manual);
 
+/** The trend line through rated matches (oldest first): the first match's starting rating, then the
+    running total of each match's change. A community holds several tournaments whose stored ratings
+    can run side by side (each running event starts from the last finished one), so the stored values
+    jump between those chains; the summed changes rise on every win and fall on every loss.
+    One value per match plus the starting point, unrounded. */
+export const trendLineOf = (matches: EloMatch[]): number[] => {
+  if (!matches.length) return [];
+  const line = [matches[0].elo_before];
+  for (const m of matches)
+    line.push(line[line.length - 1] + (m.elo_delta ?? m.elo_after - m.elo_before));
+  return line;
+};
+
 export type FormResult = 'W' | 'L' | 'D';
 
 /** The result of a rated match for the player: from the score (sets won when it has sets), so a draw is

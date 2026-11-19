@@ -160,27 +160,18 @@ def initialize_tournament_elos(
                 profile_ids = [r["profile_id"] for r in linked]
                 pid_to_player = {r["profile_id"]: r["player_id"] for r in linked}
                 placeholders = ",".join("?" for _ in profile_ids)
-                # Query community-specific ELO; for specialized communities also fetch
-                # the global (open) ELO as a fallback so new community members start
-                # from their existing global rating rather than the default 1000.
-                if community_id != DEFAULT_COMMUNITY_ID:
-                    community_ids_to_query = [community_id, DEFAULT_COMMUNITY_ID]
-                else:
-                    community_ids_to_query = [community_id]
-                community_placeholders = ",".join("?" for _ in community_ids_to_query)
+                # The community's own rating: communities never seed each other, so a
+                # player new to this community starts at the default rating.
                 profiles = conn.execute(
-                    f"SELECT profile_id, community_id, elo, matches FROM profile_community_elo"
-                    f" WHERE profile_id IN ({placeholders})"
-                    f"   AND community_id IN ({community_placeholders}) AND sport = ?",
-                    [*profile_ids, *community_ids_to_query, sport],
+                    f"SELECT profile_id, elo, matches FROM profile_community_elo"
+                    f" WHERE profile_id IN ({placeholders}) AND community_id = ? AND sport = ?",
+                    [*profile_ids, community_id, sport],
                 ).fetchall()
-                # community-specific wins over global fallback
                 for p in profiles:
                     player_id = pid_to_player.get(p["profile_id"])
                     if player_id:
-                        if player_id not in profile_elos or p["community_id"] == community_id:
-                            profile_elos[player_id] = p["elo"]
-                            profile_counts[player_id] = p["matches"]
+                        profile_elos[player_id] = p["elo"]
+                        profile_counts[player_id] = p["matches"]
 
         # Merge: explicit overrides win over profile lookups
         starting_elos = {**profile_elos, **(elo_overrides or {})}
@@ -276,20 +267,8 @@ def _match_decider_value(match: object) -> str | None:
     return getattr(decider, "value", decider) or "full_set"
 
 
-def upsert_tournament_elo_log(
-    tournament_id: str,
-    match: object,
-    updates: list[EloUpdate],
-    sport: str = Sport.PADEL,
-    match_order: int = 0,
-    updated_at: str | None = None,
-) -> None:
-    """Write per-match ELO logs for every participant in a completed match.
-
-    *updated_at* pins the row timestamp (e.g. the value preserved from before a
-    recalculation); when omitted it is derived from the match's real scored time.
-    """
-
+def build_match_log_payload(match: object, updates: list[EloUpdate]) -> dict:
+    """The ``match_payload`` of a match's log rows: score, sets and each side's ratings."""
     updates_by_player = {u.player_id: u for u in updates}
 
     def _serialize_team(team: list[object]) -> list[dict[str, float | str]]:
@@ -309,18 +288,32 @@ def upsert_tournament_elo_log(
             )
         return serialized
 
-    team1 = _serialize_team(getattr(match, "team1", []) or [])
-    team2 = _serialize_team(getattr(match, "team2", []) or [])
-    payload = {
+    return {
         "match_id": getattr(match, "id", ""),
         "score": list(getattr(match, "score", []) or []),
         "sets": [list(s) for s in (getattr(match, "sets", None) or [])],
         "decider": _match_decider_value(match),
-        "team1": team1,
-        "team2": team2,
+        "team1": _serialize_team(getattr(match, "team1", []) or []),
+        "team2": _serialize_team(getattr(match, "team2", []) or []),
         "round_number": int(getattr(match, "round_number", 0) or 0),
         "round_label": str(getattr(match, "round_label", "") or ""),
     }
+
+
+def upsert_tournament_elo_log(
+    tournament_id: str,
+    match: object,
+    updates: list[EloUpdate],
+    sport: str = Sport.PADEL,
+    match_order: int = 0,
+    updated_at: str | None = None,
+) -> None:
+    """Write per-match ELO logs for every participant in a completed match.
+
+    *updated_at* pins the row timestamp (e.g. the value preserved from before a
+    recalculation); when omitted it is derived from the match's real scored time.
+    """
+    payload = build_match_log_payload(match, updates)
     payload_json = json.dumps(payload)
 
     # Prefer a caller-pinned timestamp (preserved across recalculation); else the
@@ -574,361 +567,24 @@ def get_profile_starting_elos(
     community_id: str = DEFAULT_COMMUNITY_ID,
     sport: str = Sport.PADEL,
 ) -> dict[str, float]:
-    """Return ``{player_id: elo}`` for players linked to a profile.
+    """Return ``{player_id: elo}`` for players linked to a profile rated in *community_id*.
 
-    Resolves each player's current profile ELO scoped to *community_id*, falling
-    back to the global (open) community rating for specialized communities — the
-    same precedence :func:`initialize_tournament_elos` uses — so a player's
-    cross-tournament rating can pre-seed group/bracket ordering before any match
-    is played.  Players without a linked profile (or with no rating rows) are
-    omitted from the result.
+    Seeds group/bracket ordering before any match is played.  Communities never
+    seed each other, so players without a linked profile or without a rating in
+    this community are omitted.
     """
-    if not pid_to_profile:
-        return {}
-    profile_ids = list({pid for pid in pid_to_profile.values() if pid})
+    profile_ids = sorted({prof for prof in pid_to_profile.values() if prof})
     if not profile_ids:
         return {}
-    if community_id != DEFAULT_COMMUNITY_ID:
-        community_ids = [community_id, DEFAULT_COMMUNITY_ID]
-    else:
-        community_ids = [community_id]
     placeholders = ",".join("?" for _ in profile_ids)
-    community_placeholders = ",".join("?" for _ in community_ids)
     with get_db() as conn:
         rows = conn.execute(
-            f"SELECT profile_id, community_id, elo FROM profile_community_elo"
-            f" WHERE profile_id IN ({placeholders})"
-            f"   AND community_id IN ({community_placeholders}) AND sport = ?",
-            [*profile_ids, *community_ids, sport],
+            f"SELECT profile_id, elo FROM profile_community_elo"
+            f" WHERE profile_id IN ({placeholders}) AND community_id = ? AND sport = ?",
+            [*profile_ids, community_id, sport],
         ).fetchall()
-    # Community-specific rating wins over the global fallback.
-    by_profile: dict[str, float] = {}
-    have_specific: set[str] = set()
-    for r in rows:
-        prof = r["profile_id"]
-        if r["community_id"] == community_id:
-            by_profile[prof] = r["elo"]
-            have_specific.add(prof)
-        elif prof not in have_specific:
-            by_profile.setdefault(prof, r["elo"])
+    by_profile = {r["profile_id"]: r["elo"] for r in rows}
     return {pid: by_profile[prof] for pid, prof in pid_to_profile.items() if prof in by_profile}
-
-
-def transfer_elo_to_profile(
-    profile_id: str,
-    tournament_id: str,
-    player_id: str,
-    sport: str = Sport.PADEL,
-) -> None:
-    """Copy a player's final tournament ELO to their community-scoped profile ELO.
-
-    Also updates the ``player_history`` row with ``elo_before`` / ``elo_after``
-    and keeps the flat ``player_profiles`` columns in sync for backward
-    compatibility.
-    """
-    with get_db() as conn:
-        community_id = _get_tournament_community_id(tournament_id, conn)
-        elo_row = conn.execute(
-            "SELECT elo_before, elo_after, matches_played FROM player_elo"
-            " WHERE tournament_id = ? AND player_id = ? AND sport = ?",
-            (tournament_id, player_id, sport),
-        ).fetchone()
-        if elo_row is None:
-            return
-
-        # Upsert into profile_community_elo (community-scoped)
-        conn.execute(
-            """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-               VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                 elo = excluded.elo, matches = excluded.matches""",
-            (profile_id, community_id, sport, elo_row["elo_after"], elo_row["matches_played"]),
-        )
-        # Also mirror into the global (open) community so all tournaments feed the default ranking.
-        if community_id != DEFAULT_COMMUNITY_ID:
-            conn.execute(
-                """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                     elo = excluded.elo, matches = excluded.matches""",
-                (profile_id, DEFAULT_COMMUNITY_ID, sport, elo_row["elo_after"], elo_row["matches_played"]),
-            )
-
-        # Keep flat player_profiles columns in sync (backward compatibility)
-        elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
-        matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
-        conn.execute(
-            f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
-            (elo_row["elo_after"], elo_row["matches_played"], profile_id),
-        )
-
-        # Update player_history with ELO snapshot
-        conn.execute(
-            "UPDATE player_history SET elo_before = ?, elo_after = ?"
-            " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-            (elo_row["elo_before"], elo_row["elo_after"], profile_id, tournament_id),
-        )
-
-
-def bulk_transfer_elos_to_profiles(
-    tournament_id: str,
-    sport: str = Sport.PADEL,
-) -> None:
-    """Transfer ELO for all linked players in a finished tournament.
-
-    Looks up which players have profiles via ``player_secrets`` or
-    ``player_history`` and calls :func:`transfer_elo_to_profile` for each.
-    """
-    linked = _get_linked_profiles(tournament_id)
-
-    for row in linked:
-        transfer_elo_to_profile(row["profile_id"], tournament_id, row["player_id"], sport)
-
-
-def sync_live_elos_to_profiles(
-    tournament_id: str,
-    sport: str = Sport.PADEL,
-) -> None:
-    """Sync current tournament ELO to linked player profiles (live, mid-tournament).
-
-    Unlike :func:`bulk_transfer_elos_to_profiles`, this does NOT touch
-    ``player_history`` rows — those are written only on tournament finish.
-    Writes to ``profile_community_elo`` (community-scoped) and keeps the
-    flat ``player_profiles`` columns in sync for backward compatibility.
-    """
-    elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
-    matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
-
-    with get_db() as conn:
-        community_id = _get_tournament_community_id(tournament_id, conn)
-        linked = _get_linked_profiles(tournament_id, conn)
-        profile_by_pid = {r["player_id"]: r["profile_id"] for r in linked}
-        if not profile_by_pid:
-            return
-        rows = conn.execute(
-            "SELECT player_id, elo_after, matches_played FROM player_elo WHERE tournament_id = ? AND sport = ?",
-            (tournament_id, sport),
-        ).fetchall()
-        for r in rows:
-            profile_id = profile_by_pid.get(r["player_id"])
-            if profile_id is None:
-                continue
-
-            # Check whether a later tournament (in the same community) already
-            # produced a more recent ELO for this player/profile pair.  Uses
-            # LEFT JOIN + COALESCE so tournaments without a `tournaments` row
-            # (in-memory-only or test data) default to DEFAULT_COMMUNITY_ID.
-            this_updated = conn.execute(
-                "SELECT updated_at FROM player_elo WHERE tournament_id = ? AND player_id = ? AND sport = ?",
-                (tournament_id, r["player_id"], sport),
-            ).fetchone()
-            later_in_community = (
-                conn.execute(
-                    "SELECT 1 FROM player_elo pe"
-                    " LEFT JOIN tournaments t ON t.id = pe.tournament_id"
-                    " WHERE pe.sport = ? AND pe.tournament_id != ?"
-                    " AND pe.updated_at > ?"
-                    " AND COALESCE(t.community_id, ?) = ? AND ("
-                    "   EXISTS (SELECT 1 FROM player_secrets ps"
-                    "     WHERE ps.tournament_id = pe.tournament_id AND ps.player_id = pe.player_id"
-                    "       AND ps.profile_id = ?)"
-                    "   OR EXISTS (SELECT 1 FROM player_history ph"
-                    "     WHERE ph.entity_type = 'tournament' AND ph.entity_id = pe.tournament_id"
-                    "       AND ph.player_id = pe.player_id AND ph.profile_id = ?)"
-                    " ) LIMIT 1",
-                    (
-                        sport,
-                        tournament_id,
-                        this_updated["updated_at"],
-                        DEFAULT_COMMUNITY_ID,
-                        community_id,
-                        profile_id,
-                        profile_id,
-                    ),
-                ).fetchone()
-                if this_updated
-                else None
-            )
-
-            if later_in_community is None:
-                # Most recent for this community — write community ELO, global mirror,
-                # and flat profile columns.
-                conn.execute(
-                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                         elo = excluded.elo, matches = excluded.matches""",
-                    (profile_id, community_id, sport, r["elo_after"], r["matches_played"]),
-                )
-                if community_id != DEFAULT_COMMUNITY_ID:
-                    conn.execute(
-                        """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                           VALUES (?, ?, ?, ?, ?)
-                           ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                             elo = excluded.elo, matches = excluded.matches""",
-                        (profile_id, DEFAULT_COMMUNITY_ID, sport, r["elo_after"], r["matches_played"]),
-                    )
-                conn.execute(
-                    f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
-                    (r["elo_after"], r["matches_played"], profile_id),
-                )
-
-
-def get_tournament_elo_snapshots(
-    tournament_id: str,
-    sport: str = Sport.PADEL,
-) -> dict[str, tuple[float, int]]:
-    """Return ``{player_id: (elo_before, matches_played_at_start)}`` for a tournament.
-
-    The values represent the player's state *before* the first match in the
-    tournament was played, which is exactly what a retroactive recalculation
-    needs to restore as the starting point.
-
-    ``matches_played_at_start`` is inferred as
-    ``current matches_played − number_of_elo_log_entries`` for the player in
-    this tournament, since each completed match adds exactly one log row.
-    """
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT pe.player_id, pe.elo_before, pe.matches_played,"
-            "       (SELECT COUNT(*) FROM player_elo_log el"
-            "         WHERE el.tournament_id = pe.tournament_id"
-            "           AND el.sport = pe.sport"
-            "           AND el.player_id = pe.player_id) AS log_count"
-            " FROM player_elo pe"
-            " WHERE pe.tournament_id = ? AND pe.sport = ?",
-            (tournament_id, sport),
-        ).fetchall()
-    return {r["player_id"]: (r["elo_before"], r["matches_played"] - r["log_count"]) for r in rows}
-
-
-def get_pretournament_seed(
-    tournament_id: str,
-    sport: str = Sport.PADEL,
-) -> dict[str, tuple[float, int]]:
-    """Return ``{player_id: (elo, matches)}`` seeds derived from *earlier* tournaments.
-
-    For each player linked to a profile, the seed is the ``elo_after`` /
-    ``matches_played`` of that profile's most recent tournament which finished
-    *before* this one — preferring the same community and falling back to any
-    community (the global chain), mirroring how :func:`initialize_tournament_elos`
-    resolves a community-specific rating with a global fallback.
-
-    This is what makes a per-tournament ELO recalculation *composable*: replaying
-    every tournament in chronological (``finished_at``) order reproduces the same
-    cumulative ratings a single global re-run would, because each tournament is
-    re-seeded from the corrected results of the tournaments before it rather than
-    from a frozen (and possibly wrong, e.g. baked-in 1000) snapshot.
-
-    Players with no linked profile, or with no earlier tournament, are omitted so
-    the caller can fall back to the tournament's own stored starting values.
-    """
-    with get_db() as conn:
-        community_id = _get_tournament_community_id(tournament_id, conn)
-        linked = _get_linked_profiles(tournament_id, conn)
-        if not linked:
-            return {}
-        # A profile may map to multiple player_ids here only across tournaments;
-        # within THIS tournament each profile has one player_id.
-        player_by_profile: dict[str, str] = {r["profile_id"]: r["player_id"] for r in linked}
-        profile_ids = list(player_by_profile)
-
-        # This tournament's chronological position.  A finished tournament carries
-        # player_history.finished_at rows; an in-progress one sorts last (seed from
-        # the latest finished tournament) via a "now" sentinel.  Live-stats rows of
-        # in-progress tournaments have ``finished_at = ''`` and count as unfinished.
-        fin_row = conn.execute(
-            "SELECT MIN(NULLIF(finished_at, '')) AS fin FROM player_history"
-            " WHERE entity_type = 'tournament' AND entity_id = ?",
-            (tournament_id,),
-        ).fetchone()
-        this_fin = fin_row["fin"] if fin_row and fin_row["fin"] else datetime.now(timezone.utc).isoformat()
-
-        placeholders = ",".join("?" for _ in profile_ids)
-        rows = conn.execute(
-            f"""
-            SELECT ph.profile_id                AS profile_id,
-                   pe.elo_after                 AS elo_after,
-                   pe.matches_played            AS matches_played,
-                   COALESCE(t.community_id, ?)  AS community_id
-              FROM player_history ph
-              JOIN player_elo pe
-                ON pe.tournament_id = ph.entity_id
-               AND pe.player_id = ph.player_id
-               AND pe.sport = ph.sport
-         LEFT JOIN tournaments t ON t.id = ph.entity_id
-             WHERE ph.entity_type = 'tournament'
-               AND ph.sport = ?
-               AND ph.entity_id != ?
-               AND ph.finished_at != ''
-               AND ph.finished_at < ?
-               AND ph.profile_id IN ({placeholders})
-          ORDER BY ph.finished_at ASC
-            """,
-            (DEFAULT_COMMUNITY_ID, sport, tournament_id, this_fin, *profile_ids),
-        ).fetchall()
-
-    # Walk chronologically: later rows overwrite, so each dict ends holding the
-    # latest seed.  Community-specific wins over the global (any-community) chain.
-    community_seed: dict[str, tuple[float, int]] = {}
-    global_seed: dict[str, tuple[float, int]] = {}
-    for r in rows:
-        prof = r["profile_id"]
-        global_seed[prof] = (r["elo_after"], r["matches_played"])
-        if r["community_id"] == community_id:
-            community_seed[prof] = (r["elo_after"], r["matches_played"])
-
-    seed: dict[str, tuple[float, int]] = {}
-    for prof, player_id in player_by_profile.items():
-        if prof in community_seed:
-            seed[player_id] = community_seed[prof]
-        elif prof in global_seed:
-            seed[player_id] = global_seed[prof]
-    return seed
-
-
-def _latest_tournament_result(
-    conn,
-    player_ids: list[str],
-    sport: str,
-    community_id: str | None,
-    now: str,
-) -> tuple[float, int] | None:
-    """Return ``(elo_after, matches_played)`` from a profile's most recent tournament.
-
-    ``community_id`` scopes to tournaments in that community; ``None`` (or the
-    default 'open' community) considers all tournaments (the global chain).
-    "Most recent" orders by ``player_history.finished_at`` (in-progress
-    tournaments sort last via *now*), breaking ties on ``player_elo.updated_at``.
-    """
-    if not player_ids:
-        return None
-    ph = ",".join("?" for _ in player_ids)
-    fin_expr = (
-        "(SELECT MIN(NULLIF(h.finished_at, '')) FROM player_history h"
-        "  WHERE h.entity_type = 'tournament' AND h.entity_id = pe.tournament_id)"
-    )
-    if community_id is not None and community_id != DEFAULT_COMMUNITY_ID:
-        sql = (
-            f"SELECT pe.elo_after AS elo_after, pe.matches_played AS matches_played,"
-            f"       {fin_expr} AS fin, pe.updated_at AS updated_at"
-            f"  FROM player_elo pe"
-            f"  JOIN tournaments t ON t.id = pe.tournament_id"
-            f" WHERE pe.sport = ? AND pe.player_id IN ({ph}) AND t.community_id = ?"
-            f" ORDER BY COALESCE(fin, ?) DESC, pe.updated_at DESC LIMIT 1"
-        )
-        params = [sport, *player_ids, community_id, now]
-    else:
-        sql = (
-            f"SELECT pe.elo_after AS elo_after, pe.matches_played AS matches_played,"
-            f"       {fin_expr} AS fin, pe.updated_at AS updated_at"
-            f"  FROM player_elo pe"
-            f" WHERE pe.sport = ? AND pe.player_id IN ({ph})"
-            f" ORDER BY COALESCE(fin, ?) DESC, pe.updated_at DESC LIMIT 1"
-        )
-        params = [sport, *player_ids, now]
-    row = conn.execute(sql, params).fetchone()
-    return (row["elo_after"], row["matches_played"]) if row else None
 
 
 def _profile_player_ids(conn, profile_id: str) -> list[str]:
@@ -943,178 +599,58 @@ def _profile_player_ids(conn, profile_id: str) -> list[str]:
     return [r["player_id"] for r in rows]
 
 
-def refresh_profiles_after_tournament(
-    tournament_id: str,
-    sport: str = Sport.PADEL,
-) -> None:
-    """Rebuild linked players' profile ELO from their chronologically-latest tournament.
+def refresh_profile_elo(profile_id: str) -> None:
+    """Set a profile's stored ratings from its rated matches.
 
-    Called after (re)computing a tournament's ELO.  For each linked player the
-    community-scoped and global ('open') profile ratings are set from that
-    player's most recent tournament (by ``finished_at``), so recalculating an
-    *older* tournament can never leave the profile showing an older result than a
-    newer tournament — the root cause of "the second tournament overwrites the
-    first."  The per-tournament ``player_history`` ELO snapshot for *this*
-    tournament is refreshed too.
-    """
-    now = datetime.now(timezone.utc).isoformat()
-    elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
-    matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
-
-    with get_db() as conn:
-        community_id = _get_tournament_community_id(tournament_id, conn)
-        linked = _get_linked_profiles(tournament_id, conn)
-        for r in linked:
-            profile_id, player_id = r["profile_id"], r["player_id"]
-
-            # Refresh this tournament's history snapshot with the recomputed values.
-            elo_row = conn.execute(
-                "SELECT elo_before, elo_after FROM player_elo WHERE tournament_id = ? AND player_id = ? AND sport = ?",
-                (tournament_id, player_id, sport),
-            ).fetchone()
-            if elo_row is not None:
-                conn.execute(
-                    "UPDATE player_history SET elo_before = ?, elo_after = ?"
-                    " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
-                    (elo_row["elo_before"], elo_row["elo_after"], profile_id, tournament_id),
-                )
-
-            player_ids = _profile_player_ids(conn, profile_id)
-            if not player_ids:
-                continue
-
-            # Community-scoped rating = the profile's latest tournament in this community.
-            comm = _latest_tournament_result(conn, player_ids, sport, community_id, now)
-            if comm is not None:
-                conn.execute(
-                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                         elo = excluded.elo, matches = excluded.matches""",
-                    (profile_id, community_id, sport, comm[0], comm[1]),
-                )
-
-            # Global ('open') rating + flat columns = the profile's globally-latest tournament.
-            glob = _latest_tournament_result(conn, player_ids, sport, None, now)
-            if glob is not None:
-                conn.execute(
-                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                         elo = excluded.elo, matches = excluded.matches""",
-                    (profile_id, DEFAULT_COMMUNITY_ID, sport, glob[0], glob[1]),
-                )
-                conn.execute(
-                    f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
-                    (glob[0], glob[1], profile_id),
-                )
-
-
-def tournaments_in_chronological_order() -> list[str]:
-    """Return all tournament ids ordered by when they finished (then created).
-
-    In-progress tournaments (no ``player_history`` rows yet, or only live-stats
-    rows with ``finished_at = ''``) sort last so their live ratings are applied
-    on top of the finished chain.
+    For each community and sport the rating is the ``elo_after`` of the profile's
+    latest match there (the community chain, see :mod:`.community_elo`) and the
+    count its number of matches; a community where it has no match left goes back
+    to ``DEFAULT_RATING``.  The flat ``player_profiles`` columns follow the
+    community it played in last.  Used after a participation moves off the profile.
     """
     with get_db() as conn:
         rows = conn.execute(
-            """
-            SELECT t.id AS id,
-                   (SELECT MIN(NULLIF(ph.finished_at, '')) FROM player_history ph
-                     WHERE ph.entity_type = 'tournament' AND ph.entity_id = t.id) AS fin,
-                   t.created_at AS created_at
-              FROM tournaments t
-          ORDER BY (fin IS NULL) ASC, fin ASC, created_at ASC
-            """
+            """SELECT COALESCE(t.community_id, ?) AS community_id, l.sport AS sport,
+                      l.elo_after AS elo_after, l.updated_at AS updated_at
+                 FROM player_elo_log l
+            LEFT JOIN tournaments t ON t.id = l.tournament_id
+                WHERE l.is_manual = 0
+                  AND (EXISTS (SELECT 1 FROM player_secrets ps WHERE ps.tournament_id = l.tournament_id
+                                AND ps.player_id = l.player_id AND ps.profile_id = ?)
+                       OR EXISTS (SELECT 1 FROM player_history ph WHERE ph.entity_type = 'tournament'
+                                AND ph.entity_id = l.tournament_id AND ph.player_id = l.player_id
+                                AND ph.profile_id = ?))
+             ORDER BY l.updated_at ASC, l.match_order ASC""",
+            (DEFAULT_COMMUNITY_ID, profile_id, profile_id),
         ).fetchall()
-    return [r["id"] for r in rows]
-
-
-def refresh_profile_elo(profile_id: str) -> None:
-    """Rebuild one profile's ELO from the tournaments it is still linked to.
-
-    Used after a participation is unlinked from (or moved off) the profile, when
-    :func:`refresh_profiles_after_tournament` no longer sees the profile in that
-    tournament.  For each sport the community-scoped ratings and the global
-    ('open') rating + flat columns are set from the profile's latest remaining
-    tournament.  A community with no tournament left loses its row (so the next
-    tournament there falls back to the global rating), unless it carries a tier
-    assignment; with no tournament left at all the global rating resets to
-    ``DEFAULT_RATING``.  The ``player_history`` ELO snapshots are refreshed too.
-    """
-    now = datetime.now(timezone.utc).isoformat()
-    with get_db() as conn:
-        pe_match = (
-            "pe.tournament_id = player_history.entity_id"
-            " AND pe.player_id = player_history.player_id"
-            " AND pe.sport = player_history.sport"
-        )
-        conn.execute(
-            f"UPDATE player_history"
-            f"   SET elo_before = (SELECT pe.elo_before FROM player_elo pe WHERE {pe_match}),"
-            f"       elo_after = (SELECT pe.elo_after FROM player_elo pe WHERE {pe_match})"
-            f" WHERE profile_id = ? AND entity_type = 'tournament'"
-            f"   AND EXISTS (SELECT 1 FROM player_elo pe WHERE {pe_match})",
+        chains: dict[tuple[str, str], tuple[float, int]] = {}
+        for r in rows:
+            key = (r["community_id"], r["sport"])
+            chains[key] = (r["elo_after"], chains.get(key, (0.0, 0))[1] + 1)
+        stored = conn.execute(
+            "SELECT community_id, sport FROM profile_community_elo WHERE profile_id = ?",
             (profile_id,),
-        )
-        player_ids = _profile_player_ids(conn, profile_id)
-        ph = ",".join("?" for _ in player_ids)
-        for sport in (Sport.PADEL, Sport.TENNIS):
-            elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
-            matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
-            community_ids = {
-                r["community_id"]
-                for r in conn.execute(
-                    "SELECT community_id FROM profile_community_elo WHERE profile_id = ? AND sport = ?",
-                    (profile_id, sport),
-                ).fetchall()
-            }
-            if player_ids:
-                community_ids |= {
-                    r["community_id"]
-                    for r in conn.execute(
-                        f"SELECT DISTINCT t.community_id FROM player_elo pe"
-                        f"  JOIN tournaments t ON t.id = pe.tournament_id"
-                        f" WHERE pe.sport = ? AND pe.player_id IN ({ph}) AND t.community_id IS NOT NULL",
-                        (sport, *player_ids),
-                    ).fetchall()
-                }
-            community_ids.discard(DEFAULT_COMMUNITY_ID)
-
-            for cid in community_ids:
-                comm = _latest_tournament_result(conn, player_ids, sport, cid, now)
-                if comm is not None:
-                    conn.execute(
-                        """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                           VALUES (?, ?, ?, ?, ?)
-                           ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                             elo = excluded.elo, matches = excluded.matches""",
-                        (profile_id, cid, sport, comm[0], comm[1]),
-                    )
-                else:
-                    conn.execute(
-                        "DELETE FROM profile_community_elo"
-                        " WHERE profile_id = ? AND community_id = ? AND sport = ? AND tier_id IS NULL",
-                        (profile_id, cid, sport),
-                    )
-
-            glob = _latest_tournament_result(conn, player_ids, sport, None, now)
-            elo, matches = glob or (DEFAULT_RATING, 0)
-            if glob is not None:
-                conn.execute(
-                    """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
-                       VALUES (?, ?, ?, ?, ?)
-                       ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
-                         elo = excluded.elo, matches = excluded.matches""",
-                    (profile_id, DEFAULT_COMMUNITY_ID, sport, elo, matches),
-                )
-            else:
+        ).fetchall()
+        for r in stored:
+            if (r["community_id"], r["sport"]) not in chains:
                 conn.execute(
                     "UPDATE profile_community_elo SET elo = ?, matches = 0"
                     " WHERE profile_id = ? AND community_id = ? AND sport = ?",
-                    (DEFAULT_RATING, profile_id, DEFAULT_COMMUNITY_ID, sport),
+                    (DEFAULT_RATING, profile_id, r["community_id"], r["sport"]),
                 )
+        for (community_id, sport), (elo, matches) in chains.items():
+            conn.execute(
+                """INSERT INTO profile_community_elo (profile_id, community_id, sport, elo, matches)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (profile_id, community_id, sport) DO UPDATE SET
+                     elo = excluded.elo, matches = excluded.matches""",
+                (profile_id, community_id, sport, elo, matches),
+            )
+        for sport in (Sport.PADEL, Sport.TENNIS):
+            latest = [r for r in rows if r["sport"] == sport]
+            elo, matches = chains[(latest[-1]["community_id"], sport)] if latest else (DEFAULT_RATING, 0)
+            elo_col = "elo_padel" if sport == Sport.PADEL else "elo_tennis"
+            matches_col = "elo_padel_matches" if sport == Sport.PADEL else "elo_tennis_matches"
             conn.execute(
                 f"UPDATE player_profiles SET {elo_col} = ?, {matches_col} = ? WHERE id = ?",
                 (elo, matches, profile_id),

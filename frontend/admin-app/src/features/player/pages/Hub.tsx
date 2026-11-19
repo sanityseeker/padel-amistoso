@@ -9,7 +9,6 @@ import { CareerStats } from '../components/CareerStats';
 import { isMe, useLeaderboard } from '../components/Leaderboard';
 import { PastTournaments } from '../components/PastTournaments';
 import { PlayerCard } from '../components/PlayerCard';
-import { CommunityRatings } from '../components/CommunityRatings';
 import { TodoCards } from '../components/TodoCards';
 import { openPaymentOf, usePayments } from '../payments';
 import { usePlayerSpace } from '../context';
@@ -43,20 +42,16 @@ export default function Hub() {
     e.status === 'active' && e.entity_type === 'tournament' && !e.entity_deleted;
   const activeAll = space.entries.filter(isActive);
   const active = activeAll.filter(inView);
-  // Tournaments in progress the picked scope hides: the empty state offers to show them.
-  const hiddenByScope = !!scope && !activeAll.length && liveEntries.some(isActive);
-  // Ratings are kept per community: "All my communities" shows one card per community, never one
-  // number mixing their chains (and there is no all-communities board to rank in).
-  const perCommunity = !scope && space.player_communities.length > 0;
-  const board = useLeaderboard(scopeQuery, !perCommunity);
+  // A tournament in progress the picked scope hides: the empty state offers its community.
+  const elsewhere = activeAll.length ? undefined : liveEntries.find(isActive);
+  const elsewhereScope = elsewhere ? `community:${elsewhere.community_id || 'open'}` : '';
+  const elsewhereName = scopeOptions.find((o) => o.value === elsewhereScope)?.label;
+  const board = useLeaderboard(scopeQuery, true);
   const rankIn = (s: Sport) => board.data?.[s].find((r) => isMe(r, space.profile))?.rank ?? null;
   // Career statistics and past events follow the picked sport; with All, every entry counts.
   const sportEntries = space.entries.filter(inSport);
   const pastEntries = space.entries.filter(inView);
-  const scopeName =
-    scopeOptions.find((o) => o.value === scope && o.value)?.label ??
-    // Without a named community every rated match is in the open one, which the board then ranks.
-    (scope ? tx('All my communities') : tx('Open community'));
+  const scopeName = scopeOptions.find((o) => o.value === scope)?.label ?? tx('Open community');
   const ratedSports = sportsOf(space);
   const rated = ratedSports.length > 0;
   // One rating card per sport with All, the picked sport otherwise.
@@ -79,13 +74,15 @@ export default function Hub() {
               <TournamentNavCard key={entry.entity_id} entry={entry} />
             ))}
           </SimpleGrid>
-        ) : hiddenByScope ? (
+        ) : elsewhere ? (
           <EmptyState
             title={tx('No active tournaments in {scope}.', { scope: scopeName })}
             action={
-              <Button variant="light" onClick={() => setScope('')}>
-                {tx('Show all communities')}
-              </Button>
+              elsewhereName && elsewhereScope !== scope ? (
+                <Button variant="light" onClick={() => setScope(elsewhereScope)}>
+                  {elsewhereName}
+                </Button>
+              ) : undefined
             }
           />
         ) : activeAll.length ? (
@@ -116,9 +113,7 @@ export default function Hub() {
             </Anchor>
           )}
         </Group>
-        {rated && perCommunity ? (
-          <CommunityRatings communities={space.player_communities} sports={cardSports} />
-        ) : rated ? (
+        {rated ? (
           cardSports.map((s) => (
             <PlayerCard key={s} space={space} sport={s} rank={rankIn(s)} scopeName={scopeName} />
           ))

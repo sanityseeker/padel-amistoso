@@ -72,6 +72,10 @@ from .state import (  # noqa: F401  — re-exported for tests
 async def _lifespan(_app: FastAPI):
     init_db()
     _load_state()
+    from .community_elo import migrate_to_community_chains  # noqa: PLC0415
+
+    # Once per database: re-rate every community on its shared match-by-match chain.
+    migrate_to_community_chains()
     user_store.load()
     user_store.bootstrap_default_admin()
     from .push import init_push  # noqa: PLC0415

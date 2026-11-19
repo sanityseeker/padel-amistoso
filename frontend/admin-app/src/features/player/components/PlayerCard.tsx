@@ -3,7 +3,7 @@ import { Avatar, Badge, Group, Paper, Skeleton, Stack, Text } from '@mantine/cor
 import { t as tx, useLocale } from '../../../i18n';
 import { profileInitials } from '../../../player/session';
 import type { Space } from '../../../player/types';
-import { eloOf, matchHistoryOf, scopeDelta, type Sport } from '../stats';
+import { eloOf, matchHistoryOf, scopeDelta, trendLineOf, type Sport } from '../stats';
 
 const PlayerSparkline = lazy(() => import('../charts/PlayerSparkline'));
 
@@ -28,11 +28,8 @@ export function PlayerCard({
   // The rating before the first shown match comes first, so two matches plot as three points.
   // Manual club ratings are left out, like in the badge: they are not results.
   const shownHistory = matchHistoryOf(space, sport).slice(-20);
-  const series = shownHistory.length
-    ? [shownHistory[0].elo_before, ...shownHistory.map((m) => m.elo_after)].map((v) =>
-        Math.round(v),
-      )
-    : [];
+  // The line follows each match's change, not the stored ratings (they can switch between chains).
+  const series = trendLineOf(shownHistory).map((v) => Math.round(v));
   return (
     <Paper variant="court-panel" p="lg" data-testid="player-card">
       <Stack gap="md">

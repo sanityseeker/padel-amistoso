@@ -846,7 +846,7 @@ async def admin_link_participation(
 
     # Ratings in this tournament (and those after it) depend on who is linked.
     if changed or unlinked_player_ids:
-        mark_elo_dirty([*old_profile_ids, profile_id], [tid], [player_id, *unlinked_player_ids])
+        mark_elo_dirty([*old_profile_ids, profile_id], [tid])
 
     invalidate_secrets_cache(tid)
     return {
@@ -1033,7 +1033,7 @@ async def admin_unlink_participation(
         )
     is_finished = hist is not None or sec["finished_at"] is not None
 
-    mark_elo_dirty(old_profile_ids, [tid], [player_id])
+    mark_elo_dirty(old_profile_ids, [tid])
     invalidate_secrets_cache(tid)
     if not is_finished:
         return {"ok": True, "status": ParticipationStatus.ACTIVE, "warning": None}

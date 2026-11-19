@@ -9,35 +9,18 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Collection
 from typing import Any
 
 from backend.models import Match, MatchStatus, Player, TournamentType
 from backend.tournaments.elo import (
-    DEFAULT_RATING,
     SCORE_FORMAT_WEIGHTS,
     EloScoreFormat,
     classify_score_format,
-    compute_match_elo_updates,
 )
 
 from .elo_store import (
-    _match_timestamp,
-    get_k_factor_overrides,
-    get_tournament_elo_snapshots,
-    get_tournament_elo_timestamps,
-    has_match_elo_log,
-    has_tournament_elo_log,
-    upsert_tournament_elo_log,
-    get_pretournament_seed,
-    get_tournament_elos,
-    get_tournament_match_counts,
     initialize_tournament_elos,
-    refresh_profiles_after_tournament,
-    reset_tournament_elos,
-    reset_tournament_elo_logs,
-    sync_live_elos_to_profiles,
-    upsert_tournament_elo,
+    has_match_elo_log,
 )
 from .leaderboard_cache import invalidate_mini_card_cache
 from .state import _tournaments
@@ -50,143 +33,44 @@ _MEX_ELO_POINTS_BASELINE = 32
 def _elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
     """Update ELO after a match score is finalized.
 
-    Safe to call even if the match is not yet completed (no-ops).
-    On score corrections (re-recording), triggers a full recalculation.
+    Safe to call even if the match is not yet completed (no-ops).  A new result
+    is rated from its players' latest community ratings; a corrected score, or a
+    result older than a player's latest rated match, replays the community
+    (:mod:`.community_elo`).
     """
     if match.status != MatchStatus.COMPLETED or match.score is None:
         return
     if getattr(match, "walkover", False):
         return  # walkovers are never rated
 
+    from .club_elo import rate_new_club_match  # noqa: PLC0415 — club_elo imports this module
+    from .community_elo import rate_new_match  # noqa: PLC0415 — community_elo imports this module
+
     sport = data.get("sport", "padel")
-    ttype = data.get("type", "")
-    team_mode = _is_team_mode(data["tournament"], ttype)
     match = expand_composite_sides(data["tournament"], match)
-
     try:
-        ratings = get_tournament_elos(tid, sport)
-        counts = get_tournament_match_counts(tid, sport)
-        k_overrides = get_k_factor_overrides(tid)
-        weight = elo_match_weight(data, match)
-
         # A match that already has log rows is being re-recorded (score
-        # correction): replay the whole tournament so later matches pick up the
-        # change.  A brand-new result only needs an incremental update — even
-        # for linked players whose counts are seeded > 0 from earlier events.
-        if has_match_elo_log(tid, match.id, sport):
-            elo_recalculate_tournament(tid)
+        # correction): later matches of its players must pick up the change.
+        if not has_match_elo_log(tid, match.id, sport) and rate_new_match(tid, data, match, sport):
+            rate_new_club_match(tid, match, sport)
             return
-
-        updates = compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides, weight=weight)
-        # One timestamp for both rows, so a later recalculation (which restores the
-        # log's timestamp onto both) reproduces exactly what was written here.
-        match_ts = _match_timestamp(match)
-        upsert_tournament_elo(tid, updates, sport, updated_at=match_ts)
-        upsert_tournament_elo_log(
-            tid,
-            match,
-            updates,
-            sport,
-            match_order=max((u.matches_after for u in updates), default=0),
-            updated_at=match_ts,
-        )
-        sync_live_elos_to_profiles(tid, sport)
     except Exception:
         logger.exception("Failed to update ELO for match %s in tournament %s", match.id, tid)
         return
-    from .club_elo import rate_new_club_match  # noqa: PLC0415 — club_elo imports this module
-
-    rate_new_club_match(tid, match, sport)
+    _elo_recalculate_tournament(tid)
 
 
-def _elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
-    """Full ELO recalculation from all completed matches in a tournament.
+def _elo_recalculate_tournament(tournament_id: str) -> None:
+    """Replay the rating chain of the tournament's community (and its clubs).
 
-    Used after score corrections to ensure consistency.
-
-    ``reseed_player_ids`` are players whose stored starting rating is stale
-    because their Hub link changed: instead of the tournament's own snapshot
-    they start from their (new) profile's earlier tournaments, or
-    ``DEFAULT_RATING`` when unlinked or without earlier tournaments.
+    Used after score corrections and cleared results.  Every tournament of the
+    community is re-rated in play order, see :func:`.community_elo.replay_community`.
     """
-    data = _tournaments.get(tournament_id)
-    if data is None:
+    from .community_elo import community_of, replay_community  # noqa: PLC0415
+
+    if tournament_id not in _tournaments:
         return
-
-    tournament = data["tournament"]
-    sport = data.get("sport", "padel")
-    ttype = data.get("type", "")
-
-    all_matches = _extract_completed_matches(tournament, ttype)
-    # With no completed match left there is still stale log (and club) rows to drop
-    # after a cleared result, so only skip when nothing was ever rated.
-    if not all_matches and not reseed_player_ids and not has_tournament_elo_log(tournament_id, sport):
-        return
-
-    team_mode = _is_team_mode(tournament, ttype)
-    player_ids = _extract_player_ids(tournament, ttype)
-
-    try:
-        # Starting seed for each player.  Start from the tournament's own stored
-        # pre-tournament snapshot (covers unlinked players, tier/manual seeds, and
-        # a player's first-ever tournament)...
-        snapshots = get_tournament_elo_snapshots(tournament_id, sport)
-        saved_elos = {pid: elo for pid, (elo, _cnt) in snapshots.items()}
-        saved_counts = {pid: cnt for pid, (_elo, cnt) in snapshots.items()}
-        for pid in reseed_player_ids:
-            saved_elos[pid] = DEFAULT_RATING
-            saved_counts[pid] = 0
-
-        # ...then override linked players with the cumulative result of their
-        # *earlier* tournaments so ELO continues across tournaments (rather than
-        # restarting from a stale/1000 snapshot) and recalculation composes: run
-        # every tournament in chronological order and the ratings converge to the
-        # same values a single global re-run would produce.
-        for pid, (elo, cnt) in get_pretournament_seed(tournament_id, sport).items():
-            saved_elos[pid] = elo
-            saved_counts[pid] = cnt
-
-        # Preserve the original per-match timestamps so the recalculation does not
-        # rewrite the ELO history's chronology with the moment it ran.
-        log_ts, _elo_ts = get_tournament_elo_timestamps(tournament_id, sport)
-
-        # Replay in the order the matches were played (the order the incremental
-        # scoring rated them), not the structural order.  Readers sort the log by
-        # ``updated_at`` (ISO strings, compared as text by SQLite), so the stored
-        # chain only stays continuous if the replay uses the same order.
-        indexed = list(enumerate(all_matches))
-        indexed.sort(key=lambda im: (log_ts.get(getattr(im[1], "id", "")) or _match_timestamp(im[1]), im[0]))
-        all_matches = [m for _i, m in indexed]
-
-        # Reset and re-seed with those pre-tournament values
-        reset_tournament_elos(tournament_id, sport)
-        reset_tournament_elo_logs(tournament_id, sport)
-        initialize_tournament_elos(
-            tournament_id,
-            player_ids,
-            sport,
-            elo_overrides=saved_elos,
-            match_count_overrides=saved_counts,
-        )
-
-        k_overrides = get_k_factor_overrides(tournament_id)
-
-        # Replay all matches in order
-        for idx, match in enumerate(all_matches, start=1):
-            ratings = get_tournament_elos(tournament_id, sport)
-            counts = get_tournament_match_counts(tournament_id, sport)
-            weight = elo_match_weight(data, match)
-            updates = compute_match_elo_updates(match, ratings, counts, team_mode, k_overrides, weight=weight)
-            match_ts = log_ts.get(getattr(match, "id", "")) or _match_timestamp(match)
-            upsert_tournament_elo(tournament_id, updates, sport, updated_at=match_ts)
-            upsert_tournament_elo_log(tournament_id, match, updates, sport, match_order=idx, updated_at=match_ts)
-        # Rebuild each linked profile from its chronologically-latest tournament so
-        # recalculating an older event never clobbers a newer one.
-        refresh_profiles_after_tournament(tournament_id, sport)
-    except Exception:
-        logger.exception("Failed to recalculate ELO for tournament %s", tournament_id)
-        return
-    _recompute_club_elo(tournament_id)
+    replay_community(community_of(tournament_id))
 
 
 def elo_init_tournament(tournament_id: str, player_ids: list[str], sport: str) -> None:
@@ -198,33 +82,35 @@ def elo_init_tournament(tournament_id: str, player_ids: list[str], sport: str) -
 
 
 def _elo_finish_tournament(tournament_id: str) -> None:
-    """Transfer final ELO ratings to player profiles when a tournament finishes.
-
-    Goes through :func:`refresh_profiles_after_tournament` so each linked profile
-    is rebuilt from its chronologically-latest tournament: finishing an older
-    (long-running) event after a newer one already synced can never roll the
-    profile back to the older chain.
-    """
+    """Write each linked player's span in the finished tournament to their history line."""
     data = _tournaments.get(tournament_id)
     if data is None:
         return
     sport = data.get("sport", "padel")
+    from .db import get_db  # noqa: PLC0415
+
     try:
-        refresh_profiles_after_tournament(tournament_id, sport)
+        with get_db() as conn:
+            conn.execute(
+                """UPDATE player_history
+                      SET elo_before = (SELECT pe.elo_before FROM player_elo pe
+                                         WHERE pe.tournament_id = player_history.entity_id
+                                           AND pe.player_id = player_history.player_id AND pe.sport = ?),
+                          elo_after = (SELECT pe.elo_after FROM player_elo pe
+                                        WHERE pe.tournament_id = player_history.entity_id
+                                          AND pe.player_id = player_history.player_id AND pe.sport = ?)
+                    WHERE entity_type = 'tournament' AND entity_id = ? AND profile_id IS NOT NULL
+                      AND EXISTS (SELECT 1 FROM player_elo pe WHERE pe.tournament_id = player_history.entity_id
+                                    AND pe.player_id = player_history.player_id AND pe.sport = ?)""",
+                (sport, sport, tournament_id, sport),
+            )
     except Exception:
-        logger.exception("Failed to transfer ELO to profiles for tournament %s", tournament_id)
+        logger.exception("Failed to write ELO history for tournament %s", tournament_id)
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _recompute_club_elo(tournament_id: str) -> None:
-    """Replay the club chain of *tournament_id*'s club, if it has one."""
-    from .club_elo import recompute_club_elo_for_tournaments  # noqa: PLC0415 — club_elo imports this module
-
-    recompute_club_elo_for_tournaments([tournament_id])
 
 
 def _extract_completed_matches(tournament: object, ttype: str) -> list[Match]:
@@ -402,10 +288,10 @@ def elo_after_score(tid: str, data: dict[str, Any], match: Match) -> None:
         _invalidate_cards(tid)
 
 
-def elo_recalculate_tournament(tournament_id: str, reseed_player_ids: Collection[str] = ()) -> None:
-    """Full ELO recalculation of a tournament (see :func:`_elo_recalculate_tournament`)."""
+def elo_recalculate_tournament(tournament_id: str) -> None:
+    """Full ELO recalculation of a tournament's community (see :func:`_elo_recalculate_tournament`)."""
     try:
-        _elo_recalculate_tournament(tournament_id, reseed_player_ids)
+        _elo_recalculate_tournament(tournament_id)
     finally:
         _invalidate_cards(tournament_id)
 

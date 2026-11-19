@@ -438,7 +438,7 @@ An extra penalty for two partners of very different strength in one team. An exa
 
 The create form has a **Seeding** choice. It sets the starting strength of each player. The starting strength is on the ELO scale.
 
-- **By rating** (the default): each player linked to a profile gets their club rating (in a club event), else their community rating, else the global rating. The form fills in these values, and you can change any value.
+- **By rating** (the default): each player linked to a profile gets their club rating (in a club event), else their community rating. The form fills in these values, and you can change any value.
 - **Manual**: only the strengths that you enter count.
 - **No seeding**: the app ignores ratings and strengths.
 
@@ -535,10 +535,10 @@ For tennis (scoring by sets), the app adds the games of all sets into one score 
 
 The app calculates the match counts and the current ratings from the ELO log of each match. These numbers show in the admin **Players** tab, in the headers and chips of the Player Hub, and on all leaderboards. Thus the numbers are always the same in all places.
 
-- **Global** is the total across all communities and clubs. Its rating is the rating after the most recent rated match.
-- **Community** scope counts only the matches in tournaments of that community.
-- **Club** scope uses a separate rating for each club. The app replays all the matches of the club's tournaments in the order they were played. A player's first club match starts from their community rating at that time. After that, only matches in that club change the club rating. Club ratings never change the community or global ratings. To rebuild them, use **Recalculate club ELO** in the club's leaderboard card. It recalculates every tournament of the club in order.
-- A manual club ELO override, or the base ELO of a tier, becomes the current club rating of the player immediately. The next club match of the player starts from it, also when the player has not played in the club yet. The ELO history of the player shows it as a manual adjustment. It does not count as a match. It does not change the community or global ratings.
+- **Community** scope uses one rating for each community. The app rates all the matches of the community's tournaments in the order they were played, also when two tournaments run at the same time (for example two leagues of one season). Each match starts from the rating after the player's previous match in the community, in any of its tournaments. A player's first match in a community starts from 1000. Communities never change each other's ratings. The Player Hub always shows one community (or one club) at a time.
+- A new score is rated from the players' current ratings. A corrected score, a score older than a player's latest rated match, a changed Hub link, a merge, and a tournament that moves to another community or is deleted, make the app replay the whole community. **Recalculate all** replays every community.
+- **Club** scope uses a separate rating for each club. The app replays all the matches of the club's tournaments in the order they were played. A player's first club match starts from their community rating at that time. After that, only matches in that club change the club rating. Club ratings never change the community ratings. To rebuild them, use **Recalculate club ELO** in the club's leaderboard card. It replays the club's community and then the club.
+- A manual club ELO override, or the base ELO of a tier, becomes the current club rating of the player immediately. The next club match of the player starts from it, also when the player has not played in the club yet. The ELO history of the player shows it as a manual adjustment. It does not count as a match. It does not change the community ratings.
 
 ### Authentication & API
 

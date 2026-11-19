@@ -11,6 +11,7 @@ unassigned tournaments.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 from datetime import datetime, timezone
 
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from ..auth.deps import get_current_user, get_current_user_optional, require_admin
 from ..auth.models import User, UserRole
+from .community_elo import replay_community
 from .community_elo_summary import CommunityEloSummaryOut, build_summary
 from .db import get_db, get_shared_club_ids
 from .leaderboard_cache import etag_for, invalidate_cards_after_scope_change
@@ -288,5 +290,7 @@ async def delete_community(community_id: str, user: User = Depends(get_current_u
     for data in list(_tournaments.values()):
         if data.get("community_id") == community_id:
             data["community_id"] = DEFAULT_COMMUNITY_ID
+    # Its tournaments now rate on the open community's chain.
+    await asyncio.to_thread(replay_community, DEFAULT_COMMUNITY_ID)
     invalidate_cards_after_scope_change()
     return {"ok": True}

@@ -49,14 +49,13 @@ from .db import (
     remove_club_co_editor,
 )
 from .club_elo import deferred_club_elo, recompute_club_elo, start_tournament_from_club_ratings
-from .elo_integration import elo_recalculate_tournament
+from .community_elo import replay_community
 from .elo_store import (
     _profile_player_ids,
     get_profile_elo,
     get_profile_recent_elo_logs,
     log_manual_elo_adjustment,
     refresh_profile_elo,
-    tournaments_in_chronological_order,
 )
 from .player_merge import (
     materialize_participants,
@@ -3008,8 +3007,8 @@ async def recalculate_club_elo(
 ) -> dict:
     """Recalculate ELO for every tournament of the club, then the club's own ratings.
 
-    Replays the club's tournaments in chronological order, like the site-wide
-    "Recalculate all tournaments", and then replays the club rating chain once.
+    Replays the club's community chain (every tournament of the community, in play
+    order), and then the club rating chain once.
     Restricted to the club owner, co-editors and site admins.
 
     With ``from_club_ratings``, each tier or manual club rating first moves to the
@@ -3021,22 +3020,17 @@ async def recalculate_club_elo(
     _require_club_editor(club, user)
     from . import state  # noqa: PLC0415
 
-    ordered = await asyncio.to_thread(tournaments_in_chronological_order)
-    club_tids = [tid for tid in ordered if (state._tournaments.get(tid) or {}).get("club_id") == club_id]
-    recalculated = 0
+    club_tids = [tid for tid, data in list(state._tournaments.items()) if data.get("club_id") == club_id]
     moved = 0
     with deferred_club_elo():
         if from_club_ratings:
             for tid in club_tids:
                 moved += start_tournament_from_club_ratings(tid)
-        for tid in club_tids:
-            async with state.get_tournament_lock(tid):
-                if state._tournaments.get(tid, {}).get("club_id") != club_id:
-                    continue
-                await asyncio.to_thread(elo_recalculate_tournament, tid)
-                recalculated += 1
-        # Also when no tournament had matches to replay (e.g. only tier ratings).
+        # The club's community chain (the club chain seeds from it), then the club chain,
+        # also when no tournament had matches to replay (e.g. only tier ratings).
+        await asyncio.to_thread(replay_community, club["community_id"] or "open")
         recompute_club_elo(club_id)
+    recalculated = len(club_tids)
     return {"ok": True, "recalculated_tournaments": recalculated, "club_ratings_applied": moved}
 
 

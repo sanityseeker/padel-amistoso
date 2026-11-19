@@ -1,15 +1,5 @@
 import { lazy, Suspense, useCallback, useState } from 'react';
-import {
-  Button,
-  Group,
-  Paper,
-  SimpleGrid,
-  Skeleton,
-  Stack,
-  Text,
-  Title,
-  useMatches,
-} from '@mantine/core';
+import { Group, Paper, SimpleGrid, Skeleton, Stack, Text, Title, useMatches } from '@mantine/core';
 import { t as tx, useLocale } from '../../../i18n';
 import { EmptyState, HistoryLimit, PageHeader, useHistoryLimit } from '../../../ui';
 import { FormGuide } from '../components/FormGuide';
@@ -17,7 +7,7 @@ import { EloInfoButton } from '../../info/EloInfo';
 import { Leaderboard } from '../components/Leaderboard';
 import { ResultRow, scoreOf } from '../components/ResultRow';
 import { usePlayerSpace } from '../context';
-import { formOf, historyOf, matchHistoryOf, opponentsOf } from '../stats';
+import { formOf, historyOf, matchHistoryOf, opponentsOf, trendLineOf } from '../stats';
 import { PlayerCardModal, playerCardSource } from '../../playercard';
 
 const EloChart = lazy(() => import('../charts/EloChart'));
@@ -26,7 +16,7 @@ const EloChart = lazy(() => import('../charts/EloChart'));
 export default function Ratings() {
   const gap = useMatches({ base: 'md', sm: 'xl' });
   const locale = useLocale();
-  const { space, scope, scopeQuery, sport, setScope } = usePlayerSpace();
+  const { space, scopeQuery, sport } = usePlayerSpace();
   const history = historyOf(space, sport);
   const [choice, setChoice] = useHistoryLimit();
   // The Hub already holds its latest 50 rating changes (the chart's); "All" shows those.
@@ -35,33 +25,15 @@ export default function Ratings() {
   // The trend line and its change count rated matches only: a manual club rating is a starting
   // value, not a result (the Recent results list still shows it).
   const trend = matchHistoryOf(space, sport);
-  const now = trend.length ? trend[trend.length - 1].elo_after : 0;
-  const change = Math.round(trend.reduce((sum, m) => sum + m.elo_delta, 0));
+  // The line is the first match's starting rating plus each match's change, so it never mixes the
+  // stored ratings of tournaments that ran side by side; its end and its rise always agree.
+  const line = trendLineOf(trend);
+  const now = line.length ? line[line.length - 1] : 0;
+  const change = Math.round(now - (line[0] ?? 0));
   const visible = recent.slice(0, shown);
   // A tap on a name in a result opens that player's card from that event (it can widen to its scope).
   const [card, setCard] = useState<{ tid: string; playerId: string } | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
-  // Each community keeps its own rating chain: the trend and the leaderboard need one picked.
-  if (!scope && space.player_communities.length > 0)
-    return (
-      <Stack gap={gap}>
-        <PageHeader title={tx('Ratings')} named dense actions={<EloInfoButton />} />
-        <EmptyState
-          title={tx('Pick a community')}
-          action={
-            <Group gap="xs" justify="center">
-              {space.player_communities.map((c) => (
-                <Button key={c.id} variant="light" onClick={() => setScope(`community:${c.id}`)}>
-                  {c.name}
-                </Button>
-              ))}
-            </Group>
-          }
-        >
-          {tx('Each community keeps its own rating, trend and leaderboard.')}
-        </EmptyState>
-      </Stack>
-    );
   return (
     <Stack gap={gap}>
       <PageHeader
@@ -100,7 +72,7 @@ export default function Ratings() {
                   data={[
                     {
                       match: '0',
-                      elo: Math.round(trend[0].elo_before),
+                      elo: Math.round(line[0]),
                       delta: 0,
                       title: tx('Starting rating'),
                       score: '',
@@ -110,7 +82,7 @@ export default function Ratings() {
                       const opponents = opponentsOf(m);
                       return {
                         match: String(i + 1),
-                        elo: Math.round(m.elo_after),
+                        elo: Math.round(line[i + 1]),
                         delta: Math.round(m.elo_delta ?? m.elo_after - m.elo_before),
                         title: m.is_manual
                           ? tx('Manual adjustment')

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.api import app
 from backend.api.elo_store import (
-    bulk_transfer_elos_to_profiles,
     delete_tournament_elos,
     get_profile_elo,
     get_tournament_elos,
@@ -17,9 +15,8 @@ from backend.api.elo_store import (
     initialize_tournament_elos,
     reset_tournament_elos,
     refresh_profile_elo,
-    sync_live_elos_to_profiles,
-    transfer_elo_to_profile,
     upsert_tournament_elo,
+    upsert_tournament_elo_log,
 )
 from backend.tournaments.elo import DEFAULT_RATING, EloUpdate
 
@@ -162,237 +159,62 @@ class TestProfileElo:
         assert result["elo_padel"] == DEFAULT_RATING
         assert result["elo_tennis"] == DEFAULT_RATING
 
-    def test_transfer_and_get(self, client) -> None:
-        """Create a profile, tournament elo rows, transfer, and verify."""
-        from backend.api.db import get_db
-
-        # Create a profile directly
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, datetime('now'))",
-                ("prof1", "secret-phrase-1", "Alice"),
-            )
-            # Create a player_secrets row linking player to profile
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                ("tm_t1", "p1", "Alice", "secret-phrase-1", "tok1", "prof1"),
-            )
-            # Create a player_history row
-            conn.execute(
-                "INSERT INTO player_history (profile_id, entity_type, entity_id, player_id, finished_at)"
-                " VALUES (?, 'tournament', ?, ?, datetime('now'))",
-                ("prof1", "tm_t1", "p1"),
-            )
-
-        # Simulate tournament ELO
-        initialize_tournament_elos("tm_t1", ["p1"])
-        upsert_tournament_elo(
-            "tm_t1",
-            [
-                EloUpdate(player_id="p1", elo_before=1000, elo_after=1080, matches_before=0, matches_after=5),
-            ],
-        )
-
-        transfer_elo_to_profile("prof1", "tm_t1", "p1", sport="padel")
-
-        elo = get_profile_elo("prof1")
-        assert elo["elo_padel"] == 1080.0
-        assert elo["elo_padel_matches"] == 5
-        assert elo["elo_tennis"] == DEFAULT_RATING  # untouched
-
-        # Verify player_history was updated
-        with get_db() as conn:
-            ph = conn.execute(
-                "SELECT elo_before, elo_after FROM player_history WHERE profile_id = ? AND entity_id = ?",
-                ("prof1", "tm_t1"),
-            ).fetchone()
-        assert ph["elo_before"] == 1000.0
-        assert ph["elo_after"] == 1080.0
-
-    def test_bulk_transfer(self, client) -> None:
-        from backend.api.db import get_db
-
-        with get_db() as conn:
-            # Two profiles
-            conn.execute(
-                "INSERT INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, datetime('now'))",
-                ("prof_a", "phrase-a", "Alice"),
-            )
-            conn.execute(
-                "INSERT INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, datetime('now'))",
-                ("prof_b", "phrase-b", "Bob"),
-            )
-            # Link players to profiles
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                ("tm_bulk", "pa", "Alice", "phrase-a", "toka", "prof_a"),
-            )
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                ("tm_bulk", "pb", "Bob", "phrase-b", "tokb", "prof_b"),
-            )
-            # History rows
-            for prof, pid in [("prof_a", "pa"), ("prof_b", "pb")]:
-                conn.execute(
-                    "INSERT INTO player_history (profile_id, entity_type, entity_id, player_id, finished_at)"
-                    " VALUES (?, 'tournament', ?, ?, datetime('now'))",
-                    (prof, "tm_bulk", pid),
-                )
-
-        initialize_tournament_elos("tm_bulk", ["pa", "pb"])
-        upsert_tournament_elo(
-            "tm_bulk",
-            [
-                EloUpdate(player_id="pa", elo_before=1000, elo_after=1060, matches_before=0, matches_after=3),
-                EloUpdate(player_id="pb", elo_before=1000, elo_after=940, matches_before=0, matches_after=3),
-            ],
-        )
-
-        bulk_transfer_elos_to_profiles("tm_bulk", sport="padel")
-
-        assert get_profile_elo("prof_a")["elo_padel"] == 1060.0
-        assert get_profile_elo("prof_b")["elo_padel"] == 940.0
-
 
 # ---------------------------------------------------------------------------
-# Rebuilding a profile from its tournaments
+# Rebuilding a profile from its rated matches
 # ---------------------------------------------------------------------------
 
 
 class TestRefreshProfileElo:
-    def test_profile_takes_latest_tournament_result(self, client) -> None:
+    def test_rating_per_community_is_its_latest_match(self, client) -> None:
         from backend.api.db import get_db
+        from backend.models import Match, MatchStatus, Player
 
         with get_db() as conn:
             conn.execute(
                 "INSERT INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, datetime('now'))",
                 ("prof_retro", "phrase-retro", "Charlie"),
             )
-            # History rows for two tournaments
-            for tid in ["tm_old", "tm_new"]:
+            conn.execute(
+                "INSERT INTO communities (id, name, created_by, created_at) VALUES ('c2', 'C2', 'admin', datetime('now'))"
+            )
+            for tid, community in (("tm_a", "open"), ("tm_b", "open"), ("tm_c", "c2")):
                 conn.execute(
-                    "INSERT INTO player_history (profile_id, entity_type, entity_id, player_id, finished_at)"
-                    " VALUES (?, 'tournament', ?, ?, datetime('now'))",
-                    ("prof_retro", tid, "px"),
+                    "INSERT INTO tournaments (id, name, type, owner, tournament_blob, sport, community_id)"
+                    " VALUES (?, ?, 'mexicano', 'admin', X'80', 'padel', ?)",
+                    (tid, tid, community),
+                )
+                conn.execute(
+                    "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
+                    " VALUES (?, 'px', 'Charlie', ?, ?, 'prof_retro')",
+                    (tid, f"pp-{tid}", f"tok-{tid}"),
                 )
 
-        # Simulate two tournaments played sequentially
-        initialize_tournament_elos("tm_old", ["px"])
-        upsert_tournament_elo(
-            "tm_old",
-            [
-                EloUpdate(player_id="px", elo_before=1000, elo_after=1050, matches_before=0, matches_after=4),
-            ],
-        )
-        initialize_tournament_elos("tm_new", ["px"])
-        upsert_tournament_elo(
-            "tm_new",
-            [
-                EloUpdate(player_id="px", elo_before=1050, elo_after=1030, matches_before=4, matches_after=7),
-            ],
-        )
+        def log(tid: str, match_id: str, before: float, after: float, minute: int) -> None:
+            match = Match(
+                id=match_id,
+                team1=[Player(id="px", name="Charlie")],
+                team2=[Player(id="py", name="Y")],
+                status=MatchStatus.COMPLETED,
+                score=(6, 3),
+            )
+            update = EloUpdate(player_id="px", elo_before=before, elo_after=after, matches_before=0, matches_after=1)
+            upsert_tournament_elo_log(tid, match, [update], "padel", updated_at=f"2026-01-01T00:{minute:02d}:00+00:00")
+
+        # Two open tournaments interleaved on one chain, then a match in c2.
+        log("tm_a", "m1", 1000, 1020, 1)
+        log("tm_b", "m2", 1020, 1035, 2)
+        log("tm_a", "m3", 1035, 1030, 3)
+        log("tm_c", "m4", 1000, 990, 4)
 
         refresh_profile_elo("prof_retro")
 
-        elo = get_profile_elo("prof_retro")
-        # Final ELO should be from the later tournament
-        assert elo["elo_padel"] == 1030.0
-        assert elo["elo_padel_matches"] == 7
-
-
-# ---------------------------------------------------------------------------
-# sync_live_elos_to_profiles — staleness guard
-# ---------------------------------------------------------------------------
-
-
-class TestSyncLiveElosToProfiles:
-    """sync_live_elos_to_profiles must not overwrite a more-recent tournament's ELO
-    on the flat player_profiles / global profile_community_elo rows."""
-
-    def test_recalculating_older_tournament_does_not_clobber_newer(self) -> None:
-        """Scenario: two linked tournaments; recalculating the older one after the newer
-        one was already synced must leave the profile ELO at the newer tournament's value."""
-        from backend.api.db import get_db
-
-        profile_id = "prof_sync_order"
-        pid_old = "slp-pid-old"
-        pid_new = "slp-pid-new"
-        tid_old = "slp-t-old"
-        tid_new = "slp-t-new"
-
+        assert get_profile_elo("prof_retro", "open")["elo_padel"] == 1030.0
+        assert get_profile_elo("prof_retro", "open")["elo_padel_matches"] == 3
+        assert get_profile_elo("prof_retro", "c2")["elo_padel"] == 990.0
+        # The flat columns follow the community played in last.
         with get_db() as conn:
-            conn.execute(
-                "INSERT INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, datetime('now'))",
-                (profile_id, "slp-phrase", "SLP Player"),
-            )
-            # Link both player_ids to the same profile via player_secrets (active tournaments)
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (tid_old, pid_old, "SLP Player", "slp-pp-old", "slp-tok-old", profile_id),
-            )
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (tid_new, pid_new, "SLP Player", "slp-pp-new", "slp-tok-new", profile_id),
-            )
-
-        # Set up both tournaments.
-        initialize_tournament_elos(tid_old, [pid_old])
-        upsert_tournament_elo(
-            tid_old,
-            [EloUpdate(player_id=pid_old, elo_before=1000, elo_after=1060, matches_before=0, matches_after=4)],
-        )
-        initialize_tournament_elos(tid_new, [pid_new])
-        upsert_tournament_elo(
-            tid_new,
-            [EloUpdate(player_id=pid_new, elo_before=1060, elo_after=1090, matches_before=4, matches_after=7)],
-        )
-        # Ensure T_new has a strictly later updated_at so the staleness check works.
-        # Use Python's isoformat to match the format written by upsert_tournament_elo.
-        future_ts = (datetime.now(timezone.utc) + timedelta(seconds=10)).isoformat()
-        with get_db() as conn:
-            conn.execute(
-                "UPDATE player_elo SET updated_at = ? WHERE tournament_id = ?",
-                (future_ts, tid_new),
-            )
-
-        # Simulate: admin syncs T_new first (most-recent) — profile now shows 1090
-        sync_live_elos_to_profiles(tid_new)
-        assert get_profile_elo(profile_id)["elo_padel"] == 1090.0
-
-        # Admin then recalculates T_old — must NOT overwrite the profile back to 1060
-        sync_live_elos_to_profiles(tid_old)
-        elo = get_profile_elo(profile_id)
-        assert elo["elo_padel"] == 1090.0, "Older tournament sync must not clobber newer ELO"
-        assert elo["elo_padel_matches"] == 7
-
-    def test_recalculating_newest_tournament_updates_profile(self) -> None:
-        """Recalculating the most-recent tournament must still update the profile ELO."""
-        from backend.api.db import get_db
-
-        profile_id = "prof_sync_latest"
-        pid = "slp-pid-latest"
-        tid = "slp-t-latest"
-
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO player_profiles (id, passphrase, name, created_at) VALUES (?, ?, ?, datetime('now'))",
-                (profile_id, "slp-phrase-latest", "Latest Player"),
-            )
-            conn.execute(
-                "INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (tid, pid, "Latest Player", "slp-pp-latest", "slp-tok-latest", profile_id),
-            )
-
-        initialize_tournament_elos(tid, [pid])
-        upsert_tournament_elo(
-            tid,
-            [EloUpdate(player_id=pid, elo_before=1000, elo_after=1070, matches_before=0, matches_after=5)],
-        )
-        sync_live_elos_to_profiles(tid)
-        assert get_profile_elo(profile_id)["elo_padel"] == 1070.0
+            row = conn.execute(
+                "SELECT elo_padel, elo_padel_matches FROM player_profiles WHERE id = 'prof_retro'"
+            ).fetchone()
+        assert (row["elo_padel"], row["elo_padel_matches"]) == (990.0, 1)

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-// The Player Hub's chosen scope: '' (all my communities), `club:<id>` or `community:<id>`.
+// The Player Hub's chosen scope: `community:<id>` or `club:<id>` ('' until the Hub picks the first).
 // A store, not component state, so the phone tab bar (outside the Hub's outlet) can follow it.
 const SCOPE_KEY = 'padel-player-community';
 

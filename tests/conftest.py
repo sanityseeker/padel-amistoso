@@ -56,7 +56,6 @@ def _clean_state(tmp_path):
             elo_recalc_mod._pending_profiles,
             elo_recalc_mod._pending_whole_profiles,
             elo_recalc_mod._pending_tournaments,
-            elo_recalc_mod._pending_reseed,
         ):
             pending.clear()
     # Clear co-editor in-memory caches so stale entries don't leak between tests.

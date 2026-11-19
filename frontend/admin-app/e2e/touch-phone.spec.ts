@@ -145,8 +145,8 @@ test('picking a community keeps the page where it was', async ({ page, request }
   const before = await page.evaluate(() => scrollY);
   expect(before).toBeGreaterThan(0);
   const top = (await picker.boundingBox())!.y;
-  // With All my communities the Hub has already loaded South League for its rating card, so the
-  // pick may come from that cache without a new request.
+  // The Hub opens on the first community (North League); pick the other one.
+  await expect(picker).toHaveValue('North League');
   await picker.tap();
   await page.getByRole('option', { name: 'South League' }).tap();
   await expect(picker).toHaveValue('South League');

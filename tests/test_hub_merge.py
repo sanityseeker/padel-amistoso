@@ -162,9 +162,9 @@ class TestAdminHubMerge:
         assert _preview(client, alice_headers, a, b).status_code == 403
 
     def test_merge_recalculates_elo_across_the_combined_chain(self, client, auth_headers):
-        tid, ids = _play_mexicano(client, auth_headers)
         primary = _insert_profile("Ana")
-        _give_earlier_result(primary, elo_after=1300, matches=6)
+        earlier, _matches = _give_earlier_result(client, auth_headers, primary)
+        tid, ids = _play_mexicano(client, auth_headers)
         secondary = _insert_profile("Ana B")
         _link(client, auth_headers, secondary, tid, ids["Alice"])
         assert _elo_before(tid, ids["Alice"]) == 1000
@@ -172,7 +172,7 @@ class TestAdminHubMerge:
         assert _merge(client, auth_headers, primary, secondary).status_code == 200
 
         # The tournament now continues from the primary's earlier result.
-        assert _elo_before(tid, ids["Alice"]) == 1300
+        assert _elo_before(tid, ids["Alice"]) == earlier
         with db_mod.get_db() as conn:
             elo_after = conn.execute(
                 "SELECT elo_after FROM player_elo WHERE tournament_id = ? AND player_id = ?", (tid, ids["Alice"])

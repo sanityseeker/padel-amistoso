@@ -76,7 +76,8 @@ from .club_elo import (
     start_tournament_from_club_ratings,
 )
 from .elo_integration import elo_recalculate_tournament
-from .elo_store import delete_tournament_elos, tournaments_in_chronological_order
+from .community_elo import all_communities, replay_communities, replay_community
+from .elo_store import delete_tournament_elos
 from .leaderboard_cache import etag_for, get_mini_card_cached, invalidate_cards_after_scope_change
 from .player_card import HISTORY_DEFAULT_LIMIT, HISTORY_HARD_CAP
 from .tournament_card import build_tournament_player_card
@@ -170,10 +171,13 @@ async def set_tournament_community(tid: str, req: SetCommunityRequest, user: Use
                 conn, new_community_id, existing_club_id, existing_season_id
             )
 
+        old_community_id = _tournaments[tid].get("community_id") or "open"
         _tournaments[tid]["community_id"] = new_community_id
         _tournaments[tid]["club_id"] = existing_club_id
         _tournaments[tid]["season_id"] = existing_season_id
         await save_tournament(tid)
+        # The tournament's matches leave one community chain and join the other.
+        await asyncio.to_thread(replay_communities, {old_community_id, new_community_id or "open"})
     invalidate_cards_after_scope_change()
     return {
         "ok": True,
@@ -228,8 +232,9 @@ async def delete_tournament(
         del _tournaments[tournament_id]
         _delete_tournament(tournament_id)
         delete_tournament_elos(tournament_id)
+        # Later matches of the community (and its clubs) were rated against this tournament's results.
+        replay_community(t_data.get("community_id") or "open")
         if t_data.get("club_id"):
-            # Later club matches were rated against this tournament's results.
             recompute_club_elo(t_data["club_id"])
         purged: list[str] = []
         if purge_ghosts and ghost_ids:
@@ -429,8 +434,7 @@ async def recalculate_elo(
 
         sport = data.get("sport", "padel")
         moved = start_tournament_from_club_ratings(tid) if from_club_ratings else 0
-        # elo_recalculate_tournament re-seeds from earlier tournaments and rebuilds
-        # the affected profiles from their latest tournament internally.
+        # Replays the tournament's community chain (every tournament in it, in play order).
         elo_recalculate_tournament(tid)
 
         # Return diagnostic counts so the admin can verify completeness
@@ -443,28 +447,16 @@ async def recalculate_elo(
 
 @router.post("/elo/recalculate-all")
 async def recalculate_all_elo(user: User = Depends(get_current_user)) -> dict:
-    """Recalculate ELO for every tournament in chronological order.
-
-    Replays each tournament in ``finished_at`` order through the composable
-    per-tournament recalculation, so profile ratings converge to the exact
-    cumulative result of a single global re-run.  Site-admin only.
-    """
+    """Replay every community's rating chain, then every club's.  Site-admin only."""
     if user.role != UserRole.ADMIN:
         raise HTTPException(403, "Admin only")
 
-    ordered_tids = await asyncio.to_thread(tournaments_in_chronological_order)
-
-    recalculated = 0
-    # Replay each club's own rating chain once, after all its tournaments.
+    communities = all_communities()
+    # Replay each club's own rating chain once, after all communities.
     with deferred_club_elo():
-        for tid in ordered_tids:
-            async with state.get_tournament_lock(tid):
-                if tid not in _tournaments:
-                    continue
-                await asyncio.to_thread(elo_recalculate_tournament, tid)
-                recalculated += 1
+        await asyncio.to_thread(replay_communities, communities)
 
-    return {"ok": True, "recalculated_tournaments": recalculated, "total": len(ordered_tids)}
+    return {"ok": True, "recalculated_tournaments": len(_tournaments), "total": len(_tournaments)}
 
 
 @router.put("/{tid}/alias")

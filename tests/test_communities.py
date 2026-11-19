@@ -10,9 +10,8 @@ from backend.api.db import get_db
 from backend.api.elo_store import (
     get_profile_elo,
     get_profile_recent_elo_logs,
-    initialize_tournament_elos,
-    transfer_elo_to_profile,
-    upsert_tournament_elo,
+    refresh_profile_elo,
+    upsert_tournament_elo_log,
 )
 from backend.tournaments.elo import EloUpdate
 
@@ -261,12 +260,13 @@ class TestCommunityEloIsolation:
             )
 
     def test_elo_isolated_between_communities(self) -> None:
-        """A player's ELO in community A should not affect community B."""
+        """A player's ELO in community A does not affect community B, and B never mirrors into open."""
+        from backend.models import Match, MatchStatus, Player
+
         profile_id = "prof_iso_1"
         tid_a = "tm_iso_a"
         tid_b = "tm_iso_b"
 
-        # Create a custom community
         with get_db() as conn:
             conn.execute(
                 "INSERT INTO communities (id, name, created_at) VALUES (?, ?, datetime('now'))",
@@ -277,34 +277,34 @@ class TestCommunityEloIsolation:
                 "VALUES (?, 'Iso Player', 'iso@test.com', '2025-01-01', 'alpha-beta-gamma')",
                 (profile_id,),
             )
+            for tid, pid in ((tid_a, "p1"), (tid_b, "p2")):
+                conn.execute(
+                    "INSERT INTO player_secrets (tournament_id, player_id, passphrase, token, profile_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (tid, pid, f"pp-{tid}", f"tok-{tid}", profile_id),
+                )
 
         self._seed_tournament_in_community(tid_a, "open")
         self._seed_tournament_in_community(tid_b, "cm_test_a")
 
-        # Simulate ELO changes in "open" community
-        initialize_tournament_elos(tid_a, ["p1"])
-        upsert_tournament_elo(
-            tid_a,
-            [EloUpdate(player_id="p1", elo_before=1000, elo_after=1060, matches_before=0, matches_after=1)],
-        )
-        transfer_elo_to_profile(profile_id, tid_a, "p1")
+        def rate(tid: str, pid: str, after: float, minute: int) -> None:
+            match = Match(
+                id=f"{tid}-m",
+                team1=[Player(id=pid, name="Iso")],
+                team2=[Player(id=f"{tid}-x", name="X")],
+                status=MatchStatus.COMPLETED,
+                score=(6, 3),
+            )
+            update = EloUpdate(player_id=pid, elo_before=1000, elo_after=after, matches_before=0, matches_after=1)
+            upsert_tournament_elo_log(tid, match, [update], "padel", updated_at=f"2026-01-01T00:{minute:02d}:00+00:00")
 
-        # Simulate ELO changes in "cm_test_a" community
-        initialize_tournament_elos(tid_b, ["p2"])
-        upsert_tournament_elo(
-            tid_b,
-            [EloUpdate(player_id="p2", elo_before=1000, elo_after=940, matches_before=0, matches_after=1)],
-        )
-        transfer_elo_to_profile(profile_id, tid_b, "p2")
+        rate(tid_a, "p1", 1060, 1)  # open
+        rate(tid_b, "p2", 940, 2)  # cm_test_a, played later
+        refresh_profile_elo(profile_id)
 
-        # New global-mirror model: "open" (global) reflects the most recent tournament
-        # across all communities.  After playing in cm_test_a (elo=940), the global ELO
-        # is mirrored to 940.  The cm_test_a community keeps its own independent ELO.
-        open_elo = get_profile_elo(profile_id, community_id="open")
-        assert open_elo["elo_padel"] == 940.0  # mirrored from cm_test_a (most recent)
-
-        cm_a_elo = get_profile_elo(profile_id, community_id="cm_test_a")
-        assert cm_a_elo["elo_padel"] == 940.0
+        # Each community keeps its own chain; the later cm_test_a result is not mirrored into open.
+        assert get_profile_elo(profile_id, community_id="open")["elo_padel"] == 1060.0
+        assert get_profile_elo(profile_id, community_id="cm_test_a")["elo_padel"] == 940.0
 
     def test_elo_logs_filtered_by_community(self) -> None:
         """get_profile_recent_elo_logs should filter by community when specified."""

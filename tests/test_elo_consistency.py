@@ -3,12 +3,13 @@
 Guards against the admin panel, the Player Hub headers / chips and the
 leaderboards disagreeing about how many rated matches a profile has played or
 what its current rating is.  Each scenario drives the real store functions the
-score routes call (seed → update → log → sync → finish) rather than inserting
+score routes call (seed → update → log → profile refresh → finish) rather than inserting
 pre-cooked rows, so the numbers reflect the actual write path.
 """
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -21,7 +22,7 @@ from backend.api.elo_store import (
     get_tournament_elos,
     get_tournament_match_counts,
     initialize_tournament_elos,
-    sync_live_elos_to_profiles,
+    refresh_profile_elo,
     upsert_tournament_elo,
     upsert_tournament_elo_log,
 )
@@ -32,9 +33,18 @@ from backend.api.rating_scope import RatingScope, resolve_scope, scope_stats
 from backend.api.state import _tournaments
 from backend.models import Match, MatchStatus, Player
 from backend.tournaments.elo import compute_match_elo_updates
-from tests.test_elo_recalc_continuity import _insert_profile, _link_player
+from tests.test_elo_recalc_continuity import _insert_profile
 
 _BASE_TS = 1_700_000_000
+
+
+def _link_player(tid: str, player_id: str, profile_id: str) -> None:
+    with db_mod.get_db() as conn:
+        conn.execute(
+            """INSERT INTO player_secrets (tournament_id, player_id, player_name, passphrase, token, profile_id)
+               VALUES (?, ?, 'P', ?, ?, ?)""",
+            (tid, player_id, f"ps-{uuid.uuid4().hex[:10]}", uuid.uuid4().hex, profile_id),
+        )
 
 
 def _insert_tournament(
@@ -74,7 +84,13 @@ def _play_and_finish(tid: str, pid: str, n_matches: int, ts_base: int) -> None:
         ts = datetime.fromtimestamp(match.scored_at, tz=timezone.utc).isoformat()
         upsert_tournament_elo(tid, updates, "padel", updated_at=ts)
         upsert_tournament_elo_log(tid, match, updates, "padel", match_order=i + 1, updated_at=ts)
-        sync_live_elos_to_profiles(tid, "padel")
+    # Profile ratings are read off the logged matches (the community chain).
+    with db_mod.get_db() as conn:
+        linked = conn.execute(
+            "SELECT profile_id FROM player_secrets WHERE tournament_id = ? AND profile_id IS NOT NULL", (tid,)
+        ).fetchall()
+    for row in linked:
+        refresh_profile_elo(row["profile_id"])
     finished_at = datetime.fromtimestamp(ts_base + n_matches * 60, tz=timezone.utc).isoformat()
     with db_mod.get_db() as conn:
         conn.execute(

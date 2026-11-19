@@ -429,11 +429,15 @@ test('on a club subdomain the Hub shows only the sports the player has in that c
   expect(linked.ok()).toBeTruthy();
   const hub = `#token=${encodeURIComponent(profile.access_token)}`;
 
-  // The main site has both sports, so the toggle shows.
+  // The main site opens on the club's community (tennis only); ratings never mix communities, so
+  // the padel event is under the open community.
   await page.goto(`/player${hub}`);
-  // All sports: one rating card per sport.
-  await expect(page.getByTestId('player-card')).toHaveCount(2);
-  await expect(page.getByTestId('hub-filters').getByRole('radio')).toHaveCount(3);
+  await expect(page.getByTestId('player-card')).toHaveCount(1);
+  await expect(page.getByTestId('player-card')).toContainText('Tennis rating');
+  const picker = page.locator('input[aria-label="Player stats scope"]');
+  await picker.click();
+  await page.getByRole('option', { name: 'Open community' }).click();
+  await expect(page.getByTestId('player-card')).toContainText('Padel rating');
 
   // The club has tennis only: no toggle, tennis everywhere, even with padel saved.
   await page.evaluate(() => localStorage.setItem('padel-player-sport', 'padel'));

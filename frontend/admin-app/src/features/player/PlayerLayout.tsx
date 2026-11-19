@@ -194,7 +194,21 @@ export function PlayerLayout() {
   // The dots follow the pages, so they count only the entries the picked scope shows.
   const dots = useDots(query.data, query.data?.entries ?? [], !!token && !linkBusy, clubEntries);
 
-  if (linkBusy || (token && (query.isPending || hostClub.isPending))) return <Loading />;
+  // Ratings never mix communities, so there is no "all communities" view: a scope that is not one of
+  // the player's communities or clubs (none picked yet, or one they left) moves to the first community.
+  const options = query.data ? scopeOptionsOf(query.data) : null;
+  const needsScope =
+    !!options &&
+    !hostClub.data &&
+    !query.isPlaceholderData &&
+    !options.some((o) => o.value === scope);
+  const firstScope = options?.[0]?.value;
+  useEffect(() => {
+    if (needsScope && firstScope) setPlayerScope(firstScope);
+  }, [needsScope, firstScope]);
+
+  if (linkBusy || needsScope || (token && (query.isPending || hostClub.isPending)))
+    return <Loading />;
   if (!token)
     return (
       <>
@@ -213,11 +227,7 @@ export function PlayerLayout() {
       </PageContainer>
     );
   const space = query.data;
-  const scopeOptions = [
-    { value: '', label: tx('All my communities') },
-    ...space.player_clubs.map((c) => ({ value: `club:${c.id}`, label: c.name })),
-    ...space.player_communities.map((c) => ({ value: `community:${c.id}`, label: c.name })),
-  ];
+  const scopeOptions = scopeOptionsOf(space);
   const host = hostClub.data;
   if (host && !scopeOptions.some((s) => s.value === `club:${host.club_id}`))
     scopeOptions.push({ value: `club:${host.club_id}`, label: host.name });
@@ -356,4 +366,16 @@ export function PlayerLayout() {
       {linking && <LinkEvent close={() => setLinking(false)} />}
     </PageContainer>
   );
+}
+
+/** The Hub's scopes: the player's communities (the open one when they play there, or when they have
+    nothing else), then their clubs. The first is the default. */
+function scopeOptionsOf(space: Space): { value: string; label: string }[] {
+  const communities = space.player_communities.map((c) => ({
+    value: `community:${c.id}`,
+    label: c.id === 'open' ? tx('Open community') : c.name,
+  }));
+  const clubs = space.player_clubs.map((c) => ({ value: `club:${c.id}`, label: c.name }));
+  const options = [...communities, ...clubs];
+  return options.length ? options : [{ value: 'community:open', label: tx('Open community') }];
 }

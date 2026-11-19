@@ -2241,24 +2241,35 @@ def _leaderboard_for_sport(
 
 
 def _get_player_communities(profile_id: str) -> list[dict]:
-    """Return the list of non-builtin communities the player has played in.
+    """Return the communities the player takes part in, by name (the open one last).
 
-    Queries *profile_community_elo* for entries with at least one match
-    and joins with *communities* to get the name.  Excludes the built-in
-    global community (id='open').
+    A community counts when the player has a rated match there or a linked
+    tournament or registration in it.  The Hub has no all-communities view, so
+    every community holding one of the player's events must be a choice --
+    including the built-in open community.
     """
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT DISTINCT c.id, c.name
-              FROM profile_community_elo pce
-              JOIN communities c ON c.id = pce.community_id
-             WHERE pce.profile_id = ?
-               AND pce.community_id != 'open'
-               AND pce.matches > 0
-             ORDER BY c.name
+            SELECT c.id, c.name
+              FROM communities c
+             WHERE c.id IN (
+                   SELECT community_id FROM profile_community_elo WHERE profile_id = ? AND matches > 0
+                   UNION
+                   SELECT t.community_id FROM tournaments t
+                     JOIN player_secrets ps ON ps.tournament_id = t.id
+                    WHERE ps.profile_id = ?
+                   UNION
+                   SELECT ph.community_id FROM player_history ph
+                    WHERE ph.profile_id = ? AND ph.entity_type = 'tournament'
+                   UNION
+                   SELECT r.community_id FROM registrations r
+                     JOIN registrants rg ON rg.registration_id = r.id
+                    WHERE rg.profile_id = ?
+                 )
+             ORDER BY c.id = 'open', c.name
             """,
-            (profile_id,),
+            (profile_id, profile_id, profile_id, profile_id),
         ).fetchall()
     return [{"id": r["id"], "name": r["name"]} for r in rows]
 
@@ -3096,10 +3107,9 @@ async def unlink_participation(
             " WHERE profile_id = ? AND entity_type = 'tournament' AND entity_id = ?",
             (pid, tid),
         )
-    player_ids = list(dict.fromkeys(r["player_id"] for r in (*secret_rows, *history_rows)))
     is_finished = bool(history_rows) or any(r["finished_at"] is not None for r in secret_rows)
 
-    mark_elo_dirty([pid], [tid], player_ids)
+    mark_elo_dirty([pid], [tid])
     if secret_rows:
         bump_tournament_version(tid)
     if not is_finished:
@@ -3166,7 +3176,7 @@ async def link_participation(
                 (identity.profile_id, resolved_tid, row["player_id"]),
             )
         if previous["profile_id"] != identity.profile_id:
-            mark_elo_dirty([previous["profile_id"], identity.profile_id], [resolved_tid], [row["player_id"]])
+            mark_elo_dirty([previous["profile_id"], identity.profile_id], [resolved_tid])
 
         if row["finished_at"]:
             # Tournament already finished — backfill history and return a finished entry.
