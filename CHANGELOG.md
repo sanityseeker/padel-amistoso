@@ -1,3 +1,9 @@
+## v3.14.0 (2026-11-20)
+
+### Feat
+
+- export group stages as cross tables
+
 ## v3.13.2 (2026-11-19)
 
 ### Fix
