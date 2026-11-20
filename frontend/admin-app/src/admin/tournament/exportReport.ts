@@ -56,19 +56,25 @@ function scoreCell(m: Match, decider: Decider): Cell {
     : m.score
       ? `${m.score[0]}-${m.score[1]}`
       : '—';
-  if (m.walkover) return { html: `${esc(text)}<span class="wo">${esc(tx('Walkover'))}</span>` };
-  if (m.disputed) return `${text} (${tx('Disputed')})`;
-  if (m.score && m.scored_by && !m.score_confirmed) return `${text} (${tx('Unconfirmed')})`;
-  return text;
+  // Keep each set on one line, so a narrow column breaks between sets, never inside one.
+  const html = text
+    .split(', ')
+    .map((set) => `<span class="nw">${esc(set)}</span>`)
+    .join(', ');
+  if (m.walkover) return { html: `${html}<span class="wo">${esc(tx('Walkover'))}</span>` };
+  if (m.disputed) return { html: `${html} ${esc(`(${tx('Disputed')})`)}` };
+  if (m.score && m.scored_by && !m.score_confirmed)
+    return { html: `${html} ${esc(`(${tx('Unconfirmed')})`)}` };
+  return { html };
 }
 
 function table(headers: string[], rows: Cell[][], cls = '') {
   const cell = (c: Cell) => (typeof c === 'object' ? c.html : esc(c));
-  return `<table${cls ? ` class="${cls}"` : ''}><thead><tr>${headers
+  return `<div class="scroll"><table${cls ? ` class="${cls}"` : ''}><thead><tr>${headers
     .map((h) => `<th>${esc(h)}</th>`)
     .join('')}</tr></thead><tbody>${rows
     .map((r) => `<tr>${r.map((c) => `<td>${cell(c)}</td>`).join('')}</tr>`)
-    .join('')}</tbody></table>`;
+    .join('')}</tbody></table></div>`;
 }
 
 interface TableContext {
@@ -266,7 +272,7 @@ function crossTable(
       )}</td>${elo ? `<td>${esc(eloCell(r))}</td>` : ''}</tr>`;
     })
     .join('');
-  return `<table class="cross"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<div class="scroll"><table class="cross"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function leaderboardTable(
@@ -316,7 +322,7 @@ function championBox(status: TournamentStatus) {
 }
 
 // The report loads no stylesheet: light-mode colours are inlined.
-const STYLE = `body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:24px;color:#1f2937}h1{margin:0 0 8px}h2{margin:24px 0 8px;color:#1a5fa3}h3{margin:16px 0 6px}.muted{color:#6b7280;font-size:.92rem;margin-bottom:16px}.champ{margin:12px 0 18px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px}table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:.9rem}th{background:#f3f4f6}table.standings{table-layout:fixed}table.standings th:first-child{width:28%}.wo{margin-left:6px;padding:0 4px;border:1px solid #b45309;border-radius:4px;color:#92400e;font-size:.75em;font-weight:600;white-space:nowrap}@page{size:A4 landscape}table.cross th,table.cross td{text-align:center;padding:6px 4px;vertical-align:middle}table.cross .name{text-align:left;width:22%}table.cross .cell{min-width:56px;height:40px;font-variant-numeric:tabular-nums}table.cross .self{background:#e5e7eb}table.cross .win{background:#ecfdf5;font-weight:600}table.cross .loss{color:#4b5563}table.cross hr{border:0;border-top:1px solid #d1d5db;margin:4px 0}table.cross .wo{display:block;margin:2px 0 0}.flag{display:block;color:#92400e;font-size:.7em}table.cross{break-inside:avoid}img{width:100%;height:auto}h2,h3{break-after:avoid}tr{break-inside:avoid}`;
+const STYLE = `body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:24px;color:#1f2937}h1{margin:0 0 8px}h2{margin:24px 0 8px;color:#1a5fa3}h3{margin:16px 0 6px}.muted{color:#6b7280;font-size:.92rem;margin-bottom:16px}.champ{margin:12px 0 18px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px}table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:.9rem}th{background:#f3f4f6}table.standings{table-layout:fixed}table.standings th:first-child{width:28%}.wo{margin-left:6px;padding:0 4px;border:1px solid #b45309;border-radius:4px;color:#92400e;font-size:.75em;font-weight:600;white-space:nowrap}@page{size:A4 landscape}table.cross th,table.cross td{text-align:center;padding:6px 4px;vertical-align:middle}table.cross .name{text-align:left;width:22%}table.cross .cell{min-width:56px;height:40px;font-variant-numeric:tabular-nums}table.cross .self{background:#e5e7eb}table.cross .win{background:#ecfdf5;font-weight:600}table.cross .loss{color:#4b5563}table.cross hr{border:0;border-top:1px solid #d1d5db;margin:4px 0}table.cross .wo{display:block;margin:2px 0 0}.nw{white-space:nowrap}.flag{display:block;color:#92400e;font-size:.7em}table.cross{break-inside:avoid}img{width:100%;height:auto}h2,h3{break-after:avoid}tr{break-inside:avoid}.scroll{overflow-x:auto}@media print{.scroll{overflow:visible}}@media (max-width:600px){table.cross .cell{min-width:44px;height:auto}th,td{padding:6px 4px}body{margin:12px}}`;
 
 export interface BracketImage {
   label: string;

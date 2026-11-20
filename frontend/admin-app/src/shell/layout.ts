@@ -46,6 +46,8 @@ export function useAdminRoute(): AdminRoute {
   if (pathname === '/admin/new') return { section: 'new', title: tx('New tournament'), deep: true };
   if (pathname === '/admin/clubs')
     return { section: 'clubs', title: tx('Clubs & communities'), deep: false };
+  if (pathname.startsWith('/admin/communities/'))
+    return { section: 'clubs', title: tx('Rating summary'), deep: true };
   if (pathname.startsWith('/admin/clubs/'))
     return { section: 'clubs', title: tx('Clubs & communities'), deep: true };
   if (pathname === '/admin/players' || pathname.startsWith('/admin/players/'))

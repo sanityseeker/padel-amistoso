@@ -81,7 +81,7 @@
   "Copied": "Copiado",
   "Registration lobby": "Inscripción",
   "Score": "resultado",
-  "Change": "Cambiar",
+  "Change": "Cambio",
   "Rating": "Rating",
   "player": "jugador",
   "Your name": "Tu nombre",
@@ -2096,5 +2096,6 @@
   "All rated matches": "Todos los partidos puntuados",
   "A season sets its own dates.": "Una temporada fija sus propias fechas.",
   "Show groups as cross tables": "Mostrar los grupos como tablas cruzadas",
-  "Scores where two entries meet; unplayed matches stay empty.": "El resultado está donde se cruzan dos participantes; los partidos sin jugar quedan vacíos."
+  "Scores where two entries meet; unplayed matches stay empty.": "El resultado está donde se cruzan dos participantes; los partidos sin jugar quedan vacíos.",
+  "Games played · share won": "Partidos jugados · % ganado"
 }

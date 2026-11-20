@@ -8,7 +8,6 @@ import {
   Select,
   SimpleGrid,
   Stack,
-  Table,
   Tabs,
   Text,
   Title,
@@ -23,7 +22,7 @@ import { publicApi, publicEventUrl, type PublicEvent } from '../../events/api';
 import { t as tx, useLocale } from '../../i18n';
 import { PLAYER_TOKEN, playerApi } from '../../player/api';
 import { sportProps } from '../../theme';
-import { EmptyState, EventCodeFinder, EventRow, SportMark, StatusBadge } from '../../ui';
+import { DataTable, EmptyState, EventCodeFinder, EventRow, SportMark, StatusBadge } from '../../ui';
 import { hostClubSlug } from '../public/meta';
 import { StandingsTable, type StandingRow } from '../tournaments';
 import { Notice } from '../../ui/Notice';
@@ -211,50 +210,77 @@ function SeasonBoard({
   if (!rows.length) return <Text c="dimmed">{tx('No players have played a match yet.')}</Text>;
   const sorted = [...rows].sort((a, b) => (b.elo_end ?? 0) - (a.elo_end ?? 0));
   return (
-    <Table.ScrollContainer minWidth={0}>
-      <Table verticalSpacing="sm">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>#</Table.Th>
-            <Table.Th>{tx('Player')}</Table.Th>
-            <Table.Th>{tx('Club ELO')}</Table.Th>
-            <Table.Th>{tx('Change')}</Table.Th>
-            <Table.Th>{tx('Matches')}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {sorted.map((s, i) => {
-            const change = s.elo_change;
-            return (
-              <Table.Tr key={s.player_name + i}>
-                <Table.Td>{i + 1}</Table.Td>
-                <Table.Td>
-                  {onCard && s.profile_id ? (
-                    <UnstyledButton
-                      fz="inherit"
-                      onClick={() => onCard({ profileId: s.profile_id!, sport, seasonId })}
-                    >
-                      {s.player_name}
-                    </UnstyledButton>
-                  ) : (
-                    s.player_name
-                  )}
-                </Table.Td>
-                <Table.Td>{s.elo_end == null ? '—' : Math.round(s.elo_end)}</Table.Td>
-                <Table.Td
-                  c={
-                    change == null ? 'dimmed' : change > 0 ? 'green' : change < 0 ? 'red' : 'dimmed'
-                  }
+    <DataTable
+      rows={sorted.map((s, i) => ({ ...s, rank: i + 1 }))}
+      rowKey={(s) => s.player_name + s.rank}
+      onRowClick={
+        onCard
+          ? (s) => {
+              if (s.profile_id) onCard({ profileId: s.profile_id, sport, seasonId });
+            }
+          : undefined
+      }
+      columns={[
+        {
+          key: 'player',
+          label: tx('Player'),
+          cell: (s) => (
+            <Group gap={8} wrap="nowrap" align="center">
+              <Text span c="dimmed" inherit miw="1.5em">
+                {s.rank}
+              </Text>
+              {onCard && s.profile_id ? (
+                <UnstyledButton
+                  fz="inherit"
+                  ta="left"
+                  onClick={(e) => {
+                    // The row opens the card too (the larger tap target); open it once.
+                    e.stopPropagation();
+                    onCard({ profileId: s.profile_id!, sport, seasonId });
+                  }}
                 >
-                  {change == null ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(1)}`}
-                </Table.Td>
-                <Table.Td>{s.matches_played ?? '—'}</Table.Td>
-              </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+                  {s.player_name}
+                </UnstyledButton>
+              ) : (
+                s.player_name
+              )}
+            </Group>
+          ),
+        },
+        {
+          key: 'elo',
+          label: tx('Club ELO'),
+          kind: 'num',
+          chars: 4,
+          cell: (s) => (s.elo_end == null ? '\u2014' : Math.round(s.elo_end)),
+        },
+        {
+          key: 'change',
+          label: tx('Change'),
+          kind: 'num',
+          chars: 5,
+          minWidth: 300,
+          tone: (s) =>
+            s.elo_change == null || s.elo_change === 0
+              ? 'dimmed'
+              : s.elo_change > 0
+                ? 'green'
+                : 'red',
+          cell: (s) =>
+            s.elo_change == null
+              ? '\u2014'
+              : `${s.elo_change > 0 ? '+' : ''}${s.elo_change.toFixed(1)}`,
+        },
+        {
+          key: 'matches',
+          label: tx('Matches'),
+          kind: 'num',
+          chars: 3,
+          minWidth: 360,
+          cell: (s) => s.matches_played ?? '\u2014',
+        },
+      ]}
+    />
   );
 }
 

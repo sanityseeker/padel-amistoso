@@ -83,7 +83,7 @@ export const components: MantineThemeComponents = {
     classNames: { root: classes.segmentedRoot, indicator: classes.segmentedIndicator },
   }),
   Table: Table.extend({
-    classNames: { table: classes.table, thead: classes.thead, th: classes.th },
+    classNames: { table: classes.table, thead: classes.thead, th: classes.th, td: classes.td },
   }),
   Tabs: Tabs.extend({ classNames: { tab: classes.tab, list: classes.tabList } }),
   Title: Title.extend({

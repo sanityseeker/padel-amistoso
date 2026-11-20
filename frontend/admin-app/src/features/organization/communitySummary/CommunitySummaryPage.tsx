@@ -2,13 +2,13 @@ import { useState } from 'react';
 import {
   ActionIcon,
   Button,
+  Box,
   Collapse,
   Group,
   Paper,
   Select,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -20,7 +20,17 @@ import { ErrorState, Loading, useOverview } from '../../../components';
 import { t as tx, useLocale } from '../../../i18n';
 import type { Season } from '../../../types';
 import { sportProps } from '../../../theme/sport';
-import { EmptyState, MutationError, Notice, PageHeader, Section, StatTile } from '../../../ui';
+import {
+  DataTable,
+  type DataColumn,
+  EmptyState,
+  MutationError,
+  Notice,
+  PageHeader,
+  Section,
+  SportMark,
+  StatTile,
+} from '../../../ui';
 import { useAdminMutation } from '../../../useAdminMutation';
 import type {
   ClubEloSummary,
@@ -45,7 +55,7 @@ function nextDay(date: string): string {
 
 function Totals({ totals, sport }: { totals: EloChangeTotals; sport?: string }) {
   return (
-    <SimpleGrid cols={{ base: 2, sm: 5 }} spacing="md" {...sportProps(sport)}>
+    <SimpleGrid cols={{ base: 3, sm: 5 }} spacing="md" {...sportProps(sport)}>
       <StatTile
         label={tx('Points gained')}
         value={
@@ -69,6 +79,120 @@ function Totals({ totals, sport }: { totals: EloChangeTotals; sport?: string }) 
   );
 }
 
+interface SummaryRow {
+  id: string;
+  name: string;
+  dim?: boolean;
+  gained: number;
+  lost: number;
+  net: number;
+  matches: number;
+  elo: number | null;
+}
+
+/** Net always shows; the rest drop out by the table's width, so a phone never scrolls sideways. */
+const clubColumns = (): DataColumn<SummaryRow>[] => [
+  {
+    key: 'name',
+    label: tx('Player'),
+    cell: (r) =>
+      r.dim ? (
+        <Text span c="dimmed" inherit>
+          {r.name}
+        </Text>
+      ) : (
+        r.name
+      ),
+  },
+  {
+    key: 'gained',
+    label: tx('Points gained'),
+    kind: 'num',
+    chars: 6,
+    minWidth: 520,
+    tone: () => 'success',
+    cell: (r) => fmt(r.gained),
+  },
+  {
+    key: 'lost',
+    label: tx('Points lost'),
+    kind: 'num',
+    chars: 6,
+    minWidth: 520,
+    tone: () => 'red',
+    cell: (r) => fmt(r.lost),
+  },
+  {
+    key: 'net',
+    label: tx('Net change'),
+    kind: 'num',
+    chars: 6,
+    bold: true,
+    tone: (r) => tone(r.net),
+    cell: (r) => fmt(r.net),
+  },
+  {
+    key: 'matches',
+    label: tx('Matches'),
+    kind: 'num',
+    chars: 3,
+    minWidth: 390,
+    cell: (r) => r.matches,
+  },
+  {
+    key: 'elo',
+    label: tx('Rating now'),
+    kind: 'num',
+    chars: 4,
+    minWidth: 320,
+    cell: (r) => (r.elo != null ? Math.round(r.elo) : '-'),
+  },
+];
+
+interface CrossRow extends CrossClubPlayer {
+  id: string;
+}
+
+const crossColumns = (): DataColumn<CrossRow>[] => [
+  { key: 'name', label: tx('Player'), cell: (r) => r.name },
+  { key: 'clubs', label: tx('Clubs'), kind: 'num', chars: 2, minWidth: 440, cell: (r) => r.clubs },
+  {
+    key: 'gained',
+    label: tx('Points gained'),
+    kind: 'num',
+    chars: 6,
+    minWidth: 520,
+    tone: () => 'success',
+    cell: (r) => fmt(r.gained),
+  },
+  {
+    key: 'lost',
+    label: tx('Points lost'),
+    kind: 'num',
+    chars: 6,
+    minWidth: 520,
+    tone: () => 'red',
+    cell: (r) => fmt(r.lost),
+  },
+  {
+    key: 'net',
+    label: tx('Net change'),
+    kind: 'num',
+    chars: 6,
+    bold: true,
+    tone: (r) => tone(r.net),
+    cell: (r) => fmt(r.net),
+  },
+  {
+    key: 'matches',
+    label: tx('Matches'),
+    kind: 'num',
+    chars: 3,
+    minWidth: 390,
+    cell: (r) => r.matches,
+  },
+];
+
 function ClubBlock({ entry }: { entry: ClubEloSummary }) {
   useLocale();
   const [open, setOpen] = useState(false);
@@ -78,6 +202,26 @@ function ClubBlock({ entry }: { entry: ClubEloSummary }) {
     success: 'Club ratings recalculated',
   });
   const label = tx(open ? 'Hide players' : 'Show players');
+  const rows: SummaryRow[] = entry.players.map((p) => ({
+    id: String(p.profile_id),
+    name: p.name,
+    gained: p.gained,
+    lost: p.lost,
+    net: p.net,
+    matches: p.matches,
+    elo: p.elo_now ?? null,
+  }));
+  if (entry.unlinked.players > 0)
+    rows.push({
+      id: 'unlinked',
+      name: `${tx('Unlinked players')} (${entry.unlinked.players})`,
+      dim: true,
+      gained: entry.unlinked.gained,
+      lost: entry.unlinked.lost,
+      net: entry.unlinked.net,
+      matches: entry.unlinked.matches,
+      elo: null,
+    });
   return (
     <Paper variant="row" p="md" data-testid="summary-club" {...sportProps(entry.sport)}>
       <Stack gap="sm">
@@ -121,58 +265,15 @@ function ClubBlock({ entry }: { entry: ClubEloSummary }) {
           </Notice>
         )}
         <Collapse expanded={open}>
-          <Table.ScrollContainer minWidth={460}>
-            <Table verticalSpacing="xs" horizontalSpacing="md">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{tx('Player')}</Table.Th>
-                  <Table.Th ta="right">{tx('Points gained')}</Table.Th>
-                  <Table.Th ta="right">{tx('Points lost')}</Table.Th>
-                  <Table.Th ta="right">{tx('Net change')}</Table.Th>
-                  <Table.Th ta="right">{tx('Matches')}</Table.Th>
-                  <Table.Th ta="right">{tx('Rating now')}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {entry.players.map((p) => (
-                  <Table.Tr key={p.profile_id}>
-                    <Table.Td>{p.name}</Table.Td>
-                    <Table.Td ta="right" c="success">
-                      {fmt(p.gained)}
-                    </Table.Td>
-                    <Table.Td ta="right" c="red">
-                      {fmt(p.lost)}
-                    </Table.Td>
-                    <Table.Td ta="right" fw={600} c={tone(p.net)}>
-                      {fmt(p.net)}
-                    </Table.Td>
-                    <Table.Td ta="right">{p.matches}</Table.Td>
-                    <Table.Td ta="right">
-                      {p.elo_now != null ? Math.round(p.elo_now) : '-'}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-                {entry.unlinked.players > 0 && (
-                  <Table.Tr>
-                    <Table.Td c="dimmed">
-                      {tx('Unlinked players')} ({entry.unlinked.players})
-                    </Table.Td>
-                    <Table.Td ta="right" c="success">
-                      {fmt(entry.unlinked.gained)}
-                    </Table.Td>
-                    <Table.Td ta="right" c="red">
-                      {fmt(entry.unlinked.lost)}
-                    </Table.Td>
-                    <Table.Td ta="right" fw={600} c={tone(entry.unlinked.net)}>
-                      {fmt(entry.unlinked.net)}
-                    </Table.Td>
-                    <Table.Td ta="right">{entry.unlinked.matches}</Table.Td>
-                    <Table.Td ta="right">-</Table.Td>
-                  </Table.Tr>
-                )}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+          {/* On phones the table uses the card's full width. */}
+          <Box mx={{ base: 'calc(var(--mantine-spacing-md) * -1)', sm: 0 }}>
+            <DataTable
+              columns={clubColumns()}
+              rows={rows}
+              rowKey={(r) => r.id}
+              testId="summary-club-table"
+            />
+          </Box>
         </Collapse>
       </Stack>
     </Paper>
@@ -187,40 +288,14 @@ function CrossClub({ rows }: { rows: CrossClubPlayer[] }) {
         'Total across the clubs of this community, for players with rated matches in two or more.',
       )}
     >
-      <Table.ScrollContainer minWidth={460}>
-        <Table verticalSpacing="xs" horizontalSpacing="md" data-testid="cross-club">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{tx('Player')}</Table.Th>
-              <Table.Th>{tx('Sport')}</Table.Th>
-              <Table.Th ta="right">{tx('Clubs')}</Table.Th>
-              <Table.Th ta="right">{tx('Points gained')}</Table.Th>
-              <Table.Th ta="right">{tx('Points lost')}</Table.Th>
-              <Table.Th ta="right">{tx('Net change')}</Table.Th>
-              <Table.Th ta="right">{tx('Matches')}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {rows.map((p) => (
-              <Table.Tr key={`${p.profile_id}:${p.sport}`} {...sportProps(p.sport)}>
-                <Table.Td>{p.name}</Table.Td>
-                <Table.Td c="var(--sport-accent)">{sportLabel(p.sport)}</Table.Td>
-                <Table.Td ta="right">{p.clubs}</Table.Td>
-                <Table.Td ta="right" c="success">
-                  {fmt(p.gained)}
-                </Table.Td>
-                <Table.Td ta="right" c="red">
-                  {fmt(p.lost)}
-                </Table.Td>
-                <Table.Td ta="right" fw={600} c={tone(p.net)}>
-                  {fmt(p.net)}
-                </Table.Td>
-                <Table.Td ta="right">{p.matches}</Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      <DataTable
+        columns={crossColumns()}
+        rows={rows.map((p) => ({ ...p, id: `${p.profile_id}:${p.sport}` }))}
+        rowKey={(r) => r.id}
+        testId="cross-club"
+        rowProps={(r) => sportProps(r.sport)}
+        sub={(r) => <SportMark sport={r.sport} size="xs" />}
+      />
     </Section>
   );
 }

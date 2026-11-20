@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   ActionIcon,
+  Anchor,
   Avatar,
   Badge,
   Button,
@@ -23,6 +24,7 @@ import {
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
+import { useMediaQuery } from '@mantine/hooks';
 import { Link } from 'react-router-dom';
 import { preloadProps } from '../../app/routes';
 import { write } from '../../api';
@@ -94,6 +96,35 @@ export function OrganizationPage() {
       : sheet?.kind === 'rename'
         ? tx('Rename community')
         : tx('Create community');
+  const communityMenu = (c: Community) => (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>
+        <ActionIcon aria-label={tx('Options for {name}', { name: c.name })}>
+          <IconDots size={18} />
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          leftSection={<IconPencil size={15} />}
+          onClick={() => open({ kind: 'rename', community: c }, c.name)}
+        >
+          {tx('Rename')}
+        </Menu.Item>
+        <Menu.Item
+          color="red"
+          leftSection={<IconTrash size={15} />}
+          onClick={() => {
+            remove.reset();
+            setDeleting(c);
+          }}
+        >
+          {tx('Delete')}
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+  const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
+
   return (
     <Stack gap="xl">
       <PageHeader
@@ -167,79 +198,81 @@ export function OrganizationPage() {
           </Stack>
           <Stack gap="sm" component="section" aria-label={tx('Communities')}>
             <Title order={2}>{tx('Communities')}</Title>
-            <Paper>
-              <Table.ScrollContainer minWidth={420}>
-                <Table verticalSpacing="md" horizontalSpacing="lg">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>{tx('Community')}</Table.Th>
-                      <Table.Th>{tx('Clubs')}</Table.Th>
-                      <Table.Th>{tx('Tournaments')}</Table.Th>
-                      <Table.Th w={1} aria-label={tx('Actions')} />
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {communities.data.map((c) => (
-                      <Table.Tr key={c.id}>
-                        <Table.Td>
-                          <Text fw={600} size="sm">
-                            {c.name}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          {clubs.data.filter((cl) => cl.community_id === c.id).length}
-                        </Table.Td>
-                        <Table.Td>
-                          {(tournaments.data ?? []).filter((t) => t.community_id === c.id).length}
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs" justify="flex-end" wrap="nowrap">
-                            <Button
-                              component={Link}
-                              to={`/admin/communities/${c.id}`}
-                              size="compact-sm"
-                              variant="default"
-                              {...preloadProps(`/admin/communities/${c.id}`)}
-                            >
-                              {tx('Rating summary')}
-                            </Button>
-                            {canManage(c) && (
-                              <Menu position="bottom-end" withinPortal>
-                                <Menu.Target>
-                                  <ActionIcon
-                                    aria-label={tx('Options for {name}', { name: c.name })}
-                                  >
-                                    <IconDots size={18} />
-                                  </ActionIcon>
-                                </Menu.Target>
-                                <Menu.Dropdown>
-                                  <Menu.Item
-                                    leftSection={<IconPencil size={15} />}
-                                    onClick={() => open({ kind: 'rename', community: c }, c.name)}
-                                  >
-                                    {tx('Rename')}
-                                  </Menu.Item>
-                                  <Menu.Item
-                                    color="red"
-                                    leftSection={<IconTrash size={15} />}
-                                    onClick={() => {
-                                      remove.reset();
-                                      setDeleting(c);
-                                    }}
-                                  >
-                                    {tx('Delete')}
-                                  </Menu.Item>
-                                </Menu.Dropdown>
-                              </Menu>
-                            )}
-                          </Group>
-                        </Table.Td>
+            {phone ? (
+              <Paper variant="list" role="list">
+                {communities.data.map((c) => (
+                  <Group key={c.id} role="listitem" justify="space-between" wrap="nowrap" p="sm">
+                    <Stack gap={2} miw={0}>
+                      <Text fw={600} size="sm" lineClamp={2}>
+                        {c.name}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {tx('Clubs')} {clubs.data.filter((cl) => cl.community_id === c.id).length}
+                        {' \u00b7 '}
+                        {tx('Tournaments')}{' '}
+                        {(tournaments.data ?? []).filter((t) => t.community_id === c.id).length}
+                      </Text>
+                      <Anchor
+                        component={Link}
+                        to={`/admin/communities/${c.id}`}
+                        size="sm"
+                        py={6}
+                        {...preloadProps(`/admin/communities/${c.id}`)}
+                      >
+                        {tx('Rating summary')}
+                      </Anchor>
+                    </Stack>
+                    {canManage(c) && communityMenu(c)}
+                  </Group>
+                ))}
+              </Paper>
+            ) : (
+              <Paper>
+                <Table.ScrollContainer minWidth={420}>
+                  <Table verticalSpacing="md" horizontalSpacing="lg">
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>{tx('Community')}</Table.Th>
+                        <Table.Th data-num>{tx('Clubs')}</Table.Th>
+                        <Table.Th data-num>{tx('Tournaments')}</Table.Th>
+                        <Table.Th w={1} aria-label={tx('Actions')} />
                       </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
-            </Paper>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {communities.data.map((c) => (
+                        <Table.Tr key={c.id}>
+                          <Table.Td>
+                            <Text fw={600} size="sm">
+                              {c.name}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td data-num>
+                            {clubs.data.filter((cl) => cl.community_id === c.id).length}
+                          </Table.Td>
+                          <Table.Td data-num>
+                            {(tournaments.data ?? []).filter((t) => t.community_id === c.id).length}
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap="xs" justify="flex-end" wrap="nowrap">
+                              <Button
+                                component={Link}
+                                to={`/admin/communities/${c.id}`}
+                                size="compact-sm"
+                                variant="default"
+                                {...preloadProps(`/admin/communities/${c.id}`)}
+                              >
+                                {tx('Rating summary')}
+                              </Button>
+                              {canManage(c) && communityMenu(c)}
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              </Paper>
+            )}
           </Stack>
           <DefaultCommunity communities={communities.data} />
         </>

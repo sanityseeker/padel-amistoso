@@ -84,6 +84,14 @@
 }
 .th {
   font-weight: 600;
+  white-space: nowrap;
+}
+/* Numbers line up on the right with figures of equal width; they never wrap. */
+.td[data-num],
+.th[data-num] {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
 }
 
 /* ---- Tabs: a ball-colored rule marks the active tab ------------------------------------------ */

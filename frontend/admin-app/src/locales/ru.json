@@ -81,7 +81,7 @@
   "Copied": "Скопировано",
   "Registration lobby": "Лобби регистрации",
   "Score": "Счёт",
-  "Change": "Изменить",
+  "Change": "Изменение",
   "Rating": "Рейтинг",
   "player": "игрок",
   "Your name": "Ваше имя",
@@ -2108,5 +2108,6 @@
   "All rated matches": "Все матчи с рейтингом",
   "A season sets its own dates.": "Даты задаёт сезон.",
   "Show groups as cross tables": "Показать группы в виде шахматки",
-  "Scores where two entries meet; unplayed matches stay empty.": "Счёт стоит на пересечении двух участников. Несыгранные матчи остаются пустыми."
+  "Scores where two entries meet; unplayed matches stay empty.": "Счёт стоит на пересечении двух участников. Несыгранные матчи остаются пустыми.",
+  "Games played · share won": "Сыграно матчей · доля побед"
 }

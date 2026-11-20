@@ -6,14 +6,13 @@ import {
   Select,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   TextInput,
 } from '@mantine/core';
 import { IconSearch, IconTrophy } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../../i18n';
 import type { Entry } from '../../../player/types';
-import { PlayerName, StatTile } from '../../../ui';
+import { DataTable, PlayerName, StatTile } from '../../../ui';
 import { playerCardSource, ProfileCardModal, type ProfileCardTarget } from '../../playercard';
 import { usePlayerSpace } from '../context';
 import { scopedSportQuery } from './Leaderboard';
@@ -83,8 +82,9 @@ export function SocialLine({
   );
 }
 
+// Compact "games · share won", so both columns fit a phone; the legend above the table explains it.
 const stat = (games: number, wins: number) =>
-  games ? tx('{games} games · {pct}% won', { games, pct: Math.round((wins / games) * 100) }) : '-';
+  games ? `${games} \u00b7 ${Math.round((wins / games) * 100)}%` : '-';
 
 // Everyone you have played with or against, with the record for each. Searchable, five sort orders.
 function Explorer({ rows }: { rows: ParticipantRow[] }) {
@@ -125,26 +125,32 @@ function Explorer({ rows }: { rows: ParticipantRow[] }) {
               />
             </Group>
             {shown.length ? (
-              <Table.ScrollContainer minWidth={320}>
-                <Table verticalSpacing="xs">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>{tx('Player')}</Table.Th>
-                      <Table.Th>{tx('With')}</Table.Th>
-                      <Table.Th>{tx('Against')}</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {shown.map((r) => (
-                      <Table.Tr key={r.name}>
-                        <Table.Td fw={600}>{r.name}</Table.Td>
-                        <Table.Td>{stat(r.togetherGames, r.togetherWins)}</Table.Td>
-                        <Table.Td>{stat(r.againstGames, r.againstWins)}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
+              <>
+                <Text size="xs" c="dimmed">
+                  {tx('Games played · share won')}
+                </Text>
+                <DataTable
+                  rows={shown}
+                  rowKey={(r) => r.name}
+                  columns={[
+                    { key: 'player', label: tx('Player'), cell: (r) => r.name },
+                    {
+                      key: 'with',
+                      label: tx('With'),
+                      kind: 'num',
+                      chars: 9,
+                      cell: (r) => stat(r.togetherGames, r.togetherWins),
+                    },
+                    {
+                      key: 'against',
+                      label: tx('Against'),
+                      kind: 'num',
+                      chars: 9,
+                      cell: (r) => stat(r.againstGames, r.againstWins),
+                    },
+                  ]}
+                />
+              </>
             ) : (
               <Text size="sm" c="dimmed">
                 {tx('No players match this search.')}

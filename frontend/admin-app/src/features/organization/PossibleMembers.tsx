@@ -4,6 +4,7 @@ import {
   Checkbox,
   Code,
   Group,
+  Paper,
   Popover,
   Select,
   Stack,
@@ -11,6 +12,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { api, write } from '../../api';
 import { t as tx, useLocale } from '../../i18n';
@@ -91,10 +93,49 @@ export function PossibleMembers({
   const list = (ghosts.data ?? []).filter((g) =>
     `${g.name} ${g.profile_id}`.toLowerCase().includes(filter.trim().toLowerCase()),
   );
+  const phone = !!useMediaQuery('(max-width: 767px)', false, { getInitialValueInEffect: false });
   if (!ghosts.data?.length) return null;
   const registered = players.filter((p) => p.has_hub_profile);
   const toggle = (id: string, on: boolean) =>
     setPicked((cur) => (on ? [...cur, id] : cur.filter((x) => x !== id)));
+  const actions = (g: Ghost) => (
+    <Group gap={6} wrap={phone ? 'wrap' : 'nowrap'}>
+      <Button
+        size="compact-sm"
+        variant="light"
+        loading={add.isPending && add.variables?.profile_id === g.profile_id}
+        onClick={() => add.mutate(g)}
+      >
+        {tx('Add to roster')}
+      </Button>
+      <Popover width={260} withArrow position="bottom-end" shadow="md">
+        <Popover.Target>
+          <Button size="compact-sm" variant="default">
+            {tx('Create Hub profile')}
+          </Button>
+        </Popover.Target>
+        <Popover.Dropdown>
+          <Stack gap="xs">
+            <Text size="sm">
+              {tx(
+                'Generates a passphrase the player can use to log in to the Player Hub. Add an email to send an invite.',
+              )}
+            </Text>
+            <TextInput
+              type="email"
+              aria-label={tx('Email')}
+              placeholder="player@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+            />
+            <Button size="compact-md" loading={convert.isPending} onClick={() => convert.mutate(g)}>
+              {tx('Create profile')}
+            </Button>
+          </Stack>
+        </Popover.Dropdown>
+      </Popover>
+    </Group>
+  );
   const canMerge = target ? picked.length >= 1 : picked.length >= 2;
   return (
     <Stack gap="xs" data-testid="possible-members">
@@ -119,81 +160,71 @@ export function PossibleMembers({
         </Notice>
       )}
       <MutationError error={add.error ?? convert.error ?? merge.error} />
-      <Table.ScrollContainer minWidth={420}>
-        <Table verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th w={1} />
-              <Table.Th>{tx('Player')}</Table.Th>
-              <Table.Th>{tx('ELO')}</Table.Th>
-              <Table.Th>{tx('Matches')}</Table.Th>
-              <Table.Th w={1} />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {list.map((g) => {
-              const elo = sport === 'padel' ? g.elo_padel : g.elo_tennis;
-              const matches = sport === 'padel' ? g.matches_padel : g.matches_tennis;
-              return (
-                <Table.Tr key={g.profile_id}>
-                  <Table.Td>
-                    <Checkbox
-                      aria-label={tx('Select {name}', { name: g.name })}
-                      checked={picked.includes(g.profile_id)}
-                      onChange={(e) => toggle(g.profile_id, e.currentTarget.checked)}
-                    />
-                  </Table.Td>
-                  <Table.Td fw={600}>{g.name}</Table.Td>
-                  <Table.Td>{elo != null ? Math.round(elo) : '—'}</Table.Td>
-                  <Table.Td>{matches ?? '—'}</Table.Td>
-                  <Table.Td>
-                    <Group gap={6} wrap="nowrap">
-                      <Button
-                        size="compact-sm"
-                        variant="light"
-                        loading={add.isPending && add.variables?.profile_id === g.profile_id}
-                        onClick={() => add.mutate(g)}
-                      >
-                        {tx('Add to roster')}
-                      </Button>
-                      <Popover width={260} withArrow position="bottom-end" shadow="md">
-                        <Popover.Target>
-                          <Button size="compact-sm" variant="default">
-                            {tx('Create Hub profile')}
-                          </Button>
-                        </Popover.Target>
-                        <Popover.Dropdown>
-                          <Stack gap="xs">
-                            <Text size="sm">
-                              {tx(
-                                'Generates a passphrase the player can use to log in to the Player Hub. Add an email to send an invite.',
-                              )}
-                            </Text>
-                            <TextInput
-                              type="email"
-                              aria-label={tx('Email')}
-                              placeholder="player@example.com"
-                              value={email}
-                              onChange={(e) => setEmail(e.currentTarget.value)}
-                            />
-                            <Button
-                              size="compact-md"
-                              loading={convert.isPending}
-                              onClick={() => convert.mutate(g)}
-                            >
-                              {tx('Create profile')}
-                            </Button>
-                          </Stack>
-                        </Popover.Dropdown>
-                      </Popover>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
+      {phone ? (
+        <Paper variant="list" role="list">
+          {list.map((g) => {
+            const elo = sport === 'padel' ? g.elo_padel : g.elo_tennis;
+            const matches = sport === 'padel' ? g.matches_padel : g.matches_tennis;
+            return (
+              <Stack key={g.profile_id} role="listitem" gap="xs" p="sm">
+                <Group wrap="nowrap" align="flex-start">
+                  <Checkbox
+                    aria-label={tx('Select {name}', { name: g.name })}
+                    checked={picked.includes(g.profile_id)}
+                    onChange={(e) => toggle(g.profile_id, e.currentTarget.checked)}
+                  />
+                  <Stack gap={0} miw={0}>
+                    <Text fw={600} size="sm" lineClamp={2}>
+                      {g.name}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {tx('ELO')} {elo != null ? Math.round(elo) : '\u2014'}
+                      {' \u00b7 '}
+                      {tx('Matches')} {matches ?? '\u2014'}
+                    </Text>
+                  </Stack>
+                </Group>
+                {actions(g)}
+              </Stack>
+            );
+          })}
+        </Paper>
+      ) : (
+        <Table.ScrollContainer minWidth={420}>
+          <Table verticalSpacing="xs">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th w={1} />
+                <Table.Th>{tx('Player')}</Table.Th>
+                <Table.Th data-num>{tx('ELO')}</Table.Th>
+                <Table.Th data-num>{tx('Matches')}</Table.Th>
+                <Table.Th w={1} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {list.map((g) => {
+                const elo = sport === 'padel' ? g.elo_padel : g.elo_tennis;
+                const matches = sport === 'padel' ? g.matches_padel : g.matches_tennis;
+                return (
+                  <Table.Tr key={g.profile_id}>
+                    <Table.Td>
+                      <Checkbox
+                        aria-label={tx('Select {name}', { name: g.name })}
+                        checked={picked.includes(g.profile_id)}
+                        onChange={(e) => toggle(g.profile_id, e.currentTarget.checked)}
+                      />
+                    </Table.Td>
+                    <Table.Td fw={600}>{g.name}</Table.Td>
+                    <Table.Td data-num>{elo != null ? Math.round(elo) : '—'}</Table.Td>
+                    <Table.Td data-num>{matches ?? '—'}</Table.Td>
+                    <Table.Td>{actions(g)}</Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
       {!list.length && (
         <Text size="sm" c="dimmed">
           {tx('No players found')}

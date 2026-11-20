@@ -138,3 +138,19 @@ def test_no_mantine_class_selectors_outside_the_theme() -> None:
         if MANTINE_SELECTOR.search(line)
     ]
     assert offenders == [], f"`.mantine-*` selectors belong in src/theme only: {offenders}"
+
+
+def test_wide_table_scrollers_have_a_phone_branch() -> None:
+    # A `Table.ScrollContainer` wider than a phone hides columns behind a sideways scroll. A page that
+    # needs one must also have a phone layout (`useMediaQuery('(max-width: 767px)')`); a table that
+    # can shrink uses `ui/DataTable` instead. The two table components below do their own column logic.
+    exempt = {SRC / "ui" / "DataTable.tsx", SRC / "features" / "tournaments" / "StandingsTable.tsx"}
+    offenders = []
+    for path in SRC.rglob("*.tsx"):
+        if path in exempt:
+            continue
+        source = path.read_text()
+        widths = [int(n) for n in re.findall(r"Table\.ScrollContainer\s+minWidth=\{(\d+)\}", source)]
+        if any(w > 360 for w in widths) and "(max-width: 767px)" not in source:
+            offenders.append(str(path.relative_to(SRC)))
+    assert offenders == []

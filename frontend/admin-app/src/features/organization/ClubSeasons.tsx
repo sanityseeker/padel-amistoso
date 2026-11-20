@@ -7,7 +7,6 @@ import {
   Paper,
   SegmentedControl,
   Stack,
-  Table,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -19,6 +18,7 @@ import { t as tx, useLocale } from '../../i18n';
 import type { Season } from '../../types';
 import {
   ConfirmAction,
+  DataTable,
   EmptyState,
   FormActions,
   MutationError,
@@ -69,34 +69,48 @@ function StandingsSheet({ season, onClose }: { season: Season; onClose: () => vo
         ) : !rows.length ? (
           <Text c="dimmed">{tx('No results yet for this sport.')}</Text>
         ) : (
-          <Table.ScrollContainer minWidth={520}>
-            <Table verticalSpacing="xs">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>{tx('Player')}</Table.Th>
-                  <Table.Th>{tx('ELO change')}</Table.Th>
-                  <Table.Th>{tx('Matches')}</Table.Th>
-                  <Table.Th>{tx('Events')}</Table.Th>
-                  <Table.Th>{tx('Best rank')}</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {rows.map((r) => (
-                  <Table.Tr key={r.player_name}>
-                    <Table.Td>{r.player_name}</Table.Td>
-                    <Table.Td>
-                      {r.elo_change == null
-                        ? '—'
-                        : `${r.elo_change > 0 ? '+' : ''}${Math.round(r.elo_change)}`}
-                    </Table.Td>
-                    <Table.Td>{r.matches_played}</Table.Td>
-                    <Table.Td>{r.tournaments_played}</Table.Td>
-                    <Table.Td>{r.best_rank ?? '—'}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+          <DataTable
+            rows={rows}
+            rowKey={(r) => r.player_name}
+            columns={[
+              { key: 'player', label: tx('Player'), cell: (r) => r.player_name },
+              {
+                key: 'elo',
+                label: tx('ELO change'),
+                kind: 'num',
+                chars: 5,
+                bold: true,
+                cell: (r) =>
+                  r.elo_change == null
+                    ? '\u2014'
+                    : `${r.elo_change > 0 ? '+' : ''}${Math.round(r.elo_change)}`,
+              },
+              {
+                key: 'matches',
+                label: tx('Matches'),
+                kind: 'num',
+                chars: 3,
+                minWidth: 300,
+                cell: (r) => r.matches_played,
+              },
+              {
+                key: 'events',
+                label: tx('Events'),
+                kind: 'num',
+                chars: 3,
+                minWidth: 380,
+                cell: (r) => r.tournaments_played,
+              },
+              {
+                key: 'rank',
+                label: tx('Best rank'),
+                kind: 'num',
+                chars: 3,
+                minWidth: 440,
+                cell: (r) => r.best_rank ?? '\u2014',
+              },
+            ]}
+          />
         )}
       </Stack>
     </ResponsiveSheet>

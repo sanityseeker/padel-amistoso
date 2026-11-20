@@ -33,3 +33,4 @@ export {
   useHistoryLimit,
   type HistoryLimitValue,
 } from './historyLimit';
+export { DataTable, type DataColumn, type DataTableProps } from './DataTable';
