@@ -1,3 +1,9 @@
+## v3.14.1 (2026-11-20)
+
+### Fix
+
+- fit data tables on phone widths
+
 ## v3.14.0 (2026-11-20)
 
 ### Feat
