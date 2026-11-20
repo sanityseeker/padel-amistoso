@@ -1,14 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import {
-  Accordion,
-  Group,
-  Paper,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core';
+import { Accordion, Group, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { IconSearch, IconTrophy } from '@tabler/icons-react';
 import { t as tx, useLocale } from '../../../i18n';
 import type { Entry } from '../../../player/types';
