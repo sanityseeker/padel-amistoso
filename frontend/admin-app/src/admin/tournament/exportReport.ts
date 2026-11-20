@@ -1,6 +1,6 @@
 import { t as tx, localeTag } from '../../i18n';
 import { formatRoundLabel } from '../../roundLabel';
-import type { Match, Standing, Score, TournamentStatus, TvSettings } from '../../types';
+import type { Match, MatchData, Standing, Score, TournamentStatus, TvSettings } from '../../types';
 import { schemaQuery } from '../../bracketSchema';
 import { allMatches, formatSets, type TournamentPageData } from './scoring';
 
@@ -10,6 +10,8 @@ export interface ExportOptions {
   comments: boolean;
   bracket: boolean;
   elo: boolean;
+  /** Group-stage results as one cross table per group instead of the standings table. */
+  crossTable: boolean;
 }
 export const EXPORT_KEY = 'amistoso-export-opts';
 export const EXPORT_DEFAULTS: ExportOptions = {
@@ -18,6 +20,7 @@ export const EXPORT_DEFAULTS: ExportOptions = {
   comments: true,
   bracket: true,
   elo: false,
+  crossTable: false,
 };
 export function loadExportOptions(): ExportOptions {
   try {
@@ -169,6 +172,103 @@ function groupTable(rows: Standing[], status: TournamentStatus, teams: boolean, 
   );
 }
 
+/**
+ * A cross table needs fixed entries: one entry per side in every group match (teams, or singles).
+ * An individual padel group stage rotates partners, so two players can be partners in one match and
+ * opponents in the next; it keeps the standings table.
+ */
+export function crossTableFits(groups: MatchData | undefined): boolean {
+  const matches = groups ? allMatches(groups) : [];
+  return matches.length > 0 && matches.every((m) => m.team1.length === 1 && m.team2.length === 1);
+}
+
+/** Whether `m` has the entry on its team1 / team2 side (by id, then by name). */
+function sideOf(m: Match, r: Standing): 1 | 2 | null {
+  if (m.team1_ids?.includes(r.player_id)) return 1;
+  if (m.team2_ids?.includes(r.player_id)) return 2;
+  if (m.team1_ids?.length || m.team2_ids?.length) return null;
+  if (m.team1.includes(r.player)) return 1;
+  if (m.team2.includes(r.player)) return 2;
+  return null;
+}
+
+/** A played match read from the row entry's side: score first for that entry, and whether it won. */
+function rowScore(
+  m: Match,
+  rowSide: 1 | 2,
+  decider: Decider,
+): { html: string; won: boolean | null } {
+  const flip = (s: Score): Score => (rowSide === 1 ? s : [s[1], s[0]]);
+  let text = '';
+  let won: boolean | null = null;
+  if (m.sets?.length) {
+    const sets = (m.sets as Score[]).map(flip);
+    text = formatSets(sets, m.effective_decider ?? decider, '<br>');
+    const ahead = sets.filter((s) => s[0] > s[1]).length - sets.filter((s) => s[0] < s[1]).length;
+    won = ahead === 0 ? null : ahead > 0;
+  } else if (m.score) {
+    const [a, b] = flip(m.score);
+    text = `${a}-${b}`;
+    won = a === b ? null : a > b;
+  }
+  let html = text;
+  if (m.walkover) html += `<span class="wo">${esc(tx('Walkover'))}</span>`;
+  else if (m.disputed) html += `<span class="flag">${esc(tx('Disputed'))}</span>`;
+  else if (m.score && m.scored_by && !m.score_confirmed)
+    html += `<span class="flag">${esc(tx('Unconfirmed'))}</span>`;
+  return { html, won };
+}
+
+/**
+ * Classic round-robin cross table: entries down and across in standings order, each played score in
+ * the cell where the two entries meet, from the row entry's side. Matches not played yet leave the
+ * cell empty, so a printed sheet can be filled in by hand. Record and difference columns follow.
+ */
+function crossTable(
+  rows: Standing[],
+  matches: Match[],
+  status: TournamentStatus,
+  ctx: TableContext,
+  elo: boolean,
+) {
+  const sets = rows.some((r) => (r.sets_won ?? 0) > 0 || (r.sets_lost ?? 0) > 0);
+  const done = played(matches);
+  const head = [
+    `<th>#</th>`,
+    `<th class="name">${esc(ctx.teams ? tx('Team') : tx('Player'))}</th>`,
+    ...rows.map((_, i) => `<th class="cell">${i + 1}</th>`),
+    `<th>${esc(tx('W'))}</th>`,
+    `<th>${esc(tx('L'))}</th>`,
+    ...(sets ? [`<th>${esc(tx('SD'))}</th>`] : []),
+    `<th>${esc(sets ? tx('GD') : tx('PD'))}</th>`,
+    ...(elo ? [`<th>${esc(eloHeader(status))}</th>`] : []),
+  ].join('');
+  const body = rows
+    .map((r, i) => {
+      const cells = rows.map((c, j) => {
+        if (i === j) return '<td class="cell self"></td>';
+        const scores = done.flatMap((m) => {
+          const a = sideOf(m, r);
+          const b = sideOf(m, c);
+          return a && b && a !== b ? [rowScore(m, a, ctx.decider)] : [];
+        });
+        if (!scores.length) return '<td class="cell"></td>';
+        const wins = scores.filter((x) => x.won === true).length;
+        const losses = scores.filter((x) => x.won === false).length;
+        const tone = wins > losses ? ' win' : losses > wins ? ' loss' : '';
+        return `<td class="cell${tone}">${scores.map((x) => x.html).join('<hr>')}</td>`;
+      });
+      const name = r.withdrawn ? `${r.player} (${tx('Withdrawn')})` : r.player;
+      return `<tr><td>${i + 1}</td><td class="name">${esc(name)}</td>${cells.join('')}<td>${esc(
+        r.wins ?? 0,
+      )}</td><td>${esc(r.losses ?? 0)}</td>${sets ? `<td>${esc(r.sets_diff ?? 0)}</td>` : ''}<td>${esc(
+        r.point_diff ?? 0,
+      )}</td>${elo ? `<td>${esc(eloCell(r))}</td>` : ''}</tr>`;
+    })
+    .join('');
+  return `<table class="cross"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
 function leaderboardTable(
   rows: Standing[],
   status: TournamentStatus,
@@ -216,7 +316,7 @@ function championBox(status: TournamentStatus) {
 }
 
 // The report loads no stylesheet: light-mode colours are inlined.
-const STYLE = `body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:24px;color:#1f2937}h1{margin:0 0 8px}h2{margin:24px 0 8px;color:#1a5fa3}h3{margin:16px 0 6px}.muted{color:#6b7280;font-size:.92rem;margin-bottom:16px}.champ{margin:12px 0 18px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px}table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:.9rem}th{background:#f3f4f6}table.standings{table-layout:fixed}table.standings th:first-child{width:28%}.wo{margin-left:6px;padding:0 4px;border:1px solid #b45309;border-radius:4px;color:#92400e;font-size:.75em;font-weight:600;white-space:nowrap}@page{size:A4 landscape}img{width:100%;height:auto}h2,h3{break-after:avoid}tr{break-inside:avoid}`;
+const STYLE = `body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;margin:24px;color:#1f2937}h1{margin:0 0 8px}h2{margin:24px 0 8px;color:#1a5fa3}h3{margin:16px 0 6px}.muted{color:#6b7280;font-size:.92rem;margin-bottom:16px}.champ{margin:12px 0 18px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px}table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #d1d5db;padding:8px;text-align:left;font-size:.9rem}th{background:#f3f4f6}table.standings{table-layout:fixed}table.standings th:first-child{width:28%}.wo{margin-left:6px;padding:0 4px;border:1px solid #b45309;border-radius:4px;color:#92400e;font-size:.75em;font-weight:600;white-space:nowrap}@page{size:A4 landscape}table.cross th,table.cross td{text-align:center;padding:6px 4px;vertical-align:middle}table.cross .name{text-align:left;width:22%}table.cross .cell{min-width:56px;height:40px;font-variant-numeric:tabular-nums}table.cross .self{background:#e5e7eb}table.cross .win{background:#ecfdf5;font-weight:600}table.cross .loss{color:#4b5563}table.cross hr{border:0;border-top:1px solid #d1d5db;margin:4px 0}table.cross .wo{display:block;margin:2px 0 0}.flag{display:block;color:#92400e;font-size:.7em}table.cross{break-inside:avoid}img{width:100%;height:auto}h2,h3{break-after:avoid}tr{break-inside:avoid}`;
 
 export interface BracketImage {
   label: string;
@@ -249,6 +349,8 @@ export function exportParts(page: TournamentPageData) {
       (page.prefix === 'mex' && mexicanoPlayoffs),
     // Direct Playoffs has no table, so no ELO column to switch on.
     hasStandings: page.prefix !== 'po',
+    hasCrossTable:
+      page.prefix === 'gp' && crossTableFits(page.groupStage ? page.data : page.groups),
   };
 }
 
@@ -326,11 +428,12 @@ export function buildReport(args: {
   let playoffPending: Match[] = [];
   let groupMatches: Match[] = [];
   let groupRows: Record<string, Standing[]> = {};
+  let groups: MatchData | undefined;
   let roundMatches: Match[] = [];
   let upcoming: Match[] = [];
   let progress: string | null = null;
   if (prefix === 'gp') {
-    const groups = page.groupStage ? page.data : page.groups;
+    groups = page.groupStage ? page.data : page.groups;
     groupMatches = groups ? allMatches(groups) : [];
     groupRows = groups?.standings ?? {};
     if (!page.groupStage) {
@@ -395,8 +498,14 @@ export function buildReport(args: {
   // The stage before the play-offs (or the only stage, before they start).
   if (prefix === 'gp') {
     body += `<h2>${esc(tx('Group stage'))}</h2><p class="muted">${esc(count(groupMatches))}</p>`;
+    const cross = options.crossTable && crossTableFits(groups);
+    const byGroup = groups && !Array.isArray(groups.matches) ? (groups.matches ?? {}) : {};
     for (const [group, rows] of Object.entries(groupRows)) {
-      body += `<h3>${esc(tx('Group {name}', { name: group }))}</h3>${groupTable(rows, status, ctx.teams, withElo)}`;
+      body += `<h3>${esc(tx('Group {name}', { name: group }))}</h3>${
+        cross
+          ? crossTable(rows, byGroup[group] ?? [], status, ctx, withElo)
+          : groupTable(rows, status, ctx.teams, withElo)
+      }`;
       for (const w of (status.withdrawals ?? []).filter(
         (x) => x.kind === 'annul' && x.group === group,
       ))

@@ -36,7 +36,9 @@ export function ExportDialog({
   const [busy, setBusy] = useState<'html' | 'pdf' | null>(null);
   const [error, setError] = useState('');
   const page = client.getQueryData<TournamentPageData>(['admin', 'tournament', tid]);
-  const parts = page ? exportParts(page) : { hasBracket: false, hasStandings: true };
+  const parts = page
+    ? exportParts(page)
+    : { hasBracket: false, hasStandings: true, hasCrossTable: false };
   const hasBracket = parts.hasBracket;
   const set = (key: keyof ExportOptions) => (checked: boolean) => {
     const next = { ...options, [key]: checked };
@@ -98,6 +100,14 @@ export function ExportDialog({
             label={tx('Include upcoming matches')}
             checked={options.upcoming}
             onChange={(e) => set('upcoming')(e.currentTarget.checked)}
+          />
+        )}
+        {parts.hasCrossTable && (
+          <Switch
+            label={tx('Show groups as cross tables')}
+            description={tx('Scores where two entries meet; unplayed matches stay empty.')}
+            checked={options.crossTable}
+            onChange={(e) => set('crossTable')(e.currentTarget.checked)}
           />
         )}
         <Switch

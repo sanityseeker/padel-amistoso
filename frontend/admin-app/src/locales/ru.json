@@ -2106,5 +2106,7 @@
   "Rating changes appear here once matches are played in the clubs of this community.": "Изменения рейтинга появятся здесь, когда в клубах этого сообщества сыграют матчи.",
   "Only rating changes from played matches count. Ratings set by hand or by tier are not included.": "Учитываются только изменения рейтинга за сыгранные матчи. Рейтинги, заданные вручную или по уровню, не входят.",
   "All rated matches": "Все матчи с рейтингом",
-  "A season sets its own dates.": "Даты задаёт сезон."
+  "A season sets its own dates.": "Даты задаёт сезон.",
+  "Show groups as cross tables": "Показать группы в виде шахматки",
+  "Scores where two entries meet; unplayed matches stay empty.": "Счёт стоит на пересечении двух участников. Несыгранные матчи остаются пустыми."
 }

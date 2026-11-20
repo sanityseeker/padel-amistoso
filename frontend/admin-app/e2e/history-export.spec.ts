@@ -34,8 +34,12 @@ async function finishGroups(request: APIRequestContext, id: string) {
   return headers;
 }
 
-async function gpInPlayoffs(request: APIRequestContext, name: string) {
-  const { id } = await createTournament(request, 'gp', name);
+async function gpInPlayoffs(
+  request: APIRequestContext,
+  name: string,
+  extra: Record<string, unknown> = {},
+) {
+  const { id } = await createTournament(request, 'gp', name, extra);
   const headers = await finishGroups(request, id);
   expect(
     (await request.post(`/api/tournaments/${id}/gp/start-playoffs`, { headers, data: {} })).ok(),
@@ -64,11 +68,15 @@ async function mexInPlayoffs(request: APIRequestContext, name: string) {
 }
 
 /** Opens the workspace, exports an HTML report and returns its text. */
-async function exportedReport(page: Page, id: string) {
+async function exportedReport(page: Page, id: string, crossTable = false) {
   await loginAdmin(page);
   await page.goto(`/admin/t/${id}`);
   await page.getByRole('button', { name: 'Workspace menu' }).click();
   await page.getByRole('menuitem', { name: 'Export results' }).click();
+  const cross = page
+    .getByRole('dialog', { name: 'Export results' })
+    .getByRole('switch', { name: 'Show groups as cross tables' });
+  if (crossTable && !(await cross.isChecked())) await cross.click({ force: true });
   const download = page.waitForEvent('download');
   await page
     .getByRole('dialog', { name: 'Export results' })
@@ -118,6 +126,36 @@ test('export in the play-offs keeps the group stage after the bracket stage', as
   expect(groupPart).toContain('Match history');
   // Each stage counts its own matches.
   expect(text.match(/\d+ of \d+ matches played/g)!.length).toBeGreaterThanOrEqual(2);
+});
+
+test('export can show each group as a cross table with scores from the row side', async ({
+  page,
+  request,
+}) => {
+  // Team entries: each name is a fixed pair, so every match is one entry against another.
+  const id = await gpInPlayoffs(request, `Export cross ${Date.now()}`, { team_mode: true });
+  const { text } = await exportedReport(page, id, true);
+  const groupPart = text.slice(at(text, '<h2>Group stage</h2>'));
+  expect(groupPart).toContain('class="cross"');
+  expect(groupPart).not.toContain('class="standings"');
+  // Every group match ended 21-10: the winner's row reads 21-10, the mirrored cell 10-21.
+  expect(groupPart).toContain('<td class="cell win">21-10</td>');
+  expect(groupPart).toContain('<td class="cell loss">10-21</td>');
+  expect(groupPart).toContain('<td class="cell self"></td>');
+});
+
+test('an individual group stage with rotating partners offers no cross table', async ({
+  page,
+  request,
+}) => {
+  const { id } = await createTournament(request, 'gp', `Export no cross ${Date.now()}`);
+  await loginAdmin(page);
+  await page.goto(`/admin/t/${id}`);
+  await page.getByRole('button', { name: 'Workspace menu' }).click();
+  await page.getByRole('menuitem', { name: 'Export results' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Export results' });
+  await expect(dialog.getByRole('switch', { name: 'Include match history' })).toBeVisible();
+  await expect(dialog.getByRole('switch', { name: 'Show groups as cross tables' })).toHaveCount(0);
 });
 
 test('export of a Mexicano in its rounds has the leaderboard and the current round', async ({
